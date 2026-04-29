@@ -136,8 +136,23 @@ public actor LibmpvPlayerEngine: PlayerEngine {
         try runCommand(["seek", String(seconds), "absolute"])
     }
 
-    public func setHogMode(_ enabled: Bool) async throws { try requireHandle(); throw PlayerEngineError.commandFailed(name: "setHogMode", code: -100, message: "setHogMode not implemented yet") }
-    public func setOutputDevice(uid: String?) async throws { try requireHandle(); throw PlayerEngineError.commandFailed(name: "setOutputDevice", code: -100, message: "setOutputDevice not implemented yet") }
+    public func setHogMode(_ enabled: Bool) async throws {
+        try requireHandle()
+        try setStringProperty("audio-exclusive", enabled ? "yes" : "no")
+        deliver(.hogModeChanged(enabled: enabled))
+    }
+
+    public func setOutputDevice(uid: String?) async throws {
+        try requireHandle()
+        let value: String
+        if let uid, !uid.isEmpty {
+            value = "coreaudio_exclusive/\(uid)"
+        } else {
+            value = "auto"
+        }
+        try setStringProperty("audio-device", value)
+        deliver(.outputDeviceChanged(uid: uid))
+    }
 
     public func shutdown() async {
         guard !isShutdown else { return }
@@ -186,6 +201,15 @@ public actor LibmpvPlayerEngine: PlayerEngine {
         guard let h = handle else { throw PlayerEngineError.alreadyShutdown }
         var flag: Int32 = value ? 1 : 0
         let status = mpv_set_property(h, name, MPV_FORMAT_FLAG, &flag)
+        if status < 0 {
+            let message = String(cString: mpv_error_string(status))
+            throw PlayerEngineError.commandFailed(name: name, code: Int(status), message: message)
+        }
+    }
+
+    private func setStringProperty(_ name: String, _ value: String) throws {
+        guard let h = handle else { throw PlayerEngineError.alreadyShutdown }
+        let status = mpv_set_property_string(h, name, value)
         if status < 0 {
             let message = String(cString: mpv_error_string(status))
             throw PlayerEngineError.commandFailed(name: name, code: Int(status), message: message)

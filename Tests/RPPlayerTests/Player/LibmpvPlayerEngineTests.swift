@@ -82,3 +82,56 @@ extension LibmpvPlayerEngineTests {
         XCTAssertGreaterThanOrEqual(outcome, 3, "expected at least 3 position updates within 8 seconds")
     }
 }
+
+extension LibmpvPlayerEngineTests {
+    func testSetHogModeEmitsHogModeChanged() async throws {
+        let engine = try LibmpvPlayerEngine()
+        defer { Task { await engine.shutdown() } }
+        let stream = await engine.events
+
+        let collector = Task { () -> PlayerEvent? in
+            for await event in stream {
+                if case .hogModeChanged = event { return event }
+            }
+            return nil
+        }
+
+        try await engine.setHogMode(true)
+        let captured = await collector.value
+        XCTAssertEqual(captured, .hogModeChanged(enabled: true))
+    }
+
+    func testSetOutputDeviceWithUidEmitsOutputDeviceChanged() async throws {
+        let engine = try LibmpvPlayerEngine()
+        defer { Task { await engine.shutdown() } }
+        let stream = await engine.events
+
+        let collector = Task { () -> PlayerEvent? in
+            for await event in stream {
+                if case .outputDeviceChanged = event { return event }
+            }
+            return nil
+        }
+
+        try await engine.setOutputDevice(uid: "BuiltInSpeakerDevice")
+        let captured = await collector.value
+        XCTAssertEqual(captured, .outputDeviceChanged(uid: "BuiltInSpeakerDevice"))
+    }
+
+    func testSetOutputDeviceWithNilEmitsClearedEvent() async throws {
+        let engine = try LibmpvPlayerEngine()
+        defer { Task { await engine.shutdown() } }
+        let stream = await engine.events
+
+        let collector = Task { () -> PlayerEvent? in
+            for await event in stream {
+                if case .outputDeviceChanged = event { return event }
+            }
+            return nil
+        }
+
+        try await engine.setOutputDevice(uid: nil)
+        let captured = await collector.value
+        XCTAssertEqual(captured, .outputDeviceChanged(uid: nil))
+    }
+}
