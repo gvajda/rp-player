@@ -13,4 +13,3 @@ DerivedData/
 DerivedData/
 .DS_Store
 .superpowers/
-Vendor/libmpv/*.dylib
