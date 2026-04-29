@@ -311,3 +311,77 @@ extension LivePlaybackCoordinatorTests {
         XCTAssertEqual(chan1PlayIndex, engineCalls.count - 1, "chan1 play must be the final engine call")
     }
 }
+
+extension LivePlaybackCoordinatorTests {
+    func testPauseBeforePlayThrowsNotPlaying() async throws {
+        let api = MockRpApiClient()
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrate: 0
+        )
+        do {
+            try await coordinator.pause()
+            XCTFail("expected notPlaying")
+        } catch let error as PlaybackCoordinatorError {
+            XCTAssertEqual(error, .notPlaying)
+        }
+    }
+
+    func testPauseAndResumeForwardToEngineWhenPlaying() async throws {
+        let api = MockRpApiClient()
+        let block = makeBlock(songs: [("s1", 60_000), ("s2", 60_000), ("s3", 60_000), ("s4", 60_000)])
+        await api.setBlockResponses([block])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrate: 0
+        )
+        try await coordinator.play(channelId: 0)
+        try await coordinator.pause()
+        try await coordinator.resume()
+        let calls = await engine.recordedCalls()
+        XCTAssertTrue(calls.contains(.pause))
+        XCTAssertTrue(calls.contains(.resume))
+    }
+
+    func testStalePrefetchResultDiscardedAfterStop() async throws {
+        let api = MockRpApiClient()
+        let firstBlock = makeBlock(
+            url: "https://example.com/A.flac",
+            songs: [("a1", 60_000), ("a2", 60_000), ("a3", 60_000), ("a4", 60_000)]
+        )
+        let prefetchVictim = makeBlock(
+            url: "https://example.com/A-prefetch.flac",
+            songs: [("p1", 60_000), ("p2", 60_000), ("p3", 60_000), ("p4", 60_000)]
+        )
+        let restartBlock = makeBlock(
+            url: "https://example.com/B.flac",
+            songs: [("b1", 60_000), ("b2", 60_000), ("b3", 60_000), ("b4", 60_000)]
+        )
+        await api.setBlockResponses([firstBlock, prefetchVictim, restartBlock])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrate: 0
+        )
+        try await coordinator.play(channelId: 0)
+        // Trigger prefetch (in-flight call to api.getBlock). Sleep gives the
+        // eventTask a chance to process the positionUpdate before stop runs,
+        // so the prefetch is actually in-flight when we cancel it.
+        await engine.fire(.positionUpdate(seconds: 232.0))
+        try await Task.sleep(nanoseconds: 50_000_000)
+        // Stop while prefetch is racing.
+        try await coordinator.stop()
+        // Give the prefetch task time to resolve and try to write back.
+        try await Task.sleep(nanoseconds: 100_000_000)
+        // Restart playback. If the stale prefetch had resurrected as
+        // prefetchedBlock, an EOF would swap to it; instead we should never
+        // see A-prefetch.flac played after the new play().
+        try await coordinator.play(channelId: 0)
+        await engine.fire(.fileEnded(reason: .eof))
+        try await Task.sleep(nanoseconds: 100_000_000)
+        let engineCalls = await engine.recordedCalls()
+        XCTAssertFalse(
+            engineCalls.contains(.play(url: URL(string: "https://example.com/A-prefetch.flac")!)),
+            "prefetched block from before stop() must not resurface after restart. calls=\(engineCalls)"
+        )
+    }
+}

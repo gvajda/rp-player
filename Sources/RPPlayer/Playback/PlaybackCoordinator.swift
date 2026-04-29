@@ -95,16 +95,20 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     }
 
     public func stop() async throws {
+        // Clear coordinator state BEFORE awaiting engine.stop. If we cleared
+        // afterwards, a queued positionUpdate event processed during the
+        // engine.stop suspension would see the still-active orderedSongs and
+        // could spawn a fresh prefetch task that survives the cleanup.
         prefetchTask?.cancel()
         prefetchTask = nil
         prefetchedBlock = nil
-        do { try await engine.stop() } catch { throw PlaybackCoordinatorError.engineError(message: String(describing: error)) }
         currentBlock = nil
         orderedSongs = []
         startsAt = []
         currentSongIndex = 0
         currentPositionSeconds = 0
         current = nil
+        do { try await engine.stop() } catch { throw PlaybackCoordinatorError.engineError(message: String(describing: error)) }
     }
 
     public func skipForward() async throws {
@@ -196,7 +200,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             currentPositionSeconds = seconds
             guard !startsAt.isEmpty else { return }
             let newIndex = BlockSongs.indexOfSong(at: seconds, in: startsAt)
-            if newIndex != currentSongIndex && newIndex < orderedSongs.count {
+            if newIndex != currentSongIndex {
                 currentSongIndex = newIndex
                 emitNowPlaying(forSongIndex: newIndex)
             }
@@ -250,6 +254,9 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     }
 
     private func absorbPrefetchResult(_ block: GetBlock?) {
+        // If cleanup (stop / changeChannel) ran during the fetch, prefetchTask
+        // was nilled — discard the late result so we don't resurrect a stale block.
+        guard prefetchTask != nil else { return }
         prefetchTask = nil
         if let block = block, BlockSongs.orderedSongs(from: block).isEmpty == false {
             prefetchedBlock = block

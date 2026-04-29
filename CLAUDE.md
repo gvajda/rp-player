@@ -79,7 +79,7 @@ PR 6 scope: orchestrate playback via `LivePlaybackCoordinator` actor — fetches
 - After PR 4: 47 tests
 - After PR 5a: 48 tests
 - After PR 5b: 67 tests
-- After PR 6: 90 tests
+- After PR 6: 93 tests
 
 ---
 
