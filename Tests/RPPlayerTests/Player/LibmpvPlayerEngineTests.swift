@@ -16,11 +16,24 @@ final class LibmpvPlayerEngineTests: XCTestCase {
     func testCommandsAfterShutdownThrowAlreadyShutdown() async throws {
         let engine = try LibmpvPlayerEngine()
         await engine.shutdown()
-        do {
-            try await engine.pause()
-            XCTFail("expected alreadyShutdown")
-        } catch let error as PlayerEngineError {
-            XCTAssertEqual(error, .alreadyShutdown)
+
+        let url = URL(string: "https://example.com/audio.mp3")!
+        let invocations: [(String, () async throws -> Void)] = [
+            ("play",            { try await engine.play(url: url) }),
+            ("pause",           { try await engine.pause() }),
+            ("resume",          { try await engine.resume() }),
+            ("stop",            { try await engine.stop() }),
+            ("seek",            { try await engine.seek(to: 1.0) }),
+            ("setHogMode",      { try await engine.setHogMode(true) }),
+            ("setOutputDevice", { try await engine.setOutputDevice(uid: nil) }),
+        ]
+        for (name, call) in invocations {
+            do {
+                try await call()
+                XCTFail("expected alreadyShutdown for \(name)")
+            } catch let error as PlayerEngineError {
+                XCTAssertEqual(error, .alreadyShutdown, "command \(name) threw unexpected error")
+            }
         }
     }
 }

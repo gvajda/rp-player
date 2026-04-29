@@ -43,6 +43,10 @@ public actor LibmpvPlayerEngine: PlayerEngine {
         // Subscribe to time-pos so position updates flow through the pump.
         _ = mpv_observe_property(h, /*reply_userdata*/ 0, "time-pos", MPV_FORMAT_DOUBLE)
 
+        // Required for MPV_EVENT_LOG_MESSAGE delivery; without this the bridge's
+        // .error(message:) translation path is unreachable.
+        _ = mpv_request_log_messages(h, "error")
+
         self.handle = h
         // Pump must be started after init returns: Swift 6 nonisolated init can't
         // capture self into a detached Task, but a follow-up actor method can.
