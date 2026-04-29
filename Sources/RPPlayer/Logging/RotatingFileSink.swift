@@ -3,7 +3,7 @@ import Foundation
 /// Append-only log file with size-based rotation. `Base.log` is the active
 /// file; on overflow it becomes `Base.1.log` and the previous `Base.N.log`
 /// files shift down. `Base.<maxFiles>.log` is dropped when full.
-public final class RotatingFileSink {
+public final class RotatingFileSink: @unchecked Sendable {
     private let directory: URL
     private let baseName: String
     private let fileExtension: String
@@ -35,7 +35,7 @@ public final class RotatingFileSink {
             let payload = (line + "\n").data(using: .utf8) ?? Data()
             do {
                 try rotateIfNeeded(adding: payload.count)
-                handle?.write(payload)
+                try handle?.write(contentsOf: payload)
             } catch {
                 // Disk full / IO error must not crash the app.
             }
