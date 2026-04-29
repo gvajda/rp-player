@@ -149,7 +149,9 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     }
 
     public func changeChannel(to channelId: Int) async throws {
-        // Stub — Task 8 hardens this. For now: stop + play.
+        prefetchTask?.cancel()
+        prefetchTask = nil
+        prefetchedBlock = nil
         try await stop()
         try await play(channelId: channelId)
     }

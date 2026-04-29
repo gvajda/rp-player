@@ -275,3 +275,39 @@ extension LivePlaybackCoordinatorTests {
         XCTAssertEqual(engineCalls.last, .play(url: URL(string: "https://example.com/0-B.flac")!))
     }
 }
+
+extension LivePlaybackCoordinatorTests {
+    func testChangeChannelCancelsPrefetchFromPreviousChannel() async throws {
+        let api = MockRpApiClient()
+        let chan0Block = makeBlock(
+            url: "https://example.com/chan0.flac",
+            songs: [("a1", 60_000), ("a2", 60_000), ("a3", 60_000), ("a4", 60_000)]
+        )
+        // Second response is consumed by the in-flight prefetch (the mock's
+        // getBlock doesn't observe Task.cancel()). Its result must be discarded
+        // by changeChannel's cleanup.
+        let prefetchVictim = makeBlock(
+            url: "https://example.com/chan0-prefetch.flac",
+            songs: [("p1", 60_000), ("p2", 60_000), ("p3", 60_000), ("p4", 60_000)]
+        )
+        let chan1Block = makeBlock(
+            channel: "1",
+            url: "https://example.com/chan1.flac",
+            songs: [("c1", 60_000), ("c2", 60_000), ("c3", 60_000), ("c4", 60_000)]
+        )
+        await api.setBlockResponses([chan0Block, prefetchVictim, chan1Block])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrate: 0
+        )
+        try await coordinator.play(channelId: 0)
+        await engine.fire(.positionUpdate(seconds: 232.0))
+        try await Task.sleep(nanoseconds: 50_000_000)
+        try await coordinator.changeChannel(to: 1)
+        try await Task.sleep(nanoseconds: 100_000_000)
+        let engineCalls = await engine.recordedCalls()
+        XCTAssertEqual(engineCalls.last, .play(url: URL(string: "https://example.com/chan1.flac")!))
+        let chan1PlayIndex = engineCalls.lastIndex(of: .play(url: URL(string: "https://example.com/chan1.flac")!))
+        XCTAssertEqual(chan1PlayIndex, engineCalls.count - 1, "chan1 play must be the final engine call")
+    }
+}
