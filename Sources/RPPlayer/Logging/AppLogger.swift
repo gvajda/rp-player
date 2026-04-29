@@ -1,7 +1,14 @@
 import Foundation
 import os
 
-public struct AppLogger: Sendable {
+public protocol Logging: Sendable {
+    func debug(_ message: @autoclosure () -> String)
+    func info(_ message: @autoclosure () -> String)
+    func warn(_ message: @autoclosure () -> String)
+    func error(_ message: @autoclosure () -> String)
+}
+
+public struct AppLogger: Logging {
     public enum Level: String, Codable, Sendable, Comparable {
         case debug, info, warn, error
 

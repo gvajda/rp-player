@@ -3,9 +3,10 @@ import XCTest
 
 final class ConfigStoreTests: XCTestCase {
     private func makeTempURL() -> URL {
-        FileManager.default.temporaryDirectory
+        let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("RPPlayerTests-\(UUID().uuidString)", isDirectory: true)
-            .appendingPathComponent("config.json")
+        addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
+        return dir.appendingPathComponent("config.json")
     }
 
     func testLoadsDefaultsWhenFileMissing() async throws {

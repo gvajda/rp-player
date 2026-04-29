@@ -6,6 +6,7 @@ final class RotatingFileSinkTests: XCTestCase {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("RPPlayerTests-\(UUID().uuidString)", isDirectory: true)
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
         return url
     }
 

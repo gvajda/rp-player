@@ -3,6 +3,9 @@ import Foundation
 /// Persistent, concurrency-safe settings store. Backed by JSON on disk; mock-able in tests via the protocol.
 public protocol ConfigStore: Sendable, AnyObject {
     var settings: AppSettings { get async }
+    /// Yields the current settings snapshot immediately on subscription, then yields
+    /// every subsequent change. No-op updates (where the new value equals the current
+    /// value) are not yielded.
     var changes: AsyncStream<AppSettings> { get async }
     func update(_ mutate: @Sendable (inout AppSettings) -> Void) async throws
 }
@@ -58,9 +61,13 @@ public actor JSONConfigStore: ConfigStore {
         continuations.removeValue(forKey: id)
     }
 
+    private nonisolated static let encoder: JSONEncoder = {
+        let e = JSONEncoder()
+        e.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return e
+    }()
+
     private static func write(_ settings: AppSettings, to url: URL) throws {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = try encoder.encode(settings)
         try data.write(to: url, options: [.atomic])
     }
