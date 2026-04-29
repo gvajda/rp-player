@@ -1,3 +1,4 @@
+import CoreAudio
 import Foundation
 
 /// High-level interface consumed by `SettingsView`. Provides the current snapshot
@@ -14,4 +15,46 @@ public protocol AudioDeviceCatalog: Sendable {
 /// `StubAudioDeviceLister` to drive the actor without real hardware.
 public protocol AudioDeviceLister: Sendable {
     func currentDevices() -> [AudioDevice]
+}
+
+public actor CoreAudioDeviceCatalog: AudioDeviceCatalog {
+    private let lister: any AudioDeviceLister
+    private var current: [AudioDevice]
+    private var continuations: [UUID: AsyncStream<[AudioDevice]>.Continuation] = [:]
+
+    public init(lister: any AudioDeviceLister) {
+        self.lister = lister
+        self.current = lister.currentDevices()
+    }
+
+    public var devices: [AudioDevice] { current }
+
+    /// Subscribes a new continuation atomically: by the time the stream is returned,
+    /// the subscriber is registered and has been yielded the current snapshot.
+    public var changes: AsyncStream<[AudioDevice]> {
+        let id = UUID()
+        return AsyncStream { continuation in
+            self.continuations[id] = continuation
+            continuation.yield(self.current)
+            continuation.onTermination = { [weak self] _ in
+                Task { [weak self] in await self?.unregister(id: id) }
+            }
+        }
+    }
+
+    /// Re-enumerates devices via the lister and yields the new snapshot to every
+    /// subscriber if the list changed. Called from the CoreAudio hot-plug listener
+    /// (Task 4) and directly from tests.
+    public func reload() {
+        let new = lister.currentDevices()
+        guard new != current else { return }
+        current = new
+        for c in continuations.values {
+            c.yield(new)
+        }
+    }
+
+    private func unregister(id: UUID) {
+        continuations.removeValue(forKey: id)
+    }
 }
