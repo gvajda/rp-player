@@ -22,6 +22,7 @@ public struct SecItemKeychainStore: KeychainStore {
             kSecAttrAccount: account,
             kSecReturnData: true,
             kSecMatchLimit: kSecMatchLimitOne,
+            kSecUseDataProtectionKeychain: true,
         ]
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
@@ -39,8 +40,9 @@ public struct SecItemKeychainStore: KeychainStore {
             kSecClass: kSecClassGenericPassword,
             kSecAttrService: service,
             kSecAttrAccount: account,
+            kSecUseDataProtectionKeychain: true,
         ]
-        // Attempt update first; if not found, add.
+        // Update-first avoids a TOCTOU gap that delete-then-add would introduce.
         let updateStatus = SecItemUpdate(query as CFDictionary, [kSecValueData: data] as CFDictionary)
         if updateStatus == errSecItemNotFound {
             var addQuery = query
@@ -57,6 +59,7 @@ public struct SecItemKeychainStore: KeychainStore {
             kSecClass: kSecClassGenericPassword,
             kSecAttrService: service,
             kSecAttrAccount: account,
+            kSecUseDataProtectionKeychain: true,
         ]
         let status = SecItemDelete(query as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {

@@ -1,7 +1,5 @@
 @testable import RPPlayer
 
-/// Dictionary-backed KeychainStore for tests. Thread-safety provided by
-/// the actor isolation of KeychainCookieProvider — not needed here itself.
 final class InMemoryKeychainStore: KeychainStore, @unchecked Sendable {
     private var storage: [String: String] = [:]
 

@@ -33,7 +33,6 @@ final class KeychainStoreTests: XCTestCase {
     }
 
     func testDeleteIsIdempotent() throws {
-        // Must not throw when item does not exist.
         XCTAssertNoThrow(try sut.delete(service: service, account: account))
     }
 
