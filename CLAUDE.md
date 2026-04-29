@@ -1,6 +1,6 @@
 # RP Player — Agent Context
 
-## "Continue work" means: write the PR 4 plan, get approval, execute it.
+## "Continue work" means: write the next PR plan, get approval, execute it
 
 ---
 
@@ -17,8 +17,9 @@ macOS menu-bar app (Swift 6.2, macOS 13, SwiftUI + AppKit) that plays Radio Para
 | 1 | merged to main | ✅ | Scaffold, AppLogger, RotatingFileSink, AppSettings, ConfigStore |
 | 2 | merged to main | ✅ | RpApiClient, ApiModels, CookieProvider, StubURLProtocol, fixtures |
 | 3 | merged to main | ✅ | KeychainStore, KeychainCookieProvider, LoginWindowController |
-| 4 | **next** | ⬜ | AudioDeviceCatalog |
-| 5 | pending | ⬜ | PlayerEngine (libmpv Swift actor) |
+| 4 | merged to main | ✅ | AudioDeviceCatalog |
+| 5a | **next** | ⬜ | libmpv vendoring + RPSmoke CLI |
+| 5b | pending | ⬜ | PlayerEngine (libmpv Swift actor) |
 | 6 | pending | ⬜ | PlaybackCoordinator |
 | 7 | pending | ⬜ | AppKit shell (NSStatusItem + NSPopover) |
 | 8 | pending | ⬜ | MiniPlayerView (SwiftUI) |
@@ -27,7 +28,7 @@ macOS menu-bar app (Swift 6.2, macOS 13, SwiftUI + AppKit) that plays Radio Para
 | 11 | pending | ⬜ | AppContainer (composition root) |
 | 12 | pending | ⬜ | Distribution CI workflow |
 
-PR 4 scope (from DESIGN.md §4): `AudioDeviceCatalog` — lists CoreAudio output devices (name, UID, transport type). Watches `kAudioHardwarePropertyDevices` for hot-plug changes, emits updates via `AsyncStream<[AudioDevice]>`. Used by `SettingsView` for the output device picker.
+PR 5a scope: vendor libmpv (LGPL-2.1, audio-only universal binary from `media-kit/libmpv-darwin-build` v0.6.3) into `Vendor/libmpv/`, wire it into SwiftPM via a `CMpv` system-library target, and ship an `RPSmoke` CLI that validates the audio path end-to-end before any Swift wrapper work.
 
 ---
 
@@ -51,6 +52,8 @@ PR 4 scope (from DESIGN.md §4): `AudioDeviceCatalog` — lists CoreAudio output
 - Query items in `LiveRpApiClient` are sorted alphabetically — `StubURLProtocol` test URLs must match this order.
 - `GetBlock.chan` is `String` (live API returns `"0"`, not `Int`). `GetBlock.endEvent` is `String?` (same reason).
 - `SongInfo.songId` has a custom `init(from:)` that handles both `Int` and `String` JSON values.
+- libmpv is vendored in `Vendor/libmpv/` from `media-kit/libmpv-darwin-build` v0.6.3 (audio-default, universal). The public `client.h` is pinned to mpv v0.36.0 (commit `3996724d3fa1c51cc7998f3de2e22e2c99e6d270`). Reported API version: 2.1. Refreshing the dylibs requires updating both the binaries and `client.h` to a matching upstream tag, then bumping the assertion in `LibmpvLinkageTests`.
+- `RPSmoke` and `RPPlayerTests` link libmpv with two `@loader_path`-relative rpaths baked in (3-deep for executables, 6-deep for xctest bundles). No `DYLD_LIBRARY_PATH` is needed for `swift test` or `swift run RPSmoke`. Production `.app` packaging (PR 12) will install dylibs under `Contents/Frameworks/` and use a single `@loader_path/../Frameworks` rpath instead.
 
 ---
 
@@ -68,6 +71,7 @@ PR 4 scope (from DESIGN.md §4): `AudioDeviceCatalog` — lists CoreAudio output
 - After PR 2: 18 tests
 - After PR 3: 35 tests
 - After PR 4: 47 tests
+- After PR 5a: 48 tests
 
 ---
 
