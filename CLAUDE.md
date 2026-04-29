@@ -67,7 +67,7 @@ PR 4 scope (from DESIGN.md §4): `AudioDeviceCatalog` — lists CoreAudio output
 - After PR 1: 13 tests
 - After PR 2: 18 tests
 - After PR 3: 35 tests
-- After PR 4: TBD
+- After PR 4: 47 tests
 
 ---
 
