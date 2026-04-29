@@ -1,6 +1,14 @@
 import XCTest
 @testable import RPPlayer
 
+private final class ThrowingKeychainStore: KeychainStore, @unchecked Sendable {
+    func load(service: String, account: String) throws -> String? { nil }
+    func save(value: String, service: String, account: String) throws {
+        throw KeychainError.unexpectedStatus(-1)
+    }
+    func delete(service: String, account: String) throws {}
+}
+
 final class KeychainCookieProviderTests: XCTestCase {
     private var keychainStore: InMemoryKeychainStore!
     private var sut: KeychainCookieProvider!
@@ -44,5 +52,18 @@ final class KeychainCookieProviderTests: XCTestCase {
         await sut.clearCookie()
         let loggedIn = await sut.isLoggedIn
         XCTAssertFalse(loggedIn)
+    }
+
+    func testStoreCookiePropagatesKeychainError() async {
+        let throwingStore = ThrowingKeychainStore()
+        let provider = KeychainCookieProvider(keychainStore: throwingStore)
+        do {
+            try await provider.storeCookie("C_username=foo")
+            XCTFail("Expected storeCookie to throw but it succeeded")
+        } catch is KeychainError {
+            // expected — KeychainStore write failure is propagated
+        } catch {
+            XCTFail("Expected KeychainError but got \(type(of: error)): \(error)")
+        }
     }
 }
