@@ -103,8 +103,44 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     }
 
     public func skipForward() async throws {
-        // Stub — Task 6 fills this in.
-        throw PlaybackCoordinatorError.notPlaying
+        guard currentBlock != nil, !orderedSongs.isEmpty,
+              let channelId = currentChannelId else {
+            throw PlaybackCoordinatorError.notPlaying
+        }
+        let nextIndex = currentSongIndex + 1
+        if nextIndex < orderedSongs.count {
+            // Seek slightly past the boundary so positionUpdate trips into the new song.
+            let target = startsAt[nextIndex] + 0.05
+            do {
+                try await engine.seek(to: target)
+            } catch {
+                throw PlaybackCoordinatorError.engineError(message: String(describing: error))
+            }
+            currentSongIndex = nextIndex
+            currentPositionSeconds = target
+            emitNowPlaying(forSongIndex: nextIndex)
+        } else {
+            // Past the last song — fetch a fresh block from the same channel
+            // and play from offset 0 (no cue tune-in: user's intent is "next block").
+            let block = try await api.getBlock(channel: channelId, bitrate: bitrate, info: false)
+            let songs = BlockSongs.orderedSongs(from: block)
+            guard !songs.isEmpty else { throw PlaybackCoordinatorError.blockHasNoSongs }
+            currentBlock = block
+            orderedSongs = songs
+            startsAt = BlockSongs.startsAtSeconds(songs: songs)
+            currentSongIndex = 0
+            currentPositionSeconds = 0
+            pendingCueSeekSeconds = nil
+            guard let url = URL(string: block.url) else {
+                throw PlaybackCoordinatorError.engineError(message: "invalid block url: \(block.url)")
+            }
+            do {
+                try await engine.play(url: url)
+            } catch {
+                throw PlaybackCoordinatorError.engineError(message: String(describing: error))
+            }
+            emitNowPlaying(forSongIndex: 0)
+        }
     }
 
     public func changeChannel(to channelId: Int) async throws {

@@ -146,3 +146,59 @@ extension LivePlaybackCoordinatorTests {
         XCTAssertEqual(result, 2)
     }
 }
+
+extension LivePlaybackCoordinatorTests {
+    func testSkipForwardWithinBlockSeeksToNextSongStart() async throws {
+        let api = MockRpApiClient()
+        let block = makeBlock(songs: [("s1", 60_000), ("s2", 120_000), ("s3", 90_000), ("s4", 100_000)])
+        await api.setBlockResponses([block])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrate: 0
+        )
+        try await coordinator.play(channelId: 0)
+        try await coordinator.skipForward()
+        let calls = await engine.recordedCalls()
+        XCTAssertEqual(calls.last, .seek(seconds: 60.05))
+    }
+
+    func testSkipForwardOnLastSongFetchesNextBlock() async throws {
+        let api = MockRpApiClient()
+        let firstBlock = makeBlock(
+            url: "https://example.com/0-1.flac",
+            songs: [("s1", 60_000), ("s2", 120_000), ("s3", 90_000), ("s4", 100_000)]
+        )
+        let secondBlock = makeBlock(
+            url: "https://example.com/0-2.flac",
+            songs: [("s5", 60_000), ("s6", 60_000), ("s7", 60_000), ("s8", 60_000)]
+        )
+        await api.setBlockResponses([firstBlock, secondBlock])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrate: 0
+        )
+        try await coordinator.play(channelId: 0)
+        await engine.fire(.positionUpdate(seconds: 280.0))
+        try await Task.sleep(nanoseconds: 50_000_000)
+        try await coordinator.skipForward()
+        let apiCalls = await api.calls
+        let engineCalls = await engine.recordedCalls()
+        XCTAssertEqual(apiCalls.count, 2)
+        XCTAssertEqual(apiCalls.last, .getBlock(channel: 0, bitrate: 0, info: false))
+        XCTAssertEqual(engineCalls.last, .play(url: URL(string: "https://example.com/0-2.flac")!))
+    }
+
+    func testSkipForwardWithoutCurrentBlockThrows() async throws {
+        let api = MockRpApiClient()
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrate: 0
+        )
+        do {
+            try await coordinator.skipForward()
+            XCTFail("expected notPlaying")
+        } catch let error as PlaybackCoordinatorError {
+            XCTAssertEqual(error, .notPlaying)
+        }
+    }
+}
