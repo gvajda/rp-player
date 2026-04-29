@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 @MainActor
-final class PopoverController {
+class PopoverController {
     let popover: NSPopover
 
     init() {
