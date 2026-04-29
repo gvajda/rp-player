@@ -1,0 +1,177 @@
+{
+    "event": "2868120",
+    "block_id": "1815",
+    "slice_num": "5",
+    "sched_time_millis": 1777471206809,
+    "type": "M",
+    "end_event": "2868121",
+    "length": "1705.695",
+    "url": "https://audio-geo.radioparadise.com/chan/0/x/1815/4/b/1815-0.flac",
+    "timeout_millis": 2700000,
+    "chan": "0",
+    "channel": {
+        "chan": "0",
+        "title": "The Main Mix",
+        "stream_name": "main-mix",
+        "isER": false
+    },
+    "bitrate": "flac",
+    "ext": "flac",
+    "cue": 1322889,
+    "expiration": 1777557598,
+    "filename": {
+        "0": "2868120-2868121"
+    },
+    "image_base": "//img.radioparadise.com/",
+    "slide_base": "//img.radioparadise.com/slideshow/720/",
+    "song": {
+        "0": {
+            "user_rating": "0",
+            "song_id": "45268",
+            "ratings_num": "1952",
+            "ratings_dist": {
+                "0": 12,
+                "1": 15,
+                "2": 24,
+                "3": 23,
+                "4": 49,
+                "5": 150,
+                "6": 687,
+                "7": 685,
+                "8": 182,
+                "9": 124
+            },
+            "artist": "Portugal. The Man",
+            "song_credit_list": {
+                "0": {
+                    "artist_id": "5708",
+                    "artist_title": "Portugal. The Man",
+                    "artist_joinphrase": ""
+                }
+            },
+            "title": "Feel It Still",
+            "year": "2017",
+            "duration": 158807,
+            "asin": "18346",
+            "album": "Woodstock",
+            "slideshow": "75451,73388,37252,61687,42640,28254,47146,77243,40215,69562,24853,70955,63241,54265,76648,33055,30675",
+            "rating": "7.4",
+            "cover": "covers/l/18346.jpg",
+            "cover_large": "covers/l/18346.jpg",
+            "cover_medium": "covers/m/18346.jpg",
+            "cover_small": "covers/s/18346.jpg",
+            "type": "M",
+            "event": "2868120",
+            "audio_id": "45268",
+            "priority": "0",
+            "block_id": "1815",
+            "slice_num": "5",
+            "sched_time_millis": 1777471206809,
+            "elapsed": 1273888,
+            "timeout_millis": 2700000,
+            "gapless_url": "https://audio-geo.radioparadise.com/chan/0/x/1815/4/g/1815-5.flac",
+            "episode_id": 0,
+            "episode_slug": "",
+            "isRateable": true,
+            "isPlayableAfterSkip": true,
+            "isPlayableOnStart": true,
+            "updateHistory": true,
+            "updateProgressIntervalMillis": 0,
+            "skipAllowedMillis": 1777465965616
+        },
+        "1": {
+            "user_rating": "0",
+            "song_id": "799",
+            "ratings_num": "3081",
+            "ratings_dist": {
+                "0": 62,
+                "1": 53,
+                "2": 77,
+                "3": 79,
+                "4": 124,
+                "5": 277,
+                "6": 882,
+                "7": 949,
+                "8": 385,
+                "9": 193
+            },
+            "artist": "Donovan",
+            "song_credit_list": {
+                "0": {
+                    "artist_id": "2011",
+                    "artist_title": "Donovan",
+                    "artist_joinphrase": ""
+                }
+            },
+            "title": "Sunshine Superman",
+            "year": "1970",
+            "duration": 273000,
+            "asin": "11711",
+            "album": "Mellow Yellow",
+            "slideshow": "19708,4792,7664,20039,35464,20449,27191,18589,7313,16878,38525,5237,38708,10177,32110,35012,23642,55269,7844,22354,4797,29689,21846,35566,39311,33758,18385,8249,47641",
+            "rating": "7.2",
+            "cover": "covers/l/11711.jpg",
+            "cover_large": "covers/l/11711.jpg",
+            "cover_medium": "covers/m/11711.jpg",
+            "cover_small": "covers/s/11711.jpg",
+            "type": "M",
+            "event": "2868121",
+            "audio_id": "799",
+            "priority": "0",
+            "block_id": "1815",
+            "slice_num": "6",
+            "sched_time_millis": 1777471365616,
+            "elapsed": 1432695,
+            "timeout_millis": 2700000,
+            "gapless_url": "https://audio-geo.radioparadise.com/chan/0/x/1815/4/g/1815-6.flac",
+            "episode_id": 0,
+            "episode_slug": "",
+            "isRateable": true,
+            "isPlayableAfterSkip": true,
+            "isPlayableOnStart": true,
+            "updateHistory": true,
+            "updateProgressIntervalMillis": 0,
+            "skipAllowedMillis": 1777466238616
+        }
+    },
+    "cache_ahead_timeout": {
+        "0": {
+            "cache_length_millis_max": 1800000,
+            "timeout_millis": 900000
+        },
+        "1": {
+            "cache_length_millis_max": 3600000,
+            "timeout_millis": 1800000
+        },
+        "2": {
+            "cache_length_millis_max": 5400000,
+            "timeout_millis": 2700000
+        },
+        "3": {
+            "cache_length_millis_max": 7200000,
+            "timeout_millis": 3600000
+        },
+        "4": {
+            "cache_length_millis_max": 10800000,
+            "timeout_millis": 5400000
+        },
+        "5": {
+            "cache_length_millis_max": 14400000,
+            "timeout_millis": 7200000
+        },
+        "6": {
+            "cache_length_millis_max": 18000000,
+            "timeout_millis": 9000000
+        },
+        "7": {
+            "cache_length_millis_max": 21600000,
+            "timeout_millis": 10800000
+        },
+        "8": {
+            "cache_length_millis_max": 9223372036854775807,
+            "timeout_millis": 14400000
+        }
+    },
+    "current_event_id": 2868119,
+    "max_gapless_event_id": 2868169
+}

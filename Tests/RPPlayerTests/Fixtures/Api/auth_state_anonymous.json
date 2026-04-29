@@ -1,0 +1,21 @@
+{
+    "user_id": "1600833223",
+    "post_ok": "f",
+    "username": "anonymous",
+    "level": "1",
+    "last_login": "1777471213",
+    "last_refresh": "0",
+    "country_code": "VN",
+    "avatar": null,
+    "privmsg_new": false,
+    "htsso": {
+        "hash": "edb52d4e40c756cab902cbeed0edb8d437675fd3",
+        "hash256": "6d7545a3f426eb310be8b30e817b54a1c9f7b8b402f7c29b080703a9c7602d2f",
+        "userData": "W10=",
+        "loginURL": true,
+        "signupURL": true
+    },
+    "newsletter_r2050": 0,
+    "support_meter_percent": 100,
+    "status": "success"
+}

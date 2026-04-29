@@ -1,0 +1,142 @@
+[
+    {
+        "chan": "0",
+        "title": "The Main Mix",
+        "stream_name": "main-mix",
+        "slug": "main-mix",
+        "type": "block",
+        "default_stream_url": "",
+        "current_listeners": "10772",
+        "stream": {
+            "title": "",
+            "artist": "",
+            "album": "",
+            "cover": "",
+            "stream_url": ""
+        },
+        "player_type": "gapless-playlist",
+        "downloadable": true,
+        "image": "https://img.radioparadise.com/channels/0/0/cover_512x512/0.jpg",
+        "banner_url": "https://img.radioparadise.com/channels/0/0/banner_500x280/0.jpg"
+    },
+    {
+        "chan": "1",
+        "title": "Mellow Mix",
+        "stream_name": "mellow",
+        "slug": "mellow",
+        "type": "block",
+        "default_stream_url": "",
+        "current_listeners": "4094",
+        "stream": {
+            "title": "",
+            "artist": "",
+            "album": "",
+            "cover": "",
+            "stream_url": ""
+        },
+        "player_type": "gapless-playlist",
+        "downloadable": true,
+        "image": "https://img.radioparadise.com/channels/0/1/cover_512x512/0.jpg",
+        "banner_url": "https://img.radioparadise.com/channels/0/1/banner_500x280/0.jpg"
+    },
+    {
+        "chan": "2",
+        "title": "RockIt!",
+        "stream_name": "rock",
+        "slug": "rock",
+        "type": "block",
+        "default_stream_url": "",
+        "current_listeners": "1714",
+        "stream": {
+            "title": "",
+            "artist": "",
+            "album": "",
+            "cover": "",
+            "stream_url": ""
+        },
+        "player_type": "gapless-playlist",
+        "downloadable": true,
+        "image": "https://img.radioparadise.com/channels/0/2/cover_512x512/0.jpg",
+        "banner_url": "https://img.radioparadise.com/channels/0/2/banner_500x280/0.jpg"
+    },
+    {
+        "chan": "3",
+        "title": "The Globe",
+        "stream_name": "global",
+        "slug": "global",
+        "type": "block",
+        "default_stream_url": "",
+        "current_listeners": "360",
+        "stream": {
+            "title": "",
+            "artist": "",
+            "album": "",
+            "cover": "",
+            "stream_url": ""
+        },
+        "player_type": "gapless-playlist",
+        "downloadable": true,
+        "image": "https://img.radioparadise.com/channels/0/3/cover_512x512/0.jpg",
+        "banner_url": "https://img.radioparadise.com/channels/0/3/banner_500x280/0.jpg"
+    },
+    {
+        "chan": "5",
+        "title": "Beyond...",
+        "stream_name": "beyond",
+        "slug": "beyond",
+        "type": "block",
+        "default_stream_url": "",
+        "current_listeners": "212",
+        "stream": {
+            "title": "",
+            "artist": "",
+            "album": "",
+            "cover": "",
+            "stream_url": ""
+        },
+        "player_type": "gapless-playlist",
+        "downloadable": true,
+        "image": "https://img.radioparadise.com/channels/0/5/cover_512x512/0.jpg",
+        "banner_url": "https://img.radioparadise.com/channels/0/5/banner_500x280/0.jpg"
+    },
+    {
+        "chan": "42",
+        "title": "Serenity",
+        "stream_name": "serenity",
+        "slug": "serenity",
+        "type": "block",
+        "default_stream_url": "https://stream.radioparadise.com/serenity",
+        "current_listeners": "86",
+        "stream": {
+            "title": "",
+            "artist": "",
+            "album": "",
+            "cover": "",
+            "stream_url": ""
+        },
+        "player_type": "gapless-playlist",
+        "downloadable": true,
+        "image": "https://img.radioparadise.com/channels/0/42/cover_512x512/0.jpg",
+        "banner_url": "https://img.radioparadise.com/channels/0/42/banner_500x280/0.jpg"
+    },
+    {
+        "chan": "945",
+        "title": "KFAT",
+        "stream_name": "kfat",
+        "slug": "kfat",
+        "type": "block",
+        "default_stream_url": "",
+        "current_listeners": "147",
+        "stream": {
+            "title": "",
+            "artist": "",
+            "album": "",
+            "cover": "",
+            "stream_url": ""
+        },
+        "player_type": "gapless-playlist",
+        "downloadable": true,
+        "image": "https://img.radioparadise.com/channels/0/945/cover_512x512/0.jpg",
+        "banner_url": "https://img.radioparadise.com/channels/0/945/banner_500x280/0.jpg"
+    }
+]
