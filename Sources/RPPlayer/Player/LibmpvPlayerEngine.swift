@@ -111,11 +111,31 @@ public actor LibmpvPlayerEngine: PlayerEngine {
         }
     }
 
-    public func play(url: URL) async throws        { try requireHandle(); throw PlayerEngineError.commandFailed(name: "play", code: -100, message: "play not implemented yet") }
-    public func pause() async throws               { try requireHandle(); throw PlayerEngineError.commandFailed(name: "pause", code: -100, message: "pause not implemented yet") }
-    public func resume() async throws              { try requireHandle(); throw PlayerEngineError.commandFailed(name: "resume", code: -100, message: "resume not implemented yet") }
-    public func stop() async throws                { try requireHandle(); throw PlayerEngineError.commandFailed(name: "stop", code: -100, message: "stop not implemented yet") }
-    public func seek(to seconds: Double) async throws { try requireHandle(); throw PlayerEngineError.commandFailed(name: "seek", code: -100, message: "seek not implemented yet") }
+    public func play(url: URL) async throws {
+        try requireHandle()
+        try runCommand(["loadfile", url.absoluteString])
+    }
+
+    public func pause() async throws {
+        try requireHandle()
+        try setBoolProperty("pause", true)
+    }
+
+    public func resume() async throws {
+        try requireHandle()
+        try setBoolProperty("pause", false)
+    }
+
+    public func stop() async throws {
+        try requireHandle()
+        try runCommand(["stop"])
+    }
+
+    public func seek(to seconds: Double) async throws {
+        try requireHandle()
+        try runCommand(["seek", String(seconds), "absolute"])
+    }
+
     public func setHogMode(_ enabled: Bool) async throws { try requireHandle(); throw PlayerEngineError.commandFailed(name: "setHogMode", code: -100, message: "setHogMode not implemented yet") }
     public func setOutputDevice(uid: String?) async throws { try requireHandle(); throw PlayerEngineError.commandFailed(name: "setOutputDevice", code: -100, message: "setOutputDevice not implemented yet") }
 
@@ -145,6 +165,31 @@ public actor LibmpvPlayerEngine: PlayerEngine {
             c.finish()
         }
         continuations.removeAll()
+    }
+
+    private func runCommand(_ args: [String]) throws {
+        guard let h = handle else { throw PlayerEngineError.alreadyShutdown }
+        let cstrings = args.map { strdup($0)! }
+        defer { for s in cstrings { free(s) } }
+        var argv = cstrings.map { UnsafePointer<CChar>?($0) }
+        argv.append(nil)
+        let status = argv.withUnsafeMutableBufferPointer { buf -> Int32 in
+            mpv_command(h, buf.baseAddress!)
+        }
+        if status < 0 {
+            let message = String(cString: mpv_error_string(status))
+            throw PlayerEngineError.commandFailed(name: args.first ?? "<unknown>", code: Int(status), message: message)
+        }
+    }
+
+    private func setBoolProperty(_ name: String, _ value: Bool) throws {
+        guard let h = handle else { throw PlayerEngineError.alreadyShutdown }
+        var flag: Int32 = value ? 1 : 0
+        let status = mpv_set_property(h, name, MPV_FORMAT_FLAG, &flag)
+        if status < 0 {
+            let message = String(cString: mpv_error_string(status))
+            throw PlayerEngineError.commandFailed(name: name, code: Int(status), message: message)
+        }
     }
 
     private func unregister(id: UUID) { continuations.removeValue(forKey: id) }
