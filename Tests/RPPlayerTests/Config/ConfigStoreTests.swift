@@ -32,14 +32,13 @@ final class ConfigStoreTests: XCTestCase {
     func testUpdateEmitsChange() async throws {
         let url = makeTempURL()
         let store = try JSONConfigStore(url: url)
-
+        let stream = await store.changes
         let received = Task { () -> AppSettings? in
-            for await s in store.changes {
+            for await s in stream {
                 if s.selectedChannelId == 7 { return s }
             }
             return nil
         }
-        try await Task.sleep(nanoseconds: 100_000_000)
         try await store.update { $0.selectedChannelId = 7 }
         let result = await received.value
         XCTAssertEqual(result?.selectedChannelId, 7)
@@ -50,15 +49,15 @@ final class ConfigStoreTests: XCTestCase {
         let store = try JSONConfigStore(url: url)
         try await store.update { $0.selectedChannelId = 5 }
 
+        let stream = await store.changes
         let collector = Task { () -> [Int] in
             var ids: [Int] = []
-            for await s in store.changes {
+            for await s in stream {
                 ids.append(s.selectedChannelId)
                 if ids.count == 2 { return ids }
             }
             return ids
         }
-        try await Task.sleep(nanoseconds: 100_000_000)
         try await store.update { $0.selectedChannelId = 5 } // no-op
         try await store.update { $0.selectedChannelId = 6 } // change
         let ids = await collector.value

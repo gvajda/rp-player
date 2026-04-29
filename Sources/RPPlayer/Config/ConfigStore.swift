@@ -1,8 +1,9 @@
 import Foundation
 
+/// Persistent, concurrency-safe settings store. Backed by JSON on disk; mock-able in tests via the protocol.
 public protocol ConfigStore: Sendable, AnyObject {
     var settings: AppSettings { get async }
-    var changes: AsyncStream<AppSettings> { get }
+    var changes: AsyncStream<AppSettings> { get async }
     func update(_ mutate: @Sendable (inout AppSettings) -> Void) async throws
 }
 
@@ -21,18 +22,23 @@ public actor JSONConfigStore: ConfigStore {
             self.current = loaded
         } else {
             self.current = .default
+            // Best-effort initial write; in-memory defaults remain valid if disk write fails.
             try? Self.write(.default, to: url)
         }
     }
 
     public var settings: AppSettings { current }
 
-    public nonisolated var changes: AsyncStream<AppSettings> {
-        AsyncStream { continuation in
-            let id = UUID()
-            Task { await self.register(id: id, continuation: continuation) }
-            continuation.onTermination = { _ in
-                Task { await self.unregister(id: id) }
+    /// Subscribes a new continuation atomically: by the time the stream is returned,
+    /// the subscriber is registered and has been yielded the current snapshot.
+    /// Subsequent `update` calls on this actor are guaranteed to be observed.
+    public var changes: AsyncStream<AppSettings> {
+        let id = UUID()
+        return AsyncStream { continuation in
+            self.continuations[id] = continuation
+            continuation.yield(self.current)
+            continuation.onTermination = { [weak self] _ in
+                Task { [weak self] in await self?.unregister(id: id) }
             }
         }
     }
@@ -46,11 +52,6 @@ public actor JSONConfigStore: ConfigStore {
         for c in continuations.values {
             c.yield(copy)
         }
-    }
-
-    private func register(id: UUID, continuation: AsyncStream<AppSettings>.Continuation) {
-        continuations[id] = continuation
-        continuation.yield(current)
     }
 
     private func unregister(id: UUID) {
