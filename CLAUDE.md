@@ -54,6 +54,7 @@ PR 5a scope: vendor libmpv (LGPL-2.1, audio-only universal binary from `media-ki
 - `SongInfo.songId` has a custom `init(from:)` that handles both `Int` and `String` JSON values.
 - libmpv is vendored in `Vendor/libmpv/` from `media-kit/libmpv-darwin-build` v0.6.3 (audio-default, universal). The public `client.h` is pinned to mpv v0.36.0 (commit `3996724d3fa1c51cc7998f3de2e22e2c99e6d270`). Reported API version: 2.1. Refreshing the dylibs requires updating both the binaries and `client.h` to a matching upstream tag, then bumping the assertion in `LibmpvLinkageTests`.
 - `RPSmoke` and `RPPlayerTests` link libmpv with two `@loader_path`-relative rpaths baked in (3-deep for executables, 6-deep for xctest bundles). No `DYLD_LIBRARY_PATH` is needed for `swift test` or `swift run RPSmoke`. Production `.app` packaging (PR 12) will install dylibs under `Contents/Frameworks/` and use a single `@loader_path/../Frameworks` rpath instead.
+- All vendored dylibs use `@rpath/<name>.dylib` install names so a single rpath into `Vendor/libmpv/lib/` resolves the entire transitive graph. Verify after refresh: `otool -D Vendor/libmpv/lib/*.dylib` — every line after the path must read `@rpath/<name>.dylib`. If a future upstream rebuild ships absolute or `@executable_path/...` install names, the rpath approach silently breaks; rewrite via `install_name_tool -id` before committing.
 
 ---
 

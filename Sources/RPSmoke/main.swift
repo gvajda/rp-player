@@ -59,7 +59,9 @@ struct RPSmoke {
                 fputs("event: shutdown\n", stderr)
                 return
             case MPV_EVENT_END_FILE:
-                fputs("event: end-file\n", stderr)
+                let endPtr = event.data.assumingMemoryBound(to: mpv_event_end_file.self)
+                let end = endPtr.pointee
+                fputs("event: end-file reason=\(end.reason.rawValue) error=\(end.error)\n", stderr)
                 return
             case MPV_EVENT_PROPERTY_CHANGE:
                 let propPtr = event.data.assumingMemoryBound(to: mpv_event_property.self)
@@ -80,10 +82,7 @@ struct RPSmoke {
 }
 
 private extension Array where Element == String {
-    /// Builds a NULL-terminated `argv` for libmpv command APIs that take
-    /// `const char**`. Swift imports that as `UnsafeMutablePointer` since C
-    /// can't express const-ness on double pointers. Pointer is valid for the
-    /// closure body only.
+    // strdup-backed argv for `const char**` C APIs; Swift imports that as UnsafeMutablePointer. Pointer scoped to closure.
     func withCStringPointers<R>(_ body: (UnsafeMutablePointer<UnsafePointer<CChar>?>) -> R) -> R {
         let cstrings = self.map { strdup($0)! }
         var argv = cstrings.map { UnsafePointer<CChar>?($0) }
