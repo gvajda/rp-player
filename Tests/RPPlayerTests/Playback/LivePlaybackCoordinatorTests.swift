@@ -88,3 +88,61 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         XCTAssertNil(np)
     }
 }
+
+extension LivePlaybackCoordinatorTests {
+    func testPositionUpdateEmitsNowPlayingWhenSongBoundaryCrossed() async throws {
+        let api = MockRpApiClient()
+        let block = makeBlock(songs: [("s1", 60_000), ("s2", 120_000), ("s3", 90_000), ("s4", 100_000)])
+        await api.setBlockResponses([block])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrate: 0
+        )
+
+        let stream = await coordinator.nowPlayingUpdates
+        let collector = Task { () -> [Int] in
+            var seenIndexes: [Int] = []
+            for await np in stream {
+                seenIndexes.append(np.songIndexInBlock)
+                if seenIndexes.count == 3 { return seenIndexes }
+            }
+            return seenIndexes
+        }
+
+        try await coordinator.play(channelId: 0)
+        await engine.fire(.positionUpdate(seconds: 30.0))   // still song 0
+        await engine.fire(.positionUpdate(seconds: 75.0))   // now song 1
+        await engine.fire(.positionUpdate(seconds: 200.0))  // now song 2
+        let result = await collector.value
+        XCTAssertEqual(result, [0, 1, 2])
+    }
+
+    func testPositionUpdatesWithinSameSongDoNotReEmit() async throws {
+        let api = MockRpApiClient()
+        let block = makeBlock(songs: [("s1", 60_000), ("s2", 120_000), ("s3", 90_000), ("s4", 100_000)])
+        await api.setBlockResponses([block])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrate: 0
+        )
+
+        let stream = await coordinator.nowPlayingUpdates
+        let collector = Task { () -> Int in
+            var count = 0
+            for await _ in stream {
+                count += 1
+                if count == 2 { return count }
+            }
+            return count
+        }
+
+        try await coordinator.play(channelId: 0)
+        await engine.fire(.positionUpdate(seconds: 5.0))    // song 0 — no re-emit
+        await engine.fire(.positionUpdate(seconds: 10.0))   // song 0 — no re-emit
+        await engine.fire(.positionUpdate(seconds: 15.0))   // song 0 — no re-emit
+        await engine.fire(.positionUpdate(seconds: 100.0))  // song 1 — emits
+        let result = await collector.value
+        // First emission is the initial play() emit (song 0); second is the song 1 boundary cross.
+        XCTAssertEqual(result, 2)
+    }
+}

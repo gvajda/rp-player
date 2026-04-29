@@ -151,8 +151,12 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             }
         case .positionUpdate(let seconds):
             currentPositionSeconds = seconds
-            // Task 5 will use this to advance the song index.
-            _ = seconds
+            guard !startsAt.isEmpty else { return }
+            let newIndex = BlockSongs.indexOfSong(at: seconds, in: startsAt)
+            if newIndex != currentSongIndex && newIndex < orderedSongs.count {
+                currentSongIndex = newIndex
+                emitNowPlaying(forSongIndex: newIndex)
+            }
         case .fileEnded:
             // Task 7 (gapless prefetch) hooks here.
             break
