@@ -2,7 +2,8 @@ import Foundation
 @testable import RPPlayer
 
 /// Programmable AudioDeviceLister for tests. Mutate `_devices` to simulate
-/// hot-plug events; tests then drive the catalog by calling `reload()` on it.
+/// hot-plug events; tests then drive the catalog by calling reload() on the catalog under test.
+// @unchecked Sendable: NSLock guards the only mutable state.
 final class StubAudioDeviceLister: AudioDeviceLister, @unchecked Sendable {
     private let lock = NSLock()
     private var _devices: [AudioDevice]

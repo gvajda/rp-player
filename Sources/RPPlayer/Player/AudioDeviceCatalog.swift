@@ -11,8 +11,8 @@ public protocol AudioDeviceCatalog: Sendable {
 }
 
 /// Low-level seam: returns the current set of CoreAudio output devices on demand.
-/// Production code uses `CoreAudioDeviceLister` (added in Task 3); tests use
-/// `StubAudioDeviceLister` to drive the actor without real hardware.
+/// Production code uses `CoreAudioDeviceLister` (in CoreAudioDeviceLister.swift);
+/// tests use `StubAudioDeviceLister` to drive the actor without real hardware.
 public protocol AudioDeviceLister: Sendable {
     func currentDevices() -> [AudioDevice]
 }
@@ -21,6 +21,7 @@ public actor CoreAudioDeviceCatalog: AudioDeviceCatalog {
     private let lister: any AudioDeviceLister
     private var current: [AudioDevice]
     private var continuations: [UUID: AsyncStream<[AudioDevice]>.Continuation] = [:]
+    private var hotplugListener: HotplugListener?
 
     public init(lister: any AudioDeviceLister) {
         self.lister = lister
@@ -52,6 +53,20 @@ public actor CoreAudioDeviceCatalog: AudioDeviceCatalog {
         for c in continuations.values {
             c.yield(new)
         }
+    }
+
+    /// Starts observing `kAudioHardwarePropertyDevices`. Idempotent.
+    /// Production code calls this once after constructing the catalog.
+    public func startWatching() {
+        guard hotplugListener == nil else { return }
+        hotplugListener = HotplugListener { [weak self] in
+            Task { await self?.reload() }
+        }
+    }
+
+    /// Stops observing hot-plug events. Idempotent.
+    public func stopWatching() {
+        hotplugListener = nil
     }
 
     private func unregister(id: UUID) {

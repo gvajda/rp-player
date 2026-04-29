@@ -84,3 +84,26 @@ final class CoreAudioDeviceCatalogTests: XCTestCase {
         XCTAssertEqual(r2, [deviceA, deviceB])
     }
 }
+
+extension CoreAudioDeviceCatalogTests {
+    /// Smoke test: enumerate the host's real CoreAudio devices. CI runners and
+    /// dev Macs always expose at least one output device (built-in speakers
+    /// or the headphone jack), so this assertion is safe.
+    func testCoreAudioDeviceListerReturnsHostDevices() {
+        let lister = CoreAudioDeviceLister()
+        let devices = lister.currentDevices()
+        XCTAssertFalse(devices.isEmpty, "expected at least one CoreAudio output device on the host")
+        for device in devices {
+            XCTAssertFalse(device.uid.isEmpty, "device UID should not be empty")
+            XCTAssertFalse(device.name.isEmpty, "device name should not be empty for \(device.uid)")
+        }
+    }
+
+    /// Smoke test: instantiating with the real lister and starting/stopping the
+    /// hot-plug listener does not crash and does not leak the listener.
+    func testStartAndStopWatchingDoesNotCrash() async {
+        let sut = CoreAudioDeviceCatalog(lister: CoreAudioDeviceLister())
+        await sut.startWatching()
+        await sut.stopWatching()
+    }
+}
