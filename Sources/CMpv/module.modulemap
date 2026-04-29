@@ -1,0 +1,5 @@
+module CMpv {
+    header "../../Vendor/libmpv/include/mpv/client.h"
+    link "mpv"
+    export *
+}
