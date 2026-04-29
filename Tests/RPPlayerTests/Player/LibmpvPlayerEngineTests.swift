@@ -24,3 +24,61 @@ final class LibmpvPlayerEngineTests: XCTestCase {
         }
     }
 }
+
+extension LibmpvPlayerEngineTests {
+    /// Verifies the pump task converts MPV_EVENT_SHUTDOWN into PlayerEvent.shutdown
+    /// and finishes all subscriber streams.
+    func testShutdownEventIsEmittedAndStreamFinishes() async throws {
+        let engine = try LibmpvPlayerEngine()
+        let stream = await engine.events
+        let collector = Task { () -> [PlayerEvent] in
+            var events: [PlayerEvent] = []
+            for await event in stream {
+                events.append(event)
+            }
+            return events
+        }
+        // Give the pump a moment to start.
+        try await Task.sleep(nanoseconds: 50_000_000)
+        await engine.shutdown()
+        let collected = await collector.value
+        XCTAssertEqual(collected.last, .shutdown)
+    }
+
+    /// Smoke: play a stable RP audio stream and verify positionUpdate events arrive.
+    /// Exits early after the first 3 positionUpdate events to keep the test fast.
+    /// NOTE: this test depends on `play(url:)` being implemented (Task 6). It will
+    /// FAIL after Task 5 lands and PASS once Task 6 lands.
+    func testPositionUpdatesArriveDuringPlayback() async throws {
+        let engine = try LibmpvPlayerEngine()
+        defer { Task { await engine.shutdown() } }
+        let stream = await engine.events
+
+        let positionTask = Task { () -> Int in
+            var positionEventCount = 0
+            for await event in stream {
+                if case .positionUpdate = event {
+                    positionEventCount += 1
+                    if positionEventCount >= 3 { return positionEventCount }
+                }
+            }
+            return positionEventCount
+        }
+
+        try await engine.play(url: URL(string: "https://stream.radioparadise.com/mp3-320")!)
+
+        let outcome = try await withThrowingTaskGroup(of: Int.self) { group in
+            group.addTask { await positionTask.value }
+            group.addTask {
+                try await Task.sleep(nanoseconds: 8_000_000_000) // 8 s
+                positionTask.cancel()
+                return -1
+            }
+            let first = try await group.next()!
+            group.cancelAll()
+            return first
+        }
+
+        XCTAssertGreaterThanOrEqual(outcome, 3, "expected at least 3 position updates within 8 seconds")
+    }
+}
