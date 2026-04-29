@@ -19,8 +19,8 @@ macOS menu-bar app (Swift 6.2, macOS 13, SwiftUI + AppKit) that plays Radio Para
 | 3 | merged to main | ✅ | KeychainStore, KeychainCookieProvider, LoginWindowController |
 | 4 | merged to main | ✅ | AudioDeviceCatalog |
 | 5a | merged to main | ✅ | libmpv vendoring + RPSmoke CLI |
-| 5b | **next** | ⬜ | PlayerEngine (libmpv Swift actor) |
-| 6 | pending | ⬜ | PlaybackCoordinator |
+| 5b | merged to main | ✅ | PlayerEngine (libmpv Swift actor) |
+| 6 | **next** | ⬜ | PlaybackCoordinator |
 | 7 | pending | ⬜ | AppKit shell (NSStatusItem + NSPopover) |
 | 8 | pending | ⬜ | MiniPlayerView (SwiftUI) |
 | 9 | pending | ⬜ | NotificationCenterWrapper + AlbumArtCache |
@@ -28,7 +28,7 @@ macOS menu-bar app (Swift 6.2, macOS 13, SwiftUI + AppKit) that plays Radio Para
 | 11 | pending | ⬜ | AppContainer (composition root) |
 | 12 | pending | ⬜ | Distribution CI workflow |
 
-PR 5b scope: wrap libmpv in a Swift actor (`LibmpvPlayerEngine`) that exposes `play`/`pause`/`resume`/`stop`/`seek`/`setHogMode`/`setOutputDevice`/`shutdown` as `async throws` methods and emits state changes via `AsyncStream<PlayerEvent>`. Consumed by `PlaybackCoordinator` in PR 6.
+PR 6 scope: orchestrate playback via `LivePlaybackCoordinator` actor — fetches blocks, drives `PlayerEngine`, tracks song boundary, prefetches the next block when `currentSongIndex == lastIndex` and remaining time < 10 s, and swaps gaplessly on EOF. Out of scope (deferred to a follow-up PR): network retry-with-backoff, hog-mode fallback, auth-expiry detection, block-expiration recovery after long pause.
 
 ---
 
@@ -57,6 +57,9 @@ PR 5b scope: wrap libmpv in a Swift actor (`LibmpvPlayerEngine`) that exposes `p
 - All vendored dylibs use `@rpath/<name>.dylib` install names so a single rpath into `Vendor/libmpv/lib/` resolves the entire transitive graph. Verify after refresh: `otool -D Vendor/libmpv/lib/*.dylib` — every line after the path must read `@rpath/<name>.dylib`. If a future upstream rebuild ships absolute or `@executable_path/...` install names, the rpath approach silently breaks; rewrite via `install_name_tool -id` before committing.
 - `LibmpvPlayerEngine` runs a single detached event-pump task that calls `mpv_wait_event` with a 0.5s timeout in a loop. The pump exits when `mpv_terminate_destroy` triggers `MPV_EVENT_SHUTDOWN` or when the actor cancels the task. Shutdown ordering is `mpv_wakeup → await pumpTask → mpv_terminate_destroy → emit synthetic .shutdown → finish continuations` because `mpv_terminate_destroy` does not reliably wake an in-flight `mpv_wait_event` on the same handle. mpv's client API is thread-safe except for `mpv_wait_event` (only one thread at a time) — the pump is the only caller.
 - `LibmpvPlayerEngine` cannot start its detached pump task from inside `init` because Swift 6.2 strict concurrency forbids capturing `self` (even `[weak self]`) into a `Task.detached` closure during a non-isolated init. Bootstrap pattern: `init` schedules `Task { await self.startPump() }` (an unstructured Task on the actor's executor), and `startPump()` then spawns the detached pump. The handle is wrapped in a private `HandleBox: @unchecked Sendable` to cross the detached-task boundary.
+- `LivePlaybackCoordinator` triggers the next-block prefetch when `currentSongIndex == orderedSongs.count - 1` AND `(totalDurationSeconds - currentPositionSeconds) < 10.0`. The 10-second window matches DESIGN.md §5.6 and gives the network round-trip plenty of margin before EOF. Only one prefetch per block (guarded by `prefetchedBlock == nil && prefetchTask == nil`).
+- `LivePlaybackCoordinator.play(channelId:)` issues the cue tune-in by waiting for `PlayerEvent.fileLoaded`, then calling `engine.seek(to: cueSeconds)`. The cue seek is bypassed for prefetch-driven block swaps and for skip-forward-past-last-song — both intentionally start the new block from offset 0.
+- `LivePlaybackCoordinator` lazy-subscribes to `PlayerEngine.events` from inside `play()` via `await ensureEventSubscription()`, NOT from `init`. This is deterministic: by the time `play()` issues the engine command, the actor has already registered an `events` continuation, so events fired by the engine cannot race ahead of the subscription. The init-time `Task { ... }` bootstrap pattern was rejected here because subscription order matters.
 
 ---
 
@@ -76,6 +79,7 @@ PR 5b scope: wrap libmpv in a Swift actor (`LibmpvPlayerEngine`) that exposes `p
 - After PR 4: 47 tests
 - After PR 5a: 48 tests
 - After PR 5b: 67 tests
+- After PR 6: 90 tests
 
 ---
 
