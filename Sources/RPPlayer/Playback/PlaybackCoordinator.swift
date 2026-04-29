@@ -12,3 +12,173 @@ public protocol PlaybackCoordinator: Sendable {
     func changeChannel(to channelId: Int) async throws
     func shutdown() async
 }
+
+public actor LivePlaybackCoordinator: PlaybackCoordinator {
+    private let api: any RpApiClient
+    private let engine: any PlayerEngine
+    private let logger: any Logging
+    private let bitrate: Int
+
+    private var currentChannelId: Int?
+    private var currentBlock: GetBlock?
+    private var orderedSongs: [PlayListSong] = []
+    private var startsAt: [Double] = []
+    private var currentSongIndex: Int = 0
+    private var currentPositionSeconds: Double = 0
+    private var current: NowPlaying?
+    private var continuations: [UUID: AsyncStream<NowPlaying>.Continuation] = [:]
+    private var eventTask: Task<Void, Never>?
+    private var pendingCueSeekSeconds: Double?
+    private var isShutdown = false
+
+    public init(
+        api: any RpApiClient,
+        engine: any PlayerEngine,
+        logger: any Logging,
+        bitrate: Int
+    ) {
+        self.api = api
+        self.engine = engine
+        self.logger = logger
+        self.bitrate = bitrate
+    }
+
+    public var nowPlaying: NowPlaying? { current }
+
+    public var nowPlayingUpdates: AsyncStream<NowPlaying> {
+        let id = UUID()
+        return AsyncStream { continuation in
+            if self.isShutdown { continuation.finish(); return }
+            self.continuations[id] = continuation
+            if let current = self.current { continuation.yield(current) }
+            continuation.onTermination = { [weak self] _ in
+                Task { [weak self] in await self?.unregister(id: id) }
+            }
+        }
+    }
+
+    public func play(channelId: Int) async throws {
+        await ensureEventSubscription()
+        let block = try await api.getBlock(channel: channelId, bitrate: bitrate, info: false)
+        let songs = BlockSongs.orderedSongs(from: block)
+        guard !songs.isEmpty else { throw PlaybackCoordinatorError.blockHasNoSongs }
+
+        currentChannelId = channelId
+        currentBlock = block
+        orderedSongs = songs
+        startsAt = BlockSongs.startsAtSeconds(songs: songs)
+        currentSongIndex = 0
+        currentPositionSeconds = 0
+        pendingCueSeekSeconds = block.cue > 0 ? Double(block.cue) / 1000.0 : nil
+
+        guard let url = URL(string: block.url) else {
+            throw PlaybackCoordinatorError.engineError(message: "invalid block url: \(block.url)")
+        }
+        do {
+            try await engine.play(url: url)
+        } catch {
+            throw PlaybackCoordinatorError.engineError(message: String(describing: error))
+        }
+        emitNowPlaying(forSongIndex: 0)
+    }
+
+    public func pause() async throws {
+        guard currentBlock != nil else { throw PlaybackCoordinatorError.notPlaying }
+        do { try await engine.pause() } catch { throw PlaybackCoordinatorError.engineError(message: String(describing: error)) }
+    }
+
+    public func resume() async throws {
+        guard currentBlock != nil else { throw PlaybackCoordinatorError.notPlaying }
+        do { try await engine.resume() } catch { throw PlaybackCoordinatorError.engineError(message: String(describing: error)) }
+    }
+
+    public func stop() async throws {
+        do { try await engine.stop() } catch { throw PlaybackCoordinatorError.engineError(message: String(describing: error)) }
+        currentBlock = nil
+        orderedSongs = []
+        startsAt = []
+        currentSongIndex = 0
+        currentPositionSeconds = 0
+        current = nil
+    }
+
+    public func skipForward() async throws {
+        // Stub — Task 6 fills this in.
+        throw PlaybackCoordinatorError.notPlaying
+    }
+
+    public func changeChannel(to channelId: Int) async throws {
+        // Stub — Task 8 hardens this. For now: stop + play.
+        try await stop()
+        try await play(channelId: channelId)
+    }
+
+    public func shutdown() async {
+        guard !isShutdown else { return }
+        isShutdown = true
+        eventTask?.cancel()
+        await eventTask?.value
+        eventTask = nil
+        try? await engine.stop()
+        for c in continuations.values { c.finish() }
+        continuations.removeAll()
+    }
+
+    // Idempotent. Awaited from inside actor isolation, so by the time it returns
+    // the engine.events stream has been subscribed. Deterministic vs the previous
+    // init-time Task bootstrap, which raced with the first command.
+    private func ensureEventSubscription() async {
+        guard eventTask == nil else { return }
+        let stream = await engine.events
+        eventTask = Task { [weak self] in
+            for await event in stream {
+                guard let self else { return }
+                await self.handleEngineEvent(event)
+            }
+        }
+    }
+
+    private func handleEngineEvent(_ event: PlayerEvent) async {
+        switch event {
+        case .fileLoaded:
+            if let cueSeconds = pendingCueSeekSeconds {
+                pendingCueSeekSeconds = nil
+                do {
+                    try await engine.seek(to: cueSeconds)
+                } catch {
+                    logger.warn("post-load cue seek failed: \(error)")
+                }
+            }
+        case .positionUpdate(let seconds):
+            currentPositionSeconds = seconds
+            // Task 5 will use this to advance the song index.
+            _ = seconds
+        case .fileEnded:
+            // Task 7 (gapless prefetch) hooks here.
+            break
+        case .error(let message):
+            logger.error("player engine reported error: \(message)")
+        case .hogModeChanged, .outputDeviceChanged, .shutdown:
+            break
+        }
+    }
+
+    private func emitNowPlaying(forSongIndex idx: Int) {
+        guard let channelId = currentChannelId, idx < orderedSongs.count else { return }
+        let song = orderedSongs[idx]
+        let songStart = startsAt[idx]
+        let songEnd = songStart + Double(song.duration) / 1000.0
+        let np = NowPlaying(
+            channelId: channelId,
+            song: song,
+            songIndexInBlock: idx,
+            blockDurationSeconds: BlockSongs.totalDurationSeconds(songs: orderedSongs),
+            songStartSeconds: songStart,
+            songEndSeconds: songEnd
+        )
+        current = np
+        for c in continuations.values { c.yield(np) }
+    }
+
+    private func unregister(id: UUID) { continuations.removeValue(forKey: id) }
+}
