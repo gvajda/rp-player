@@ -30,13 +30,13 @@ final class KeychainCookieProviderTests: XCTestCase {
     }
 
     func testIsLoggedInFalseWhenNoCookieStored() async {
-        let loggedIn = await sut.isLoggedIn
+        let loggedIn = sut.isLoggedIn
         XCTAssertFalse(loggedIn)
     }
 
     func testIsLoggedInTrueAfterStoringCookie() async throws {
         try await sut.storeCookie("C_username=foo; C_passwd=hash; C_validated=tok")
-        let loggedIn = await sut.isLoggedIn
+        let loggedIn = sut.isLoggedIn
         XCTAssertTrue(loggedIn)
     }
 
@@ -50,7 +50,7 @@ final class KeychainCookieProviderTests: XCTestCase {
     func testIsLoggedInFalseAfterClearCookie() async throws {
         try await sut.storeCookie("C_username=foo; C_passwd=hash; C_validated=tok")
         await sut.clearCookie()
-        let loggedIn = await sut.isLoggedIn
+        let loggedIn = sut.isLoggedIn
         XCTAssertFalse(loggedIn)
     }
 
