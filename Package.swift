@@ -31,7 +31,9 @@ let package = Package(
         ),
         .executableTarget(
             name: "RPPlayer",
-            path: "Sources/RPPlayer"
+            dependencies: ["CMpv"],
+            path: "Sources/RPPlayer",
+            linkerSettings: mpvLinker
         ),
         .executableTarget(
             name: "RPSmoke",
