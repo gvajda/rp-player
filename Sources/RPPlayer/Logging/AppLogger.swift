@@ -48,9 +48,13 @@ public struct AppLogger: Sendable {
         sink?.writeLine("\(Self.timestamp()) [\(level.rawValue.uppercased())] [\(category)] \(text)")
     }
 
-    private static func timestamp() -> String {
+    private nonisolated(unsafe) static let iso8601Formatter: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return f.string(from: Date())
+        return f
+    }()
+
+    private static func timestamp() -> String {
+        iso8601Formatter.string(from: Date())
     }
 }
