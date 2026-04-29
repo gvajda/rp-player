@@ -7,11 +7,7 @@ final class ApiModelsTests: XCTestCase {
         return try Data(contentsOf: url)
     }
 
-    private var decoder: JSONDecoder {
-        let d = JSONDecoder()
-        d.keyDecodingStrategy = .convertFromSnakeCase
-        return d
-    }
+    private let decoder = JSONDecoder.rpDecoder
 
     func testDecodesListChan() throws {
         let data = try loadFixture("list_chan")
@@ -40,8 +36,7 @@ final class ApiModelsTests: XCTestCase {
     func testDecodesAuthStateAnonymous() throws {
         let data = try loadFixture("auth_state_anonymous")
         let auth = try decoder.decode(Auth.self, from: data)
-        // Anonymous responses still decode; specific field values vary by API state.
-        _ = auth
+        XCTAssertEqual(auth.username, "anonymous")
     }
 
     func testDecodesRatingSuccess() throws {

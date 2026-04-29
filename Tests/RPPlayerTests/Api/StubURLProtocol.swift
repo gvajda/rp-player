@@ -3,6 +3,12 @@ import Foundation
 /// URLProtocol subclass that serves canned `(Data, HTTPURLResponse)` pairs
 /// keyed by request URL. Use via `StubURLProtocol.register(url:body:status:)`
 /// then plug `StubURLProtocol.makeSession()` into the system under test.
+///
+/// Stub state is held in a global `static` keyed only by URL. Tests are
+/// expected to call `setUp { StubURLProtocol.reset() }` and `tearDown { ... }`
+/// to avoid leakage. If multiple test classes ever use this concurrently
+/// (parallel test execution), they will race on the shared registry —
+/// add per-session keying before that scenario lands.
 final class StubURLProtocol: URLProtocol {
     /// Stub registry. Synchronised via `lock` because URLProtocol callbacks
     /// can come from any thread under URLSession's internal queues.

@@ -4,7 +4,7 @@ public protocol RpApiClient: Sendable {
     func listChannels() async throws -> [Channel]
     func getBlock(channel: Int, bitrate: Int, info: Bool) async throws -> GetBlock
     func info(songId: Int) async throws -> SongInfo
-    func rate(songId: Int, value: Int) async throws -> Rating
+    func rate(songId: Int, rating: Int) async throws -> Rating
     func authState() async throws -> Auth
 }
 
@@ -44,10 +44,10 @@ public struct LiveRpApiClient: RpApiClient {
         try await get(path: "api/info", query: ["song_id": String(songId)])
     }
 
-    public func rate(songId: Int, value: Int) async throws -> Rating {
+    public func rate(songId: Int, rating: Int) async throws -> Rating {
         try await get(path: "api/rating", query: [
             "song_id": String(songId),
-            "rating": String(value),
+            "rating": String(rating),
         ])
     }
 

@@ -64,7 +64,8 @@ final class RpApiClientTests: XCTestCase {
         StubURLProtocol.register(url: components.url!, body: try loadFixture("info"))
 
         let client = makeClient()
-        let info = try await client.info(songId: Int(firstSongId)!)
+        let songIdInt = try XCTUnwrap(Int(firstSongId), "PlayListSong.songId must be numeric")
+        let info = try await client.info(songId: songIdInt)
         XCTAssertFalse(info.artist.isEmpty)
     }
 
@@ -88,7 +89,7 @@ final class RpApiClientTests: XCTestCase {
         StubURLProtocol.register(url: components.url!, body: try loadFixture("rating_success"))
 
         let client = makeClient()
-        let rating = try await client.rate(songId: 12345, value: 7)
+        let rating = try await client.rate(songId: 12345, rating: 7)
         XCTAssertEqual(rating.status, "success")
         XCTAssertEqual(rating.userRating, 7)
     }

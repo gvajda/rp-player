@@ -121,6 +121,10 @@ public struct Rating: Codable, Sendable, Equatable {
     }
 }
 
+/// Decoded form of `api/auth-state`. Live response also returns `htsso`
+/// (nested SSO object), `last_login`, `last_refresh`, `newsletter_r2050`,
+/// and `support_meter_percent`. These are intentionally omitted in PR 2.
+/// Add as needed in PR 3 when KeychainCookieProvider needs the SSO hash.
 public struct Auth: Codable, Sendable, Equatable {
     public let userId: String?
     public let postOk: String?
