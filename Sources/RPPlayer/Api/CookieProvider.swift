@@ -7,7 +7,7 @@ public protocol CookieProvider: Sendable {
     func currentCookie() async -> String?
 }
 
-/// PR 2 placeholder: always anonymous. Replaced in PR 3 by a Keychain-backed implementation.
+// Always anonymous. For authenticated use, see KeychainCookieProvider.
 public struct AnonymousCookieProvider: CookieProvider {
     public init() {}
     public func currentCookie() async -> String? { nil }
