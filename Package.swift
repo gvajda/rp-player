@@ -14,7 +14,8 @@ let package = Package(
         .testTarget(
             name: "RPPlayerTests",
             dependencies: ["RPPlayer"],
-            path: "Tests/RPPlayerTests"
+            path: "Tests/RPPlayerTests",
+            resources: [.copy("Fixtures")]
         ),
     ]
 )
