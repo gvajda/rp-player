@@ -29,6 +29,8 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     private var continuations: [UUID: AsyncStream<NowPlaying>.Continuation] = [:]
     private var eventTask: Task<Void, Never>?
     private var pendingCueSeekSeconds: Double?
+    private var prefetchedBlock: GetBlock?
+    private var prefetchTask: Task<Void, Never>?
     private var isShutdown = false
 
     public init(
@@ -93,6 +95,9 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     }
 
     public func stop() async throws {
+        prefetchTask?.cancel()
+        prefetchTask = nil
+        prefetchedBlock = nil
         do { try await engine.stop() } catch { throw PlaybackCoordinatorError.engineError(message: String(describing: error)) }
         currentBlock = nil
         orderedSongs = []
@@ -193,9 +198,11 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
                 currentSongIndex = newIndex
                 emitNowPlaying(forSongIndex: newIndex)
             }
-        case .fileEnded:
-            // Task 7 (gapless prefetch) hooks here.
-            break
+            maybeStartPrefetch()
+        case .fileEnded(let reason):
+            if case .eof = reason {
+                await swapToPrefetchedBlockIfAvailable()
+            }
         case .error(let message):
             logger.error("player engine reported error: \(message)")
         case .hogModeChanged, .outputDeviceChanged, .shutdown:
@@ -221,4 +228,60 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     }
 
     private func unregister(id: UUID) { continuations.removeValue(forKey: id) }
+
+    private func maybeStartPrefetch() {
+        guard let channelId = currentChannelId,
+              !orderedSongs.isEmpty,
+              currentSongIndex == orderedSongs.count - 1,
+              prefetchedBlock == nil,
+              prefetchTask == nil else { return }
+        let totalSeconds = BlockSongs.totalDurationSeconds(songs: orderedSongs)
+        let remaining = totalSeconds - currentPositionSeconds
+        guard remaining < 10.0 else { return }
+
+        let api = self.api
+        let bitrate = self.bitrate
+        prefetchTask = Task { [weak self] in
+            let result = try? await api.getBlock(channel: channelId, bitrate: bitrate, info: false)
+            await self?.absorbPrefetchResult(result)
+        }
+    }
+
+    private func absorbPrefetchResult(_ block: GetBlock?) {
+        prefetchTask = nil
+        if let block = block, BlockSongs.orderedSongs(from: block).isEmpty == false {
+            prefetchedBlock = block
+        }
+    }
+
+    private func swapToPrefetchedBlockIfAvailable() async {
+        guard let block = prefetchedBlock else {
+            currentBlock = nil
+            orderedSongs = []
+            startsAt = []
+            currentSongIndex = 0
+            currentPositionSeconds = 0
+            current = nil
+            return
+        }
+        prefetchedBlock = nil
+        let songs = BlockSongs.orderedSongs(from: block)
+        currentBlock = block
+        orderedSongs = songs
+        startsAt = BlockSongs.startsAtSeconds(songs: songs)
+        currentSongIndex = 0
+        currentPositionSeconds = 0
+        pendingCueSeekSeconds = nil
+        guard let url = URL(string: block.url) else {
+            logger.error("prefetched block had invalid url: \(block.url)")
+            return
+        }
+        do {
+            try await engine.play(url: url)
+        } catch {
+            logger.error("failed to play prefetched block: \(error)")
+            return
+        }
+        emitNowPlaying(forSongIndex: 0)
+    }
 }

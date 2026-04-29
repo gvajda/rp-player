@@ -202,3 +202,76 @@ extension LivePlaybackCoordinatorTests {
         }
     }
 }
+
+extension LivePlaybackCoordinatorTests {
+    func testPrefetchTriggeredInLastSongFinalSeconds() async throws {
+        let api = MockRpApiClient()
+        let firstBlock = makeBlock(
+            url: "https://example.com/0-A.flac",
+            songs: [("a1", 60_000), ("a2", 60_000), ("a3", 60_000), ("a4", 60_000)]
+        )
+        let secondBlock = makeBlock(
+            url: "https://example.com/0-B.flac",
+            songs: [("b1", 60_000), ("b2", 60_000), ("b3", 60_000), ("b4", 60_000)]
+        )
+        await api.setBlockResponses([firstBlock, secondBlock])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrate: 0
+        )
+        try await coordinator.play(channelId: 0)
+        await engine.fire(.positionUpdate(seconds: 232.0))
+        try await Task.sleep(nanoseconds: 100_000_000)
+        let apiCalls = await api.calls
+        XCTAssertEqual(apiCalls.count, 2, "second getBlock call should have been triggered as prefetch")
+    }
+
+    func testPrefetchOnlyHappensOncePerBlock() async throws {
+        let api = MockRpApiClient()
+        let firstBlock = makeBlock(
+            url: "https://example.com/0-A.flac",
+            songs: [("a1", 60_000), ("a2", 60_000), ("a3", 60_000), ("a4", 60_000)]
+        )
+        let secondBlock = makeBlock(
+            url: "https://example.com/0-B.flac",
+            songs: [("b1", 60_000), ("b2", 60_000), ("b3", 60_000), ("b4", 60_000)]
+        )
+        await api.setBlockResponses([firstBlock, secondBlock])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrate: 0
+        )
+        try await coordinator.play(channelId: 0)
+        await engine.fire(.positionUpdate(seconds: 232.0))
+        try await Task.sleep(nanoseconds: 50_000_000)
+        await engine.fire(.positionUpdate(seconds: 235.0))
+        await engine.fire(.positionUpdate(seconds: 238.0))
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let apiCalls = await api.calls
+        XCTAssertEqual(apiCalls.count, 2, "prefetch should happen at most once per block")
+    }
+
+    func testEndOfFileSwapsToPrefetchedBlock() async throws {
+        let api = MockRpApiClient()
+        let firstBlock = makeBlock(
+            url: "https://example.com/0-A.flac",
+            songs: [("a1", 60_000), ("a2", 60_000), ("a3", 60_000), ("a4", 60_000)]
+        )
+        let secondBlock = makeBlock(
+            url: "https://example.com/0-B.flac",
+            songs: [("b1", 60_000), ("b2", 60_000), ("b3", 60_000), ("b4", 60_000)]
+        )
+        await api.setBlockResponses([firstBlock, secondBlock])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrate: 0
+        )
+        try await coordinator.play(channelId: 0)
+        await engine.fire(.positionUpdate(seconds: 232.0))
+        try await Task.sleep(nanoseconds: 100_000_000)
+        await engine.fire(.fileEnded(reason: .eof))
+        try await Task.sleep(nanoseconds: 100_000_000)
+        let engineCalls = await engine.recordedCalls()
+        XCTAssertEqual(engineCalls.last, .play(url: URL(string: "https://example.com/0-B.flac")!))
+    }
+}
