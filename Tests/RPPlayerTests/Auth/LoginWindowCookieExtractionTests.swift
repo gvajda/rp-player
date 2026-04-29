@@ -49,7 +49,6 @@ final class LoginWindowCookieExtractionTests: XCTestCase {
             cookie(name: "C_validated", value: "token"),
             cookie(name: "C_username",  value: "evil", domain: ".evil.com"),
         ]
-        // After filtering to radioparadise.com, count == 3, username != anonymous.
         let result = LoginWindowController.rpCookieString(from: cookies)
         XCTAssertNotNil(result)
         XCTAssertTrue(result!.contains("C_username=testuser"))

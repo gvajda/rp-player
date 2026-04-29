@@ -36,38 +36,50 @@ final class LoginWindowController: NSWindowController {
         webView.load(URLRequest(url: Self.loginURL))
     }
 
-    /// Extracts the RP session cookie string from a set of `HTTPCookie` values.
-    /// Returns `nil` when the three required cookies (`C_username`, `C_passwd`,
-    /// `C_validated`) are absent or when the username is `"anonymous"` (not logged in).
+    private var isHandlingLogin = false
+
+    @MainActor
+    private func handleCookies(_ cookies: [HTTPCookie]) async {
+        guard !isHandlingLogin else { return }
+        guard let cookieString = LoginWindowController.rpCookieString(from: cookies) else { return }
+        isHandlingLogin = true
+        do {
+            try await keychainAuth.storeCookie(cookieString)
+            close()
+        } catch {
+            // Keychain write failure is non-fatal: user can retry via login window.
+            isHandlingLogin = false
+        }
+    }
+
+    override func close() {
+        webView.configuration.websiteDataStore.httpCookieStore.remove(self)
+        super.close()
+    }
+
     nonisolated static func rpCookieString(from cookies: [HTTPCookie]) -> String? {
         let relevant = cookies.filter {
             $0.domain.hasSuffix("radioparadise.com") &&
             ["C_username", "C_passwd", "C_validated"].contains($0.name)
         }
+        // Returns nil if any of the three required RP cookies are missing or the user is anonymous.
         guard relevant.count == 3,
               let userCookie = relevant.first(where: { $0.name == "C_username" }),
               userCookie.value != "anonymous" else { return nil }
-        return relevant.map { "\($0.name)=\($0.value)" }.joined(separator: "; ")
+        return relevant.sorted { $0.name < $1.name }.map { "\($0.name)=\($0.value)" }.joined(separator: "; ")
     }
 }
 
 extension LoginWindowController: WKHTTPCookieStoreObserver {
-    // nonisolated required: WKHTTPCookieStoreObserver does not guarantee delivery
-    // on @MainActor; the inner Task re-isolates to @MainActor for safety.
+    // nonisolated required: WKHTTPCookieStoreObserver does not guarantee delivery on @MainActor.
     nonisolated func cookiesDidChange(in cookieStore: WKHTTPCookieStore) {
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            // getAllCookies(_:) is the macOS 13-compatible callback form of allCookies().
+        // Fetch cookies on the delivery thread (cookieStore is not Sendable — do not
+        // capture it across actor boundaries). Pass the Sendable [HTTPCookie] to MainActor.
+        Task {
             let cookies: [HTTPCookie] = await withCheckedContinuation { cont in
                 cookieStore.getAllCookies { cont.resume(returning: $0) }
             }
-            guard let cookieString = LoginWindowController.rpCookieString(from: cookies) else { return }
-            do {
-                try await self.keychainAuth.storeCookie(cookieString)
-                self.close()
-            } catch {
-                // Keychain write failure is non-fatal: user can retry via login window.
-            }
+            await handleCookies(cookies)
         }
     }
 }
