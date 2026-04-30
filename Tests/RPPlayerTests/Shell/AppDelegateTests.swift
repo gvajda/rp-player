@@ -5,10 +5,12 @@ import XCTest
 @MainActor
 final class AppDelegateTests: XCTestCase {
     private var delegate: AppDelegate!
+    private var coordinator: MockPlaybackCoordinator!
 
     override func setUp() async throws {
-        delegate = AppDelegate(bootstrap: {
-            let coordinator = MockPlaybackCoordinator()
+        coordinator = MockPlaybackCoordinator()
+        let coordinator = self.coordinator!
+        delegate = AppDelegate(containerFactory: {
             let api = MockRpApiClient()
             let cache = StubAlbumArtCache()
             let service = MockNotificationService()
@@ -40,13 +42,14 @@ final class AppDelegateTests: XCTestCase {
             )
             let settingsWindowController = SettingsWindowController(viewModel: settingsViewModel)
             let loginWindowController = LoginWindowController(keychainAuth: auth)
-            return AppDelegate.Bootstrap(
+            return AppContainer(
                 viewModel: viewModel,
                 notificationCoordinator: notificationCoordinator,
                 settingsViewModel: settingsViewModel,
                 settingsWindowController: settingsWindowController,
                 loginWindowController: loginWindowController,
-                coordinatorShutdown: { await coordinator.shutdown() }
+                coordinatorShutdown: { await coordinator.shutdown() },
+                onLaunchTasks: []
             )
         })
     }
@@ -56,19 +59,21 @@ final class AppDelegateTests: XCTestCase {
             NSStatusBar.system.removeStatusItem(item)
         }
         delegate = nil
+        coordinator = nil
     }
 
     func testApplicationDidFinishLaunchingCreatesStatusItemControllerAndViewModel() {
         XCTAssertNil(delegate.statusItemController)
-        XCTAssertNil(delegate.viewModel)
+        XCTAssertNil(delegate.container)
         delegate.applicationDidFinishLaunching(Notification(name: NSApplication.didFinishLaunchingNotification))
         XCTAssertNotNil(delegate.statusItemController)
-        XCTAssertNotNil(delegate.viewModel)
+        XCTAssertNotNil(delegate.container)
+        XCTAssertNotNil(delegate.container?.viewModel)
     }
 
     func testApplicationWillTerminateInvokesShutdown() async throws {
         let didShutDown = AsyncSignal()
-        delegate = AppDelegate(bootstrap: {
+        delegate = AppDelegate(containerFactory: {
             let coordinator = MockPlaybackCoordinator()
             let api = MockRpApiClient()
             let cache = StubAlbumArtCache()
@@ -90,13 +95,14 @@ final class AppDelegateTests: XCTestCase {
             )
             let settingsWindowController = SettingsWindowController(viewModel: settingsViewModel)
             let loginWindowController = LoginWindowController(keychainAuth: auth)
-            return AppDelegate.Bootstrap(
+            return AppContainer(
                 viewModel: viewModel,
                 notificationCoordinator: notificationCoordinator,
                 settingsViewModel: settingsViewModel,
                 settingsWindowController: settingsWindowController,
                 loginWindowController: loginWindowController,
-                coordinatorShutdown: { didShutDown.signal() }
+                coordinatorShutdown: { didShutDown.signal() },
+                onLaunchTasks: []
             )
         })
         delegate.applicationDidFinishLaunching(Notification(name: NSApplication.didFinishLaunchingNotification))
