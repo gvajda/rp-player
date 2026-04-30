@@ -14,9 +14,16 @@ final class StatusItemController {
         close: (() -> Void)? = nil
     ) {
         let item = statusBar.statusItem(withLength: NSStatusItem.variableLength)
-        let image = NSImage(systemSymbolName: "music.note", accessibilityDescription: "RP Player")
-        image?.isTemplate = true
-        item.button?.image = image
+        if let url = Bundle.module.url(forResource: "rp", withExtension: "ico"),
+           let image = NSImage(contentsOf: url) {
+            image.size = NSSize(width: 18, height: 18)
+            image.isTemplate = true
+            item.button?.image = image
+        } else {
+            let fallback = NSImage(systemSymbolName: "music.note", accessibilityDescription: "RP Player")
+            fallback?.isTemplate = true
+            item.button?.image = fallback
+        }
         item.button?.toolTip = "RP Player"
 
         self.statusItem = item

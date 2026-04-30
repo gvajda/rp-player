@@ -65,4 +65,15 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertEqual(showCount, 0)
         XCTAssertEqual(closeCount, 1)
     }
+
+    func testStatusItemUsesRpIconAsButtonImage() throws {
+        let popover = PopoverController(rootView: AnyView(EmptyView()))
+        let controller = StatusItemController(popover: popover)
+        createdControllers.append(controller)
+        let image = try XCTUnwrap(controller.statusItem.button?.image, "status item must have an image")
+        XCTAssertGreaterThan(image.size.width, 0)
+        XCTAssertGreaterThan(image.size.height, 0)
+        let hasBitmapRep = image.representations.contains { $0 is NSBitmapImageRep }
+        XCTAssertTrue(hasBitmapRep, "expected rp.ico bitmap, not the SF Symbol fallback")
+    }
 }

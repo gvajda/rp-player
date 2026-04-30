@@ -33,6 +33,7 @@ let package = Package(
             name: "RPPlayer",
             dependencies: ["CMpv"],
             path: "Sources/RPPlayer",
+            resources: [.process("Resources")],
             linkerSettings: mpvLinker
         ),
         .executableTarget(
