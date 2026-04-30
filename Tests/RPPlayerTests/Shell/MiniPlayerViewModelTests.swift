@@ -254,4 +254,15 @@ final class MiniPlayerViewModelTests: XCTestCase {
         sut.openSettings()
         XCTAssertEqual(openSettingsCalls, 1)
     }
+
+    func testCurrentStreamFormatReflectsCoordinator() async throws {
+        auth.loggedIn = false
+        await sut.start()
+        var np = NowPlaying.fixture(songId: "1")
+        np.streamFormat = StreamFormat(codec: "flac", sampleRateHz: 44100, kbps: 850)
+        await coordinator.setNowPlaying(np)
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(sut.currentStreamFormat?.codec, "flac")
+        XCTAssertEqual(sut.currentStreamFormat?.sampleRateHz, 44100)
+    }
 }

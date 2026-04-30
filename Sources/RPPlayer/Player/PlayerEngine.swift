@@ -20,6 +20,7 @@ public enum PlayerEvent: Sendable, Equatable {
     case error(message: String)
     case hogModeChanged(enabled: Bool)
     case outputDeviceChanged(uid: String?)
+    case streamFormatChanged(StreamFormat)
     case shutdown
 }
 

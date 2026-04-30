@@ -12,6 +12,7 @@ final class MiniPlayerViewModel: ObservableObject {
     @Published private(set) var currentArt: NSImage?
     @Published private(set) var isSignedIn: Bool = false
     @Published private(set) var currentRating: Int?
+    @Published private(set) var currentStreamFormat: StreamFormat?
 
     typealias PersistChannelId = @Sendable (Int) async -> Void
 
@@ -67,6 +68,7 @@ final class MiniPlayerViewModel: ObservableObject {
                     self.currentArt = nil
                     self.isSignedIn = self.auth.isLoggedIn
                     self.currentRating = Self.parseRating(from: np.song.userRating)
+                    self.currentStreamFormat = np.streamFormat
                 }
                 await self.loadArt(for: np)
             }

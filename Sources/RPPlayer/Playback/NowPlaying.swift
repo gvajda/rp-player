@@ -7,6 +7,7 @@ public struct NowPlaying: Sendable, Equatable {
     public let blockDurationSeconds: Double
     public let songStartSeconds: Double
     public let songEndSeconds: Double
+    public var streamFormat: StreamFormat?
 
     public init(
         channelId: Int,
@@ -14,7 +15,8 @@ public struct NowPlaying: Sendable, Equatable {
         songIndexInBlock: Int,
         blockDurationSeconds: Double,
         songStartSeconds: Double,
-        songEndSeconds: Double
+        songEndSeconds: Double,
+        streamFormat: StreamFormat? = nil
     ) {
         self.channelId = channelId
         self.song = song
@@ -22,6 +24,7 @@ public struct NowPlaying: Sendable, Equatable {
         self.blockDurationSeconds = blockDurationSeconds
         self.songStartSeconds = songStartSeconds
         self.songEndSeconds = songEndSeconds
+        self.streamFormat = streamFormat
     }
 }
 

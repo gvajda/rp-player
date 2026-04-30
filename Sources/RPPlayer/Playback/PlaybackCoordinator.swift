@@ -34,6 +34,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     private var prefetchTask: Task<Void, Never>?
     private var isShutdown = false
     private var hogModeFallbackTriggered = false
+    private var currentStreamFormat: StreamFormat?
 
     public init(
         api: any RpApiClient,
@@ -236,6 +237,9 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
                 }
                 await onHogModeFallback?()
             }
+        case .streamFormatChanged(let format):
+            currentStreamFormat = format
+            emitNowPlaying(forSongIndex: currentSongIndex)
         case .hogModeChanged, .outputDeviceChanged, .shutdown:
             break
         }
@@ -259,7 +263,8 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             songIndexInBlock: idx,
             blockDurationSeconds: BlockSongs.totalDurationSeconds(songs: orderedSongs),
             songStartSeconds: songStart,
-            songEndSeconds: songEnd
+            songEndSeconds: songEnd,
+            streamFormat: currentStreamFormat
         )
         current = np
         for c in continuations.values { c.yield(np) }

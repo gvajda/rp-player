@@ -201,4 +201,37 @@ extension LibmpvPlayerEngineTests {
         let d2 = await engine.currentAudioDeviceForTesting()
         XCTAssertEqual(d2, "auto")
     }
+
+    func testStreamFormatChangedEmittedAfterFileLoaded() async throws {
+        let engine = try LibmpvPlayerEngine()
+        defer { Task { await engine.shutdown() } }
+        let stream = await engine.events
+
+        let collector = Task { () -> StreamFormat? in
+            for await event in stream {
+                if case .streamFormatChanged(let format) = event {
+                    return format
+                }
+            }
+            return nil
+        }
+
+        try await engine.play(url: URL(string: "https://stream.radioparadise.com/mp3-320")!)
+
+        let outcome = try await withThrowingTaskGroup(of: StreamFormat?.self) { group in
+            group.addTask { await collector.value }
+            group.addTask {
+                try await Task.sleep(nanoseconds: 8_000_000_000)
+                collector.cancel()
+                return nil
+            }
+            let first = try await group.next()!
+            group.cancelAll()
+            return first
+        }
+
+        let format = try XCTUnwrap(outcome, "expected streamFormatChanged within 8 s")
+        XCTAssertEqual(format.codec.lowercased(), "mp3")
+        XCTAssertEqual(format.sampleRateHz, 44100)
+    }
 }

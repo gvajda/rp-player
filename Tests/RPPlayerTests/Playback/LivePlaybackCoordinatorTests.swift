@@ -540,3 +540,36 @@ private actor CallCounter {
     private(set) var value = 0
     func increment() { value += 1 }
 }
+
+private actor NowPlayingCollector {
+    private var items: [NowPlaying] = []
+    func add(_ np: NowPlaying) { items.append(np) }
+    func last() -> NowPlaying? { items.last }
+}
+
+extension LivePlaybackCoordinatorTests {
+    func testStreamFormatPropagatesIntoNowPlayingUpdates() async throws {
+        let api = MockRpApiClient()
+        let block = makeBlock(songs: [("a", 60_000), ("b", 60_000), ("c", 60_000), ("d", 60_000)])
+        await api.setBlockResponses([block])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(api: api, engine: engine, logger: silentLogger(), bitrate: 4)
+
+        let captured = NowPlayingCollector()
+        let stream = await coordinator.nowPlayingUpdates
+        let sub = Task {
+            for await np in stream {
+                await captured.add(np)
+                if np.streamFormat != nil { break }
+            }
+        }
+        try await coordinator.play(channelId: 0)
+        await engine.fire(.streamFormatChanged(StreamFormat(codec: "flac", sampleRateHz: 44100, kbps: 850)))
+        try await Task.sleep(nanoseconds: 100_000_000)
+        sub.cancel()
+
+        let last = await captured.last()
+        XCTAssertEqual(last?.streamFormat?.codec, "flac")
+        XCTAssertEqual(last?.streamFormat?.sampleRateHz, 44100)
+    }
+}
