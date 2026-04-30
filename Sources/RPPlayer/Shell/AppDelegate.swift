@@ -6,12 +6,12 @@ import SwiftUI
 final class AppDelegate: NSObject, NSApplicationDelegate {
     struct Bootstrap {
         let viewModel: MiniPlayerViewModel
-        let coordinatorShutdown: () async -> Void
+        let coordinatorShutdown: @Sendable () async -> Void
     }
 
     private(set) var statusItemController: StatusItemController?
     private(set) var viewModel: MiniPlayerViewModel?
-    private var coordinatorShutdown: (() async -> Void)?
+    private var coordinatorShutdown: (@Sendable () async -> Void)?
     private let bootstrap: () -> Bootstrap
 
     convenience override init() {
@@ -24,7 +24,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // initialChannelId comes from ConfigStore in the real bootstrap; tests can pass whatever they like through the override.
         let result = bootstrap()
         self.viewModel = result.viewModel
         self.coordinatorShutdown = result.coordinatorShutdown
@@ -39,7 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // libmpv must release the audio device before we exit.
         let group = DispatchGroup()
         group.enter()
-        Task { @MainActor in
+        Task.detached {
             await shutdown()
             group.leave()
         }
@@ -104,7 +103,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 private struct NoopPlayerEngine: PlayerEngine {
     let error: Error
-    var events: AsyncStream<PlayerEvent> { AsyncStream { _ in } }
+    var events: AsyncStream<PlayerEvent> { AsyncStream { $0.finish() } }
     func play(url: URL) async throws { throw error }
     func pause() async throws { throw error }
     func resume() async throws { throw error }
