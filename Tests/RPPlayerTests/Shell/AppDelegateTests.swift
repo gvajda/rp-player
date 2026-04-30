@@ -7,7 +7,19 @@ final class AppDelegateTests: XCTestCase {
     private var delegate: AppDelegate!
 
     override func setUp() async throws {
-        delegate = AppDelegate()
+        delegate = AppDelegate(bootstrap: {
+            let coordinator = MockPlaybackCoordinator()
+            let api = MockRpApiClient()
+            let viewModel = MiniPlayerViewModel(
+                coordinator: coordinator,
+                api: api,
+                initialChannelId: 0
+            )
+            return AppDelegate.Bootstrap(
+                viewModel: viewModel,
+                coordinatorShutdown: { await coordinator.shutdown() }
+            )
+        })
     }
 
     override func tearDown() async throws {
@@ -17,9 +29,11 @@ final class AppDelegateTests: XCTestCase {
         delegate = nil
     }
 
-    func testApplicationDidFinishLaunchingCreatesStatusItemController() {
+    func testApplicationDidFinishLaunchingCreatesStatusItemControllerAndViewModel() {
         XCTAssertNil(delegate.statusItemController)
+        XCTAssertNil(delegate.viewModel)
         delegate.applicationDidFinishLaunching(Notification(name: NSApplication.didFinishLaunchingNotification))
         XCTAssertNotNil(delegate.statusItemController)
+        XCTAssertNotNil(delegate.viewModel)
     }
 }
