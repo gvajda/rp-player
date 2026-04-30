@@ -68,7 +68,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private static func realBootstrap() -> Bootstrap {
-        let logger = AppLogger(category: "shell")
+        let logger = AppLogger.fileBacked(category: "shell", directory: ConfigPaths.logsDirectory)
         let configURL = ConfigPaths.configFile
         let initial = Self.loadSettings(from: configURL)
         let store: JSONConfigStore?
@@ -109,7 +109,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             api: api,
             engine: engine,
             logger: logger,
-            bitrate: initial.bitrate
+            bitrate: initial.bitrate,
+            onHogModeFallback: { [store] in
+                guard let store else { return }
+                try? await store.update { $0.hogModeEnabled = false }
+            }
         )
 
         // Bridge persistent audio settings → engine. The stream yields the
@@ -186,6 +190,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task {
             // Best-effort authorization request; fails silently in unbundled processes.
             _ = try? await notificationService.requestAuthorization()
+        }
+
+        Task { @MainActor [viewModel, settingsViewModel] in
+            // Validate stored auth on launch: if RP no longer accepts the cookie
+            // (server returns anonymous or 401), clear keychain so the UI doesn't
+            // claim "signed in" when the next rate call would 401.
+            await StartupAuthProbe.run(api: api, auth: keychainAuth) {
+                viewModel.refreshAuthState()
+                settingsViewModel.refreshAuthState()
+            }
         }
 
         return Bootstrap(

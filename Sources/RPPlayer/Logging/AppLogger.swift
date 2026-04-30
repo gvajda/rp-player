@@ -38,6 +38,22 @@ public struct AppLogger: Logging {
         self.minimumLevel = minimumLevel
     }
 
+    public static func fileBacked(
+        category: String,
+        directory: URL,
+        minimumLevel: Level = .info
+    ) -> AppLogger {
+        let sink: RotatingFileSink?
+        do {
+            sink = try RotatingFileSink(directory: directory)
+        } catch {
+            os.Logger(subsystem: subsystem, category: category)
+                .error("Failed to open log sink at \(directory.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            sink = nil
+        }
+        return AppLogger(category: category, sink: sink, minimumLevel: minimumLevel)
+    }
+
     public func debug(_ message: @autoclosure () -> String) { emit(.debug, message) }
     public func info(_ message: @autoclosure () -> String)  { emit(.info,  message) }
     public func warn(_ message: @autoclosure () -> String)  { emit(.warn,  message) }

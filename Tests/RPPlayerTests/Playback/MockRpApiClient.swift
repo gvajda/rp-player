@@ -20,6 +20,7 @@ actor MockRpApiClient: RpApiClient {
     var rateError: Error?
     var authStateResponse: Auth = Auth(userId: nil, postOk: nil, username: nil, level: nil,
                                         countryCode: nil, avatar: nil, privmsgNew: nil, status: nil)
+    var authStateError: Error?
 
     func setBlockResponses(_ responses: [GetBlock]) {
         self.blockResponses = responses
@@ -40,6 +41,15 @@ actor MockRpApiClient: RpApiClient {
 
     func setRateError(_ error: Error) {
         self.rateError = error
+    }
+
+    func setAuthStateResponse(_ response: Auth) {
+        self.authStateResponse = response
+        self.authStateError = nil
+    }
+
+    func setAuthStateError(_ error: Error) {
+        self.authStateError = error
     }
 
     func listChannels() async throws -> [Channel] {
@@ -70,6 +80,7 @@ actor MockRpApiClient: RpApiClient {
 
     func authState() async throws -> Auth {
         calls.append(.authState)
+        if let error = authStateError { throw error }
         return authStateResponse
     }
 }

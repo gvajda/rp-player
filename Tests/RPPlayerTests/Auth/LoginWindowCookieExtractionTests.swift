@@ -58,4 +58,29 @@ final class LoginWindowCookieExtractionTests: XCTestCase {
     func testEmptyCookiesReturnNil() {
         XCTAssertNil(LoginWindowController.rpCookieString(from: []))
     }
+
+    func testIncludesAllRpDomainCookiesWhenAuthCookiesValid() {
+        let cookies = [
+            cookie(name: "C_username",  value: "testuser"),
+            cookie(name: "C_passwd",    value: "hashed"),
+            cookie(name: "C_validated", value: "token"),
+            cookie(name: "PHPSESSID",   value: "abc123"),
+            cookie(name: "rp_pref",     value: "dark"),
+        ]
+        let result = LoginWindowController.rpCookieString(from: cookies)
+        XCTAssertNotNil(result)
+        XCTAssertTrue(result!.contains("C_username=testuser"))
+        XCTAssertTrue(result!.contains("C_passwd=hashed"))
+        XCTAssertTrue(result!.contains("C_validated=token"))
+        XCTAssertTrue(result!.contains("PHPSESSID=abc123"))
+        XCTAssertTrue(result!.contains("rp_pref=dark"))
+    }
+
+    func testExtraRpCookiesWithoutAuthTrioReturnNil() {
+        let cookies = [
+            cookie(name: "PHPSESSID", value: "abc123"),
+            cookie(name: "rp_pref",   value: "dark"),
+        ]
+        XCTAssertNil(LoginWindowController.rpCookieString(from: cookies))
+    }
 }

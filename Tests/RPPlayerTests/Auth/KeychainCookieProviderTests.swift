@@ -66,4 +66,29 @@ final class KeychainCookieProviderTests: XCTestCase {
             XCTFail("Expected KeychainError but got \(type(of: error)): \(error)")
         }
     }
+
+    func testCurrentUsernameIsNilWhenNothingStored() {
+        XCTAssertNil(sut.currentUsername)
+    }
+
+    func testCurrentUsernameReturnsValueFromCookie() async throws {
+        try await sut.storeCookie("C_passwd=hash; C_username=alice; C_validated=tok")
+        XCTAssertEqual(sut.currentUsername, "alice")
+    }
+
+    func testCurrentUsernameIsNilWhenAnonymous() async throws {
+        try await sut.storeCookie("C_username=anonymous; C_passwd=deleted; C_validated=deleted")
+        XCTAssertNil(sut.currentUsername)
+    }
+
+    func testCurrentUsernameIsNilAfterClear() async throws {
+        try await sut.storeCookie("C_username=alice; C_passwd=hash; C_validated=tok")
+        await sut.clearCookie()
+        XCTAssertNil(sut.currentUsername)
+    }
+
+    func testCurrentUsernamePicksRightFieldAmongOtherCookies() async throws {
+        try await sut.storeCookie("PHPSESSID=abc; C_username=bob; rp_pref=dark; C_passwd=hash; C_validated=tok")
+        XCTAssertEqual(sut.currentUsername, "bob")
+    }
 }

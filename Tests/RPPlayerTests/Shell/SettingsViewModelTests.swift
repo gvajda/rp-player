@@ -62,6 +62,24 @@ final class SettingsViewModelTests: XCTestCase {
         XCTAssertTrue(sut.isSignedIn)
     }
 
+    func testStartExposesUsernameWhenSignedIn() async throws {
+        auth.loggedIn = true
+        auth.username = "alice"
+        await sut.start()
+        XCTAssertEqual(sut.currentUsername, "alice")
+    }
+
+    func testSignOutClearsUsername() async throws {
+        auth.loggedIn = true
+        auth.username = "alice"
+        await sut.start()
+        XCTAssertEqual(sut.currentUsername, "alice")
+
+        await sut.signOut()
+
+        XCTAssertNil(sut.currentUsername)
+    }
+
     func testSetBitratePersistsToConfigStore() async throws {
         await sut.start()
         await sut.setBitrate(2)

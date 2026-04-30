@@ -60,7 +60,6 @@ public struct LiveRpApiClient: RpApiClient {
             throw RpApiError.network(URLError(.badURL))
         }
         if !query.isEmpty {
-            // Sort keys for deterministic URLs (helps tests register stubs predictably).
             components.queryItems = query.sorted(by: { $0.key < $1.key }).map { URLQueryItem(name: $0.key, value: $0.value) }
         }
         guard let url = components.url else {
@@ -69,11 +68,13 @@ public struct LiveRpApiClient: RpApiClient {
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
-        if let cookie = await cookieProvider.currentCookie() {
+        let cookie = await cookieProvider.currentCookie()
+        if let cookie {
             request.setValue(cookie, forHTTPHeaderField: "Cookie")
         }
 
-        logger.debug("GET \(url.absoluteString)")
+        let cookieNames = cookie.map { Self.cookieNameSummary($0) } ?? "none"
+        logger.debug("GET \(url.absoluteString) cookies=[\(cookieNames)]")
 
         let data: Data
         let response: URLResponse
@@ -91,7 +92,8 @@ public struct LiveRpApiClient: RpApiClient {
             throw RpApiError.invalidResponse(statusCode: -1, body: data)
         }
         guard (200..<300).contains(http.statusCode) else {
-            logger.error("HTTP \(http.statusCode) for \(url.absoluteString)")
+            let bodyPreview = Self.bodyPreview(data)
+            logger.error("HTTP \(http.statusCode) for \(url.absoluteString) cookies=[\(cookieNames)] — body: \(bodyPreview)")
             throw RpApiError.invalidResponse(statusCode: http.statusCode, body: data)
         }
 
@@ -103,6 +105,23 @@ public struct LiveRpApiClient: RpApiClient {
         } catch {
             throw RpApiError.underlying(error)
         }
+    }
+
+    private static func cookieNameSummary(_ cookie: String) -> String {
+        cookie.split(separator: ";").map { pair -> String in
+            let trimmed = pair.trimmingCharacters(in: .whitespaces)
+            if let eq = trimmed.firstIndex(of: "=") {
+                return String(trimmed[..<eq])
+            }
+            return trimmed
+        }.joined(separator: ",")
+    }
+
+    private static func bodyPreview(_ data: Data, limit: Int = 500) -> String {
+        guard let raw = String(data: data, encoding: .utf8) else { return "<\(data.count) bytes, non-utf8>" }
+        if raw.count <= limit { return raw }
+        let prefix = raw.prefix(limit)
+        return "\(prefix)…(+\(raw.count - limit) chars)"
     }
 }
 

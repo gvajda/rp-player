@@ -385,3 +385,113 @@ extension LivePlaybackCoordinatorTests {
         )
     }
 }
+
+extension LivePlaybackCoordinatorTests {
+    func testCoordinatorFallsBackToSharedModeOnAudioInitFailure() async throws {
+        let api = MockRpApiClient()
+        let block = makeBlock(songs: [("s1", 60_000), ("s2", 60_000), ("s3", 60_000), ("s4", 60_000)])
+        await api.setBlockResponses([block])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrate: 4
+        )
+
+        try await coordinator.play(channelId: 0)
+        await engine.fire(.error(message: "Failed to initialize audio driver 'coreaudio_exclusive'"))
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        let calls = await engine.recordedCalls()
+        XCTAssertTrue(
+            calls.contains(.setHogMode(enabled: false)),
+            "expected setHogMode(false) on hog acquisition failure. calls=\(calls)"
+        )
+        let playCount = calls.filter {
+            if case .play(url: URL(string: "https://example.com/0-0.flac")!) = $0 { return true }
+            return false
+        }.count
+        XCTAssertEqual(playCount, 2, "expected initial play + retry. calls=\(calls)")
+    }
+
+    func testCoordinatorFallbackOnlyTriggersOnce() async throws {
+        let api = MockRpApiClient()
+        let block = makeBlock(songs: [("s1", 60_000), ("s2", 60_000), ("s3", 60_000), ("s4", 60_000)])
+        await api.setBlockResponses([block])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrate: 4
+        )
+
+        try await coordinator.play(channelId: 0)
+        await engine.fire(.error(message: "Failed to initialize audio driver 'coreaudio_exclusive'"))
+        try await Task.sleep(nanoseconds: 80_000_000)
+        await engine.fire(.error(message: "Failed to initialize audio driver 'coreaudio_exclusive'"))
+        try await Task.sleep(nanoseconds: 80_000_000)
+
+        let calls = await engine.recordedCalls()
+        let setHogModeFalseCount = calls.filter { $0 == .setHogMode(enabled: false) }.count
+        XCTAssertEqual(setHogModeFalseCount, 1, "fallback must not loop. calls=\(calls)")
+    }
+
+    func testUnrelatedEngineErrorDoesNotTriggerFallback() async throws {
+        let api = MockRpApiClient()
+        let block = makeBlock(songs: [("s1", 60_000), ("s2", 60_000), ("s3", 60_000), ("s4", 60_000)])
+        await api.setBlockResponses([block])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrate: 4
+        )
+
+        try await coordinator.play(channelId: 0)
+        await engine.fire(.error(message: "some unrelated mpv error"))
+        try await Task.sleep(nanoseconds: 80_000_000)
+
+        let calls = await engine.recordedCalls()
+        XCTAssertFalse(
+            calls.contains(.setHogMode(enabled: false)),
+            "non-audio-init errors must not trigger hog fallback. calls=\(calls)"
+        )
+    }
+
+    func testCoordinatorInvokesFallbackCallbackOnHogAcquisitionFailure() async throws {
+        let api = MockRpApiClient()
+        let block = makeBlock(songs: [("s1", 60_000), ("s2", 60_000), ("s3", 60_000), ("s4", 60_000)])
+        await api.setBlockResponses([block])
+        let engine = MockPlayerEngine()
+        let counter = CallCounter()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrate: 4,
+            onHogModeFallback: { await counter.increment() }
+        )
+
+        try await coordinator.play(channelId: 0)
+        await engine.fire(.error(message: "Failed to initialize audio driver 'coreaudio_exclusive'"))
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        let value = await counter.value
+        XCTAssertEqual(value, 1, "expected onHogModeFallback to fire exactly once")
+    }
+
+    func testCoordinatorDoesNotFireFallbackCallbackForUnrelatedErrors() async throws {
+        let api = MockRpApiClient()
+        let block = makeBlock(songs: [("s1", 60_000), ("s2", 60_000), ("s3", 60_000), ("s4", 60_000)])
+        await api.setBlockResponses([block])
+        let engine = MockPlayerEngine()
+        let counter = CallCounter()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrate: 4,
+            onHogModeFallback: { await counter.increment() }
+        )
+
+        try await coordinator.play(channelId: 0)
+        await engine.fire(.error(message: "some unrelated mpv error"))
+        try await Task.sleep(nanoseconds: 80_000_000)
+
+        let value = await counter.value
+        XCTAssertEqual(value, 0, "fallback callback must not fire for unrelated errors")
+    }
+}
+
+private actor CallCounter {
+    private(set) var value = 0
+    func increment() { value += 1 }
+}

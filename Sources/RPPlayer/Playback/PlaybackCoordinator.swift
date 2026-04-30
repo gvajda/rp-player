@@ -18,6 +18,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     private let engine: any PlayerEngine
     private let logger: any Logging
     private let bitrate: Int
+    private let onHogModeFallback: (@Sendable () async -> Void)?
 
     private var currentChannelId: Int?
     private var currentBlock: GetBlock?
@@ -32,17 +33,20 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     private var prefetchedBlock: GetBlock?
     private var prefetchTask: Task<Void, Never>?
     private var isShutdown = false
+    private var hogModeFallbackTriggered = false
 
     public init(
         api: any RpApiClient,
         engine: any PlayerEngine,
         logger: any Logging,
-        bitrate: Int
+        bitrate: Int,
+        onHogModeFallback: (@Sendable () async -> Void)? = nil
     ) {
         self.api = api
         self.engine = engine
         self.logger = logger
         self.bitrate = bitrate
+        self.onHogModeFallback = onHogModeFallback
     }
 
     public var nowPlaying: NowPlaying? { current }
@@ -72,6 +76,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         currentSongIndex = 0
         currentPositionSeconds = 0
         pendingCueSeekSeconds = block.cue > 0 ? Double(block.cue) / 1000.0 : nil
+        hogModeFallbackTriggered = false
 
         guard let url = URL(string: block.url) else {
             throw PlaybackCoordinatorError.engineError(message: "invalid block url: \(block.url)")
@@ -211,9 +216,29 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             }
         case .error(let message):
             logger.error("player engine reported error: \(message)")
+            if !hogModeFallbackTriggered, Self.isHogModeAcquisitionFailure(message) {
+                hogModeFallbackTriggered = true
+                logger.warn("hog mode acquisition failed — falling back to shared mode")
+                do {
+                    try await engine.setHogMode(false)
+                    if let block = currentBlock, let url = URL(string: block.url) {
+                        try await engine.play(url: url)
+                    }
+                } catch {
+                    logger.error("hog-mode fallback failed: \(error)")
+                }
+                await onHogModeFallback?()
+            }
         case .hogModeChanged, .outputDeviceChanged, .shutdown:
             break
         }
+    }
+
+    private static func isHogModeAcquisitionFailure(_ message: String) -> Bool {
+        // mpv emits one MPV_EVENT_LOG_MESSAGE per line; both substrings appear
+        // when coreaudio_exclusive can't lock the device at the source format.
+        message.contains("Failed to initialize audio driver 'coreaudio_exclusive'")
+            || message.contains("hardware format not supported")
     }
 
     private func emitNowPlaying(forSongIndex idx: Int) {

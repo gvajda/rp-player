@@ -213,6 +213,26 @@ final class MiniPlayerViewModelTests: XCTestCase {
         XCTAssertNil(sut.currentRating)
     }
 
+    func testRateClearsCookieAndUpdatesSignedInOnAuthFailure() async throws {
+        auth.loggedIn = true
+        try await auth.storeCookie("C_username=test; C_passwd=hash; C_validated=tok")
+        await api.setRateError(RpApiError.invalidResponse(statusCode: 401, body: Data("auth failure".utf8)))
+        await sut.start()
+        await coordinator.setNowPlaying(NowPlaying.fixture(songId: "1"))
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        await sut.rate(5)
+
+        XCTAssertFalse(auth.loggedIn, "auth cookie should be cleared on 401")
+        XCTAssertFalse(sut.isSignedIn, "view model should reflect cleared auth")
+        XCTAssertNotNil(sut.errorMessage)
+        XCTAssertTrue(
+            sut.errorMessage!.lowercased().contains("sign in"),
+            "error message should prompt re-login, got: \(sut.errorMessage ?? "nil")"
+        )
+        XCTAssertNil(sut.currentRating)
+    }
+
     func testCurrentArtClearsImmediatelyOnNowPlayingChange() async throws {
         let cache = StubAlbumArtCache()
         cache.imageByPath["covers/l/a.jpg"] = NSImage(size: NSSize(width: 1, height: 1))

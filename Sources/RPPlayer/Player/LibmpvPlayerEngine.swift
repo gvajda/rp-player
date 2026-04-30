@@ -6,6 +6,8 @@ public actor LibmpvPlayerEngine: PlayerEngine {
     private var continuations: [UUID: AsyncStream<PlayerEvent>.Continuation] = [:]
     private var pumpTask: Task<Void, Never>?
     private var isShutdown = false
+    private var currentHogMode = false
+    private var currentDeviceUID: String?
 
     public init() throws {
         guard let h = mpv_create() else {
@@ -142,20 +144,35 @@ public actor LibmpvPlayerEngine: PlayerEngine {
 
     public func setHogMode(_ enabled: Bool) async throws {
         try requireHandle()
+        currentHogMode = enabled
         try setStringProperty("audio-exclusive", enabled ? "yes" : "no")
+        try applyAudioDevice()
         deliver(.hogModeChanged(enabled: enabled))
     }
 
     public func setOutputDevice(uid: String?) async throws {
         try requireHandle()
+        currentDeviceUID = uid
+        try applyAudioDevice()
+        deliver(.outputDeviceChanged(uid: uid))
+    }
+
+    private func applyAudioDevice() throws {
         let value: String
-        if let uid, !uid.isEmpty {
-            value = "coreaudio_exclusive/\(uid)"
+        if let uid = currentDeviceUID, !uid.isEmpty {
+            let ao = currentHogMode ? "coreaudio_exclusive" : "coreaudio"
+            value = "\(ao)/\(uid)"
         } else {
             value = "auto"
         }
         try setStringProperty("audio-device", value)
-        deliver(.outputDeviceChanged(uid: uid))
+    }
+
+    func currentAudioDeviceForTesting() -> String? {
+        guard let h = handle else { return nil }
+        guard let raw = mpv_get_property_string(h, "audio-device") else { return nil }
+        defer { mpv_free(raw) }
+        return String(cString: raw)
     }
 
     public func shutdown() async {

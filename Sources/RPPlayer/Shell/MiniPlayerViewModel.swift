@@ -144,6 +144,11 @@ final class MiniPlayerViewModel: ObservableObject {
             errorMessage = nil
             _ = try await api.rate(songId: songId, rating: value)
             currentRating = value
+        } catch RpApiError.invalidResponse(statusCode: 401, _) {
+            // Stored cookie no longer accepted by RP — clear it and prompt re-login.
+            try? await auth.clearCookie()
+            isSignedIn = auth.isLoggedIn
+            errorMessage = "Logged out — sign in again to rate."
         } catch {
             errorMessage = "Rating failed: \(error.localizedDescription)"
         }

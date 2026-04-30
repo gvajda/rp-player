@@ -60,15 +60,20 @@ final class LoginWindowController: NSWindowController {
     }
 
     nonisolated static func rpCookieString(from cookies: [HTTPCookie]) -> String? {
-        let relevant = cookies.filter {
-            $0.domain.hasSuffix("radioparadise.com") &&
+        let rpCookies = cookies.filter { $0.domain.hasSuffix("radioparadise.com") }
+        let authCookies = rpCookies.filter {
             ["C_username", "C_passwd", "C_validated"].contains($0.name)
         }
-        // Returns nil if any of the three required RP cookies are missing or the user is anonymous.
-        guard relevant.count == 3,
-              let userCookie = relevant.first(where: { $0.name == "C_username" }),
+        // Returns nil if any of the three required RP auth cookies are missing or the user is anonymous.
+        guard authCookies.count == 3,
+              let userCookie = authCookies.first(where: { $0.name == "C_username" }),
               userCookie.value != "anonymous" else { return nil }
-        return relevant.sorted { $0.name < $1.name }.map { "\($0.name)=\($0.value)" }.joined(separator: "; ")
+        // Forward every radioparadise.com cookie (PHPSESSID, prefs, etc.) — RP server endpoints
+        // beyond api/auth-state can require session cookies the legacy CookieContainer also sent.
+        return rpCookies
+            .sorted { $0.name < $1.name }
+            .map { "\($0.name)=\($0.value)" }
+            .joined(separator: "; ")
     }
 }
 

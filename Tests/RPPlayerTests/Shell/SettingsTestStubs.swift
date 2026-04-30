@@ -52,9 +52,14 @@ final class StubAudioDeviceCatalog: AudioDeviceCatalog {
 final class StubKeychainAuth: KeychainAuth {
     var loggedIn: Bool = false
     var storedCookie: String?
+    var username: String?
 
     nonisolated var isLoggedIn: Bool {
         MainActor.assumeIsolated { loggedIn }
+    }
+
+    nonisolated var currentUsername: String? {
+        MainActor.assumeIsolated { username }
     }
 
     nonisolated func currentCookie() async -> String? {
@@ -69,5 +74,6 @@ final class StubKeychainAuth: KeychainAuth {
     func clearCookie() async {
         storedCookie = nil
         loggedIn = false
+        username = nil
     }
 }

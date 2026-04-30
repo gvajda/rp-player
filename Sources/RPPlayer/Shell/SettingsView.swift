@@ -44,7 +44,15 @@ struct SettingsView: View {
     private var accountSection: some View {
         Section("Account") {
             HStack {
-                Text(viewModel.isSignedIn ? "Signed in" : "Anonymous")
+                if viewModel.isSignedIn {
+                    if let username = viewModel.currentUsername {
+                        Text("Signed in as ") + Text(username).bold()
+                    } else {
+                        Text("Signed in")
+                    }
+                } else {
+                    Text("Anonymous")
+                }
                 Spacer()
                 if viewModel.isSignedIn {
                     Button("Sign out") {

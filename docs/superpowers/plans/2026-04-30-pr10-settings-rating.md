@@ -1485,4 +1485,61 @@ PR 10 is **NOT yet merged** — round-1 smoke landed fixes, but three issues rem
 
    Recommended approach for the next session: add a debug log of `(url, method, cookieString)` in `LiveRpApiClient.get` (gated on debug build), reproduce the 4xx, then triangulate by comparing cookie + URL + method against a working capture.
 
-When all three are addressed, round-2 smoke can complete and PR 10 can merge. The merge command (from `/Users/gergely/git/rp-player`) is the standard `git merge --ff-only claude/unruffled-hellman-cdc237`.
+## Round-3 fixes (2026-04-30)
+
+Round-3 addressed all three round-2 follow-ups (test count 148 → 154). Pick up from the new HEAD on `claude/unruffled-hellman-cdc237`.
+
+1. **Logs subfolder.** `realBootstrap` now wires the file sink via the new `AppLogger.fileBacked(category:directory:)` factory pointing at `ConfigPaths.logsDirectory`. The factory creates the directory eagerly via `RotatingFileSink.init`, so `~/Library/Application Support/RP Player/Logs/RPPlayer.log` exists from first launch and any subsequent `logger.error` / `logger.info` lands on disk. Sink construction is best-effort: on failure (e.g. read-only volume) the factory falls back to a sink-less logger and emits the failure to `os.Logger`. Covered by `AppLoggerTests` (creates dir + writes line, falls back when dir uncreatable).
+
+2. **Hog mode wiring.** `LibmpvPlayerEngine.setOutputDevice` previously hardcoded the `coreaudio_exclusive/<UID>` AO regardless of `audio-exclusive` state — the dedicated exclusive AO ignores `audio-exclusive`, so toggling hog mode OFF was a no-op. The engine now tracks `currentHogMode` + `currentDeviceUID` privately and recomputes the `audio-device` property via a shared `applyAudioDevice()` helper on every `setHogMode` / `setOutputDevice` call:
+   - hog ON  + uid → `coreaudio_exclusive/<uid>`
+   - hog OFF + uid → `coreaudio/<uid>`
+   - any state + nil → `auto`
+
+   Verified by 4 new `LibmpvPlayerEngineTests` that read back the property via the new `currentAudioDeviceForTesting()` accessor (calls `mpv_get_property_string("audio-device")`). Manual smoke matrix (USB DAC / Bluetooth / AirPlay × hog on/off) still belongs to PR 11/12.
+
+3. **Rating endpoint.** Path (`api/rating`) and method (`GET`) match the legacy C# client (`docs/legacy/RpApiClient.cs:87,93`) — neither was wrong. Most likely root cause: `LoginWindowController.rpCookieString` was filtering down to exactly the three named auth cookies, but the legacy `HttpClient` attached every `radioparadise.com` cookie via `CookieContainer` (line 182). RP's `api/rating` endpoint may need the session cookie (`PHPSESSID` and friends) the WebView captures during login. Round-3 widens the filter: still requires the three auth cookies be present and non-anonymous, but joins **all** `radioparadise.com` cookies into the `Cookie:` header. Covered by `LoginWindowCookieExtractionTests.testIncludesAllRpDomainCookiesWhenAuthCookiesValid` and `testExtraRpCookiesWithoutAuthTrioReturnNil`.
+
+   Diagnostic logging in `LiveRpApiClient.get` now records (a) the comma-separated cookie *names* sent on each request (no values, since `C_passwd` is sensitive) and (b) a 500-char preview of the response body on any non-2xx — so the next failed `api/rating` call should leave enough breadcrumbs in the file sink to triangulate without a packet capture.
+
+## Round-4 fixes (2026-04-30)
+
+Round-3 smoke confirmed the logs file lands on disk (good) but the user reproduced two real failures:
+
+1. **Hog mode init.** With hog mode ON the engine emitted `Failed to initialize audio driver 'coreaudio_exclusive'` / `hardware format not supported`. mpv's `coreaudio_exclusive` AO refuses to open the device when the device's exclusive-mode hardware format doesn't match the source rate (typical for Bluetooth / AirPlay / built-in, and also for USB DACs whose exclusive format is locked at a different sample rate). DESIGN.md §7 calls for a shared-mode fallback.
+
+   `LivePlaybackCoordinator` now subscribes to engine `.error` events and triggers the fallback when the message contains `Failed to initialize audio driver 'coreaudio_exclusive'` or `hardware format not supported`. On match: log a warning, call `engine.setHogMode(false)` (which recomputes the AO to `coreaudio/<uid>` via the round-3 state-aware `applyAudioDevice` helper), and re-issue `engine.play(url:)` for the current block. The fallback fires at most once per `play(channelId:)` (guarded by `hogModeFallbackTriggered`, reset on every fresh play). Covered by 3 new `LivePlaybackCoordinatorTests`: success path, idempotence under repeated errors, and the negative case (unrelated `.error` events must not trigger fallback).
+
+   Note: the user's persisted "hog mode ON" preference in `ConfigStore` is not flipped — the override is purely runtime. Next attempt at fresh playback (channel change, app restart) will retry hog mode again, and fall back again if still incompatible. The "Bit-perfect unavailable in shared mode" toast from DESIGN.md §7 is still TODO and wires through the (existing) `NotificationCoordinator`; deferred to PR 11/12.
+
+2. **Rating 401.** Server response body confirmed: `auth failure` for `api/rating?rating=6&song_id=38651`. The Settings panel still showed "Signed In" because `KeychainCookieProvider.isLoggedIn` only checks "is anything stored" — it doesn't validate the cookie is still server-accepted. Most likely the cookie was captured and stored before the round-3 widened-filter fix landed (so it never had `PHPSESSID` etc. in the first place); even after the round-3 wider filter, an old keychain blob persists across launches. Per DESIGN.md §7, on auth-invalid the right move is to clear the keychain and prompt re-login.
+
+   `MiniPlayerViewModel.rate` now catches `RpApiError.invalidResponse(statusCode: 401, _)` specifically: calls `auth.clearCookie()`, refreshes `isSignedIn`, surfaces `"Logged out — sign in again to rate."` instead of the generic `Rating failed: …` string. Other failure modes (network, 5xx, decode) keep the generic message. Covered by `MiniPlayerViewModelTests.testRateClearsCookieAndUpdatesSignedInOnAuthFailure`.
+
+3. **Diagnostic upgrade.** The non-2xx error line in `LiveRpApiClient.get` now also includes the comma-separated cookie names (no values) sent on the request, so `RPPlayer.log` shows whether the wider filter is actually picking up extra session cookies once the user re-logs-in. Example line: `[ERROR] [shell] HTTP 401 for https://api.radioparadise.com/api/rating?... cookies=[C_passwd,C_username,C_validated,PHPSESSID] — body: auth failure` would prove the widened filter is working; `cookies=[C_passwd,C_username,C_validated]` only would mean the user is still on a stale pre-fix keychain blob and needs to sign out / sign in again.
+
+## Round-5 fixes (2026-04-30)
+
+Round-4 smoke confirmed both rating (after fresh sign-in) and the hog-mode shared-mode fallback. User asked for three small UX follow-ups:
+
+1. **Persist hog=false on fallback.** Previously the runtime hog fallback only flipped the engine, leaving the Settings toggle stuck on "Hog Mode: ON". Now `LivePlaybackCoordinator.init` accepts an optional `onHogModeFallback: (@Sendable () async -> Void)?` callback that fires after the fallback succeeds; `realBootstrap` injects a closure that updates `ConfigStore.hogModeEnabled = false`. The change propagates back through the existing `ConfigStore.changes` stream → settings binder → engine, and `SettingsViewModel` re-reads the snapshot, so the toggle visibly flips off in the open Settings window. Covered by 2 new `LivePlaybackCoordinatorTests` (`testCoordinatorInvokesFallbackCallbackOnHogAcquisitionFailure`, `testCoordinatorDoesNotFireFallbackCallbackForUnrelatedErrors`).
+
+2. **Username in Account section.** `KeychainAuth` gains a `var currentUsername: String? { get }` requirement; `KeychainCookieProvider` parses `C_username=<value>` from the stored cookie blob (returning nil for `anonymous` or an absent field). `SettingsViewModel` exposes `@Published private(set) var currentUsername` and `refreshAuthState()` populates both `isSignedIn` and `currentUsername` from the auth source. `SettingsView.accountSection` now reads `"Signed in as <username>"` when a real name is available, falling back to the prior `"Signed in"` / `"Anonymous"` strings. Covered by 5 new `KeychainCookieProviderTests` (parse, anonymous, missing, mixed-with-other-cookies, after-clear) and 2 new `SettingsViewModelTests` (start surfaces username, signOut clears it).
+
+3. **Startup auth-state probe.** New `StartupAuthProbe.run(api:auth:onCleared:)` enum-namespaced helper that, on launch (only if `auth.isLoggedIn`), calls `api.authState()`. If RP returns `username == "anonymous"` or 401, the probe clears the keychain and invokes the `onCleared` callback so view models can refresh. Network errors (`URLError`) are treated as transient and leave the cookie alone — no false sign-outs offline. `realBootstrap` schedules the probe after launch wiring with a callback that calls `viewModel.refreshAuthState()` and `settingsViewModel.refreshAuthState()`. Covered by 5 new `StartupAuthProbeTests` (skipped/stillValid/cleared-anonymous/cleared-401/networkUnavailable). The probe runs `@MainActor`-isolated to keep the (sync) `KeychainAuth.isLoggedIn` access on the actor that owns it.
+
+Note: the user explicitly **deferred** the deeper hog-mode-on-DAC investigation. The fallback currently kicks in even on a DAC that should support exclusive mode at the source rate; whether that's a libmpv format-negotiation quirk or a bug in our `applyAudioDevice` order remains open. See "Remaining open follow-ups" below.
+
+## Remaining open follow-ups (carry into next session if needed)
+
+- **Logs.** ✅ Confirmed in round-3 smoke.
+- **Rating after re-login.** ✅ Confirmed in round-4 smoke.
+- **Hog mode fallback firing on a DAC that should work** (deferred from round-5 by user). The user reports their DAC plays bit-perfect from other apps, but RP Player's `coreaudio_exclusive` AO emits `Failed to initialize audio driver 'coreaudio_exclusive'` / `hardware format not supported` and the fallback kicks in. Suspected causes (in order):
+  - mpv negotiates the device's exclusive format BEFORE the FLAC's source rate is known — `audio-device` is set at startup, but `audio-format`/`audio-samplerate` are `auto`, so the AO opens at whatever the device's current OS-mixer rate is, which may not be a supported exclusive-mode rate. Try setting `audio-fallback-to-null=no` and explicitly populating `audio-samplerate` from the FLAC header (or letting libavformat probe before AO open).
+  - `coreaudio_exclusive` AO requires `audio-device` to be set BEFORE `mpv_initialize`; we currently set both via `setHogMode` / `setOutputDevice` after init via the ConfigStore stream binder. Try preloading the audio-related properties from `realBootstrap` before the first `play()`.
+  - The DAC may need a moment to lock to the source rate before `mpv_open_output` is called — adding an `audio-wait-open` or a brief retry loop on the init failure could buy enough time.
+  - Reference: IINA does this successfully with the same libmpv version, so the recipe is known-good — diff `IINA/PlayerCore.swift` + their `mpv.conf` against ours for any `audio-*` property we're missing.
+- **"Bit-perfect unavailable in shared mode" toast.** DESIGN.md §7 calls for a one-time UNUserNotification when fallback fires. The infrastructure is wired (`NotificationCoordinator` + `NotificationService`) but no path emits this specific notification yet. Easy to add: in `realBootstrap`'s `onHogModeFallback` closure, also call `notificationService.deliverFallbackToast()` (new method) once.
+- **`SettingsView` username refresh after sign-in via login window.** The login window's `onLoginSucceeded` callback currently doesn't notify `SettingsViewModel` — only `MiniPlayerViewModel` listens. If the user opens Settings, opens login, signs in, the Settings panel still shows "Anonymous" until reopened. Wiring `loginWindowController.onLoginSucceeded` (or hooking the keychain-write event) to call `settingsViewModel.refreshAuthState()` would close that gap.
+
+When the smoke matrix above passes, PR 10 can merge with `git merge --ff-only claude/unruffled-hellman-cdc237` from `/Users/gergely/git/rp-player`.

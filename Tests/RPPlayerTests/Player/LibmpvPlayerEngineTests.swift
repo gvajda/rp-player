@@ -147,4 +147,58 @@ extension LibmpvPlayerEngineTests {
         let captured = await collector.value
         XCTAssertEqual(captured, .outputDeviceChanged(uid: nil))
     }
+
+    func testHogOnSelectsExclusiveAOForUid() async throws {
+        let engine = try LibmpvPlayerEngine()
+        defer { Task { await engine.shutdown() } }
+
+        try await engine.setHogMode(true)
+        try await engine.setOutputDevice(uid: "TestDeviceUID")
+
+        let device = await engine.currentAudioDeviceForTesting()
+        XCTAssertEqual(device, "coreaudio_exclusive/TestDeviceUID")
+    }
+
+    func testHogOffSelectsSharedAOForUid() async throws {
+        let engine = try LibmpvPlayerEngine()
+        defer { Task { await engine.shutdown() } }
+
+        try await engine.setHogMode(false)
+        try await engine.setOutputDevice(uid: "TestDeviceUID")
+
+        let device = await engine.currentAudioDeviceForTesting()
+        XCTAssertEqual(device, "coreaudio/TestDeviceUID")
+    }
+
+    func testTogglingHogModeAfterDeviceUpdatesAO() async throws {
+        let engine = try LibmpvPlayerEngine()
+        defer { Task { await engine.shutdown() } }
+
+        try await engine.setHogMode(true)
+        try await engine.setOutputDevice(uid: "TestDeviceUID")
+        let d1 = await engine.currentAudioDeviceForTesting()
+        XCTAssertEqual(d1, "coreaudio_exclusive/TestDeviceUID")
+
+        try await engine.setHogMode(false)
+        let d2 = await engine.currentAudioDeviceForTesting()
+        XCTAssertEqual(d2, "coreaudio/TestDeviceUID")
+
+        try await engine.setHogMode(true)
+        let d3 = await engine.currentAudioDeviceForTesting()
+        XCTAssertEqual(d3, "coreaudio_exclusive/TestDeviceUID")
+    }
+
+    func testNilUidSelectsAutoRegardlessOfHogMode() async throws {
+        let engine = try LibmpvPlayerEngine()
+        defer { Task { await engine.shutdown() } }
+
+        try await engine.setOutputDevice(uid: nil)
+        try await engine.setHogMode(true)
+        let d1 = await engine.currentAudioDeviceForTesting()
+        XCTAssertEqual(d1, "auto")
+
+        try await engine.setHogMode(false)
+        let d2 = await engine.currentAudioDeviceForTesting()
+        XCTAssertEqual(d2, "auto")
+    }
 }

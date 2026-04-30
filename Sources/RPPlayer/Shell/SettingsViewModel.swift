@@ -11,6 +11,7 @@ final class SettingsViewModel: ObservableObject {
     @Published private(set) var outputDeviceUID: String?
     @Published private(set) var devices: [AudioDevice] = []
     @Published private(set) var isSignedIn: Bool = false
+    @Published private(set) var currentUsername: String?
 
     private let configStore: any ConfigStore
     private let deviceCatalog: any AudioDeviceCatalog
@@ -68,7 +69,7 @@ final class SettingsViewModel: ObservableObject {
                 await MainActor.run { self.devices = devices }
             }
         }
-        isSignedIn = auth.isLoggedIn
+        refreshAuthState()
     }
 
     func stop() async {
@@ -100,7 +101,7 @@ final class SettingsViewModel: ObservableObject {
 
     func signOut() async {
         await auth.clearCookie()
-        isSignedIn = auth.isLoggedIn
+        refreshAuthState()
     }
 
     func openLoginWindow() { openLoginWindowAction() }
@@ -108,6 +109,7 @@ final class SettingsViewModel: ObservableObject {
 
     func refreshAuthState() {
         isSignedIn = auth.isLoggedIn
+        currentUsername = auth.currentUsername
     }
 
     private func update(_ mutate: @Sendable (inout AppSettings) -> Void) async {
