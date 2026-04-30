@@ -39,7 +39,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         try await coordinator.play(channelId: 0)
         let apiCalls = await api.calls
         let engineCalls = await engine.recordedCalls()
-        XCTAssertEqual(apiCalls, [.getBlock(channel: 0, bitrate: 4, info: false)])
+        XCTAssertEqual(apiCalls, [.getBlock(channel: 0, bitrate: 4, info: true)])
         XCTAssertEqual(engineCalls, [.play(url: URL(string: "https://example.com/0-0.flac")!)])
     }
 
@@ -184,7 +184,7 @@ extension LivePlaybackCoordinatorTests {
         let apiCalls = await api.calls
         let engineCalls = await engine.recordedCalls()
         XCTAssertEqual(apiCalls.count, 2)
-        XCTAssertEqual(apiCalls.last, .getBlock(channel: 0, bitrate: 0, info: false))
+        XCTAssertEqual(apiCalls.last, .getBlock(channel: 0, bitrate: 0, info: true))
         XCTAssertEqual(engineCalls.last, .play(url: URL(string: "https://example.com/0-2.flac")!))
     }
 

@@ -61,7 +61,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
 
     public func play(channelId: Int) async throws {
         await ensureEventSubscription()
-        let block = try await api.getBlock(channel: channelId, bitrate: bitrate, info: false)
+        let block = try await api.getBlock(channel: channelId, bitrate: bitrate, info: true)
         let songs = BlockSongs.orderedSongs(from: block)
         guard !songs.isEmpty else { throw PlaybackCoordinatorError.blockHasNoSongs }
 
@@ -131,7 +131,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         } else {
             // Past the last song — fetch a fresh block from the same channel
             // and play from offset 0 (no cue tune-in: user's intent is "next block").
-            let block = try await api.getBlock(channel: channelId, bitrate: bitrate, info: false)
+            let block = try await api.getBlock(channel: channelId, bitrate: bitrate, info: true)
             let songs = BlockSongs.orderedSongs(from: block)
             guard !songs.isEmpty else { throw PlaybackCoordinatorError.blockHasNoSongs }
             currentBlock = block
@@ -248,7 +248,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         let api = self.api
         let bitrate = self.bitrate
         prefetchTask = Task { [weak self] in
-            let result = try? await api.getBlock(channel: channelId, bitrate: bitrate, info: false)
+            let result = try? await api.getBlock(channel: channelId, bitrate: bitrate, info: true)
             await self?.absorbPrefetchResult(result)
         }
     }
