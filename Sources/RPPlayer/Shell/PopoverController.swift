@@ -4,6 +4,7 @@ import SwiftUI
 @MainActor
 class PopoverController {
     static let contentSize = NSSize(width: 320, height: 420)
+    private static let escapeKeyCode: UInt16 = 53
 
     let panel: NSPanel
     private var globalClickMonitor: Any?
@@ -44,6 +45,9 @@ class PopoverController {
         // Activate so the panel comes to the foreground; otherwise the global
         // monitor never sees the user's outside clicks until they activate the app.
         NSApp.activate(ignoringOtherApps: true)
+        // Panel top sits flush with the menu-bar bottom (= the status item
+        // window's minY); using the button's bounds.minY would leave a 2-3 px
+        // gap because the button is shorter than its window.
         let panelSize = panel.frame.size
         let origin = NSPoint(
             x: buttonRectInScreen.midX - panelSize.width / 2,
@@ -71,7 +75,7 @@ class PopoverController {
         }
         if localKeyMonitor == nil {
             localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-                if event.keyCode == 53 {
+                if event.keyCode == Self.escapeKeyCode {
                     Task { @MainActor [weak self] in
                         self?.close()
                     }
