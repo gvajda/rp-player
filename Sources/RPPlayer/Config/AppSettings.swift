@@ -8,7 +8,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var softwareVolumeEnabled: Bool
     public var notificationsEnabled: Bool
     /// Radio Paradise bitrate code passed to `api/get_block`.
-    /// 0 = AAC 64 kbps, 1 = AAC 128 kbps, 2 = MP3 320 kbps, 3 = FLAC (compressed), 4 = FLAC (highest).
+    /// 0 = AAC 64 kbps, 1 = AAC 128 kbps, 2 = MP3 320 kbps, 3 = FLAC, 4 = FLAC (with metadata, the `flacm` stream).
     /// Default 4 to honour the project's bit-perfect goal.
     public var bitrate: Int
     public var outputDeviceUID: String?

@@ -87,6 +87,16 @@ final class MiniPlayerViewModel: ObservableObject {
             } catch {
                 errorMessage = "Pause failed: \(error.localizedDescription)"
             }
+        } else if nowPlaying != nil {
+            // Engine still has the previous block loaded — resume rather than
+            // re-fetch a new block, which would race with libmpv's audio device
+            // state and silently produce no sound.
+            do {
+                try await coordinator.resume()
+                isPlaying = true
+            } catch {
+                errorMessage = "Playback failed: \(error.localizedDescription)"
+            }
         } else {
             do {
                 try await coordinator.play(channelId: selectedChannelId)

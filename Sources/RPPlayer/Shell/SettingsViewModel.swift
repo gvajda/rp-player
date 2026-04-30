@@ -16,8 +16,7 @@ final class SettingsViewModel: ObservableObject {
     private let deviceCatalog: any AudioDeviceCatalog
     private let auth: any KeychainAuth
     private let openLoginWindowAction: @MainActor () -> Void
-    private let openDataFolderAction: @MainActor () -> Void
-    private let openLogsFolderAction: @MainActor () -> Void
+    private let openApplicationDataAction: @MainActor () -> Void
 
     private var configTask: Task<Void, Never>?
     private var deviceTask: Task<Void, Never>?
@@ -27,15 +26,13 @@ final class SettingsViewModel: ObservableObject {
         deviceCatalog: any AudioDeviceCatalog,
         auth: any KeychainAuth,
         openLoginWindow: @escaping @MainActor () -> Void,
-        openDataFolder: @escaping @MainActor () -> Void,
-        openLogsFolder: @escaping @MainActor () -> Void
+        openApplicationData: @escaping @MainActor () -> Void
     ) {
         self.configStore = configStore
         self.deviceCatalog = deviceCatalog
         self.auth = auth
         self.openLoginWindowAction = openLoginWindow
-        self.openDataFolderAction = openDataFolder
-        self.openLogsFolderAction = openLogsFolder
+        self.openApplicationDataAction = openApplicationData
 
         let snapshot = AppSettings.default
         self.selectedChannelId = snapshot.selectedChannelId
@@ -107,8 +104,7 @@ final class SettingsViewModel: ObservableObject {
     }
 
     func openLoginWindow() { openLoginWindowAction() }
-    func openDataFolder() { openDataFolderAction() }
-    func openLogsFolder() { openLogsFolderAction() }
+    func openApplicationData() { openApplicationDataAction() }
 
     func refreshAuthState() {
         isSignedIn = auth.isLoggedIn

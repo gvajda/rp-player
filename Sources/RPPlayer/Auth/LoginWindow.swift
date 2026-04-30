@@ -8,6 +8,7 @@ final class LoginWindowController: NSWindowController {
 
     private let webView: WKWebView
     private let keychainAuth: any KeychainAuth
+    var onLoginSucceeded: (@MainActor () -> Void)?
 
     init(keychainAuth: any KeychainAuth) {
         self.keychainAuth = keychainAuth
@@ -45,6 +46,7 @@ final class LoginWindowController: NSWindowController {
         isHandlingLogin = true
         do {
             try await keychainAuth.storeCookie(cookieString)
+            onLoginSucceeded?()
             close()
         } catch {
             // Keychain write failure is non-fatal: user can retry via login window.

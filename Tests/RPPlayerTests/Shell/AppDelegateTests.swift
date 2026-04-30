@@ -36,8 +36,7 @@ final class AppDelegateTests: XCTestCase {
                 deviceCatalog: deviceCatalog,
                 auth: auth,
                 openLoginWindow: { },
-                openDataFolder: { },
-                openLogsFolder: { }
+                openApplicationData: { }
             )
             let settingsWindowController = SettingsWindowController(viewModel: settingsViewModel)
             let loginWindowController = LoginWindowController(keychainAuth: auth)
@@ -87,7 +86,7 @@ final class AppDelegateTests: XCTestCase {
             )
             let settingsViewModel = SettingsViewModel(
                 configStore: configStore, deviceCatalog: deviceCatalog, auth: auth,
-                openLoginWindow: { }, openDataFolder: { }, openLogsFolder: { }
+                openLoginWindow: { }, openApplicationData: { }
             )
             let settingsWindowController = SettingsWindowController(viewModel: settingsViewModel)
             let loginWindowController = LoginWindowController(keychainAuth: auth)

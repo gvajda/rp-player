@@ -17,9 +17,6 @@ public enum ConfigPaths {
     }
 
     public static var logsDirectory: URL {
-        let base = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first!
-        return base
-            .appendingPathComponent("Logs", isDirectory: true)
-            .appendingPathComponent("RP Player", isDirectory: true)
+        applicationSupportRoot.appendingPathComponent("Logs", isDirectory: true)
     }
 }

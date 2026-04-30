@@ -29,8 +29,8 @@ struct SettingsView: View {
                 Text("AAC 64 kbps").tag(0)
                 Text("AAC 128 kbps").tag(1)
                 Text("MP3 320 kbps").tag(2)
-                Text("FLAC (compressed)").tag(3)
-                Text("FLAC (highest)").tag(4)
+                Text("FLAC").tag(3)
+                Text("FLAC (with metadata)").tag(4)
             }
         }
     }
@@ -59,8 +59,7 @@ struct SettingsView: View {
 
     private var dataSection: some View {
         Section("Data") {
-            Button("Show data folder") { viewModel.openDataFolder() }
-            Button("Show logs") { viewModel.openLogsFolder() }
+            Button("Show application data") { viewModel.openApplicationData() }
         }
     }
 

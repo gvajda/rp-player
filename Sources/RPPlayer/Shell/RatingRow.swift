@@ -7,22 +7,27 @@ struct RatingRow: View {
 
     var body: some View {
         VStack(spacing: 4) {
-            HStack(spacing: 6) {
+            HStack(spacing: 0) {
                 ForEach(1...10, id: \.self) { value in
                     Button {
                         onRate(value)
                     } label: {
                         Text("\(value)")
                             .font(.caption.monospacedDigit())
-                            .frame(width: 22, height: 22)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, minHeight: 22)
                             .background(background(for: value))
-                            .clipShape(Circle())
                     }
                     .buttonStyle(.plain)
                     .disabled(!isSignedIn)
                     .accessibilityLabel("Rate \(value)")
                 }
             }
+            .clipShape(RoundedRectangle(cornerRadius: 4))
+            .overlay(
+                RoundedRectangle(cornerRadius: 4)
+                    .strokeBorder(Color.secondary.opacity(0.25), lineWidth: 0.5)
+            )
             if !isSignedIn {
                 Text("Sign in to rate")
                     .font(.caption2)
@@ -33,8 +38,8 @@ struct RatingRow: View {
 
     private func background(for value: Int) -> some ShapeStyle {
         if let currentRating, value <= currentRating {
-            return AnyShapeStyle(Color.accentColor.opacity(0.6))
+            return AnyShapeStyle(Color.secondary.opacity(0.45))
         }
-        return AnyShapeStyle(Color.secondary.opacity(0.15))
+        return AnyShapeStyle(Color.secondary.opacity(0.1))
     }
 }

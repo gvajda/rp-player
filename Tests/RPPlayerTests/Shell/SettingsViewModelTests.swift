@@ -17,8 +17,7 @@ final class SettingsViewModelTests: XCTestCase {
             deviceCatalog: deviceCatalog,
             auth: auth,
             openLoginWindow: { },
-            openDataFolder: { },
-            openLogsFolder: { }
+            openApplicationData: { }
         )
     }
 
@@ -46,7 +45,7 @@ final class SettingsViewModelTests: XCTestCase {
         deviceCatalog = StubAudioDeviceCatalog(initial: [device])
         sut = SettingsViewModel(
             configStore: configStore, deviceCatalog: deviceCatalog, auth: auth,
-            openLoginWindow: { }, openDataFolder: { }, openLogsFolder: { }
+            openLoginWindow: { }, openApplicationData: { }
         )
 
         await sut.start()
@@ -106,24 +105,20 @@ final class SettingsViewModelTests: XCTestCase {
         sut = SettingsViewModel(
             configStore: configStore, deviceCatalog: deviceCatalog, auth: auth,
             openLoginWindow: { calls += 1 },
-            openDataFolder: { }, openLogsFolder: { }
+            openApplicationData: { }
         )
         sut.openLoginWindow()
         XCTAssertEqual(calls, 1)
     }
 
-    func testOpenDataFolderAndLogsFolderInvokeInjectedClosures() {
-        var dataCalls = 0
-        var logsCalls = 0
+    func testOpenApplicationDataInvokesInjectedClosure() {
+        var calls = 0
         sut = SettingsViewModel(
             configStore: configStore, deviceCatalog: deviceCatalog, auth: auth,
             openLoginWindow: { },
-            openDataFolder: { dataCalls += 1 },
-            openLogsFolder: { logsCalls += 1 }
+            openApplicationData: { calls += 1 }
         )
-        sut.openDataFolder()
-        sut.openLogsFolder()
-        XCTAssertEqual(dataCalls, 1)
-        XCTAssertEqual(logsCalls, 1)
+        sut.openApplicationData()
+        XCTAssertEqual(calls, 1)
     }
 }

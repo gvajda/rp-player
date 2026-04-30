@@ -20,7 +20,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var settingsViewModel: SettingsViewModel?
     private(set) var settingsWindowController: SettingsWindowController?
     private(set) var loginWindowController: LoginWindowController?
-    private var loginCloseBridge: LoginCloseBridge?
     private var coordinatorShutdown: (@Sendable () async -> Void)?
     private let bootstrap: () -> Bootstrap
 
@@ -42,12 +41,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.loginWindowController = result.loginWindowController
         self.coordinatorShutdown = result.coordinatorShutdown
 
-        let bridge = LoginCloseBridge { [weak self] in
+        result.loginWindowController.onLoginSucceeded = { [weak self] in
             self?.viewModel?.refreshAuthState()
             self?.settingsViewModel?.refreshAuthState()
         }
-        result.loginWindowController.window?.delegate = bridge
-        self.loginCloseBridge = bridge
 
         Task { await result.notificationCoordinator.start() }
 
@@ -115,6 +112,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             bitrate: initial.bitrate
         )
 
+        // Bridge persistent audio settings → engine. The stream yields the
+        // current snapshot first, so initial hog-mode + device UID get applied
+        // before the user ever opens the popover. Subsequent settings changes
+        // propagate on every save. mpv applies these on next file-load, so
+        // toggling mid-playback requires a stop/play to take effect.
+        if let store {
+            Task { [engine] in
+                let stream = await store.changes
+                for await settings in stream {
+                    try? await engine.setHogMode(settings.hogModeEnabled)
+                    try? await engine.setOutputDevice(uid: settings.outputDeviceUID)
+                }
+            }
+        }
+
         let deviceCatalog = CoreAudioDeviceCatalog(lister: CoreAudioDeviceLister())
 
         // UNUserNotificationCenter.current() throws on unbundled processes
@@ -148,8 +160,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             deviceCatalog: deviceCatalog,
             auth: keychainAuth,
             openLoginWindow: { [loginWindowController] in loginWindowController.show() },
-            openDataFolder: { NSWorkspace.shared.open(ConfigPaths.applicationSupportRoot) },
-            openLogsFolder: { NSWorkspace.shared.open(ConfigPaths.logsDirectory) }
+            openApplicationData: {
+                try? FileManager.default.createDirectory(
+                    at: ConfigPaths.applicationSupportRoot, withIntermediateDirectories: true
+                )
+                NSWorkspace.shared.open(ConfigPaths.applicationSupportRoot)
+            }
         )
 
         let settingsWindowController = SettingsWindowController(viewModel: settingsViewModel)
@@ -187,19 +203,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
               let settings = try? JSONDecoder().decode(AppSettings.self, from: data)
         else { return .default }
         return settings
-    }
-}
-
-@MainActor
-private final class LoginCloseBridge: NSObject, NSWindowDelegate {
-    private let onClose: @MainActor () -> Void
-
-    init(onClose: @escaping @MainActor () -> Void) {
-        self.onClose = onClose
-    }
-
-    func windowWillClose(_ notification: Notification) {
-        onClose()
     }
 }
 

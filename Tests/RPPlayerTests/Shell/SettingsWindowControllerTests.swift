@@ -10,7 +10,7 @@ final class SettingsWindowControllerTests: XCTestCase {
             configStore: StubConfigStore(initial: AppSettings.default),
             deviceCatalog: StubAudioDeviceCatalog(initial: []),
             auth: StubKeychainAuth(),
-            openLoginWindow: { }, openDataFolder: { }, openLogsFolder: { }
+            openLoginWindow: { }, openApplicationData: { }
         )
         let sut = SettingsWindowController(viewModel: viewModel)
         let window = sut.window!
@@ -25,7 +25,7 @@ final class SettingsWindowControllerTests: XCTestCase {
             configStore: StubConfigStore(initial: AppSettings.default),
             deviceCatalog: StubAudioDeviceCatalog(initial: []),
             auth: StubKeychainAuth(),
-            openLoginWindow: { }, openDataFolder: { }, openLogsFolder: { }
+            openLoginWindow: { }, openApplicationData: { }
         )
         let sut = SettingsWindowController(viewModel: viewModel)
         XCTAssertFalse(sut.isVisible)

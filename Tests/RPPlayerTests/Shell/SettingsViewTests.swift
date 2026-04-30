@@ -11,8 +11,7 @@ final class SettingsViewTests: XCTestCase {
             deviceCatalog: StubAudioDeviceCatalog(initial: []),
             auth: StubKeychainAuth(),
             openLoginWindow: { },
-            openDataFolder: { },
-            openLogsFolder: { }
+            openApplicationData: { }
         )
         let host = NSHostingController(rootView: SettingsView(viewModel: viewModel))
         host.loadView()
