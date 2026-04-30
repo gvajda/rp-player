@@ -16,7 +16,7 @@ public protocol NotificationService: Sendable {
 public actor LiveNotificationService: NotificationService {
     private let center: any UNUserNotificationCenterProtocol
 
-    public init(center: any UNUserNotificationCenterProtocol = UNUserNotificationCenter.current()) {
+    public init(center: any UNUserNotificationCenterProtocol) {
         self.center = center
     }
 

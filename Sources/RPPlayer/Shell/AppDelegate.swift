@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import SwiftUI
+import UserNotifications
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -97,7 +98,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             bitrate: initial.bitrate
         )
 
-        let notificationService = LiveNotificationService()
+        // UNUserNotificationCenter.current() throws on unbundled processes
+        // (no main bundle proxy). PR 12 ships the .app; until then `swift run`
+        // gets a no-op service so the rest of the wiring still constructs.
+        let notificationService: any NotificationService =
+            Bundle.main.bundleIdentifier != nil
+                ? LiveNotificationService(center: UNUserNotificationCenter.current())
+                : NoopNotificationService()
         let notificationCoordinator = NotificationCoordinator(
             coordinator: coordinator,
             cache: cache,
@@ -147,6 +154,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         else { return .default }
         return settings
     }
+}
+
+private struct NoopNotificationService: NotificationService {
+    func requestAuthorization() async throws -> Bool { false }
+    func notify(title: String, subtitle: String, attachmentURL: URL?) async throws {}
 }
 
 private struct NoopAlbumArtCache: AlbumArtCache {
