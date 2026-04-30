@@ -20,15 +20,15 @@ macOS menu-bar app (Swift 6.2, macOS 13, SwiftUI + AppKit) that plays Radio Para
 | 4 | merged to main | ✅ | AudioDeviceCatalog |
 | 5a | merged to main | ✅ | libmpv vendoring + RPSmoke CLI |
 | 5b | merged to main | ✅ | PlayerEngine (libmpv Swift actor) |
-| 6 | **next** | ⬜ | PlaybackCoordinator |
-| 7 | pending | ⬜ | AppKit shell (NSStatusItem + NSPopover) |
-| 8 | pending | ⬜ | MiniPlayerView (SwiftUI) |
+| 6 | merged to main | ✅ | PlaybackCoordinator |
+| 7 | merged to main | ✅ | AppKit shell (NSStatusItem + borderless NSPanel hosting placeholder) |
+| 8 | **next** | ⬜ | MiniPlayerView (SwiftUI) |
 | 9 | pending | ⬜ | NotificationCenterWrapper + AlbumArtCache |
 | 10 | pending | ⬜ | SettingsView |
 | 11 | pending | ⬜ | AppContainer (composition root) |
 | 12 | pending | ⬜ | Distribution CI workflow |
 
-PR 6 scope: orchestrate playback via `LivePlaybackCoordinator` actor — fetches blocks, drives `PlayerEngine`, tracks song boundary, prefetches the next block when `currentSongIndex == lastIndex` and remaining time < 10 s, and swaps gaplessly on EOF. Out of scope (deferred to a follow-up PR): network retry-with-backoff, hog-mode fallback, auth-expiry detection, block-expiration recovery after long pause.
+PR 7 shipped scope: AppKit shell scaffold — `NSStatusItem` (variable length, template `music.note` SF Symbol) toggles a borderless `NSPanel` that hosts `AppShellPlaceholderView` (SwiftUI). The panel uses `.nonactivatingPanel` style + global event monitor for outside-click dismissal. PR 8 replaces the placeholder body with `MiniPlayerView`. Out of scope (deferred): coordinator wiring (PR 11), main-menu/`Cmd-Q` (PR 11), `LSUIElement` Info.plist (PR 12).
 
 ---
 
@@ -60,6 +60,10 @@ PR 6 scope: orchestrate playback via `LivePlaybackCoordinator` actor — fetches
 - `LivePlaybackCoordinator` triggers the next-block prefetch when `currentSongIndex == orderedSongs.count - 1` AND `(totalDurationSeconds - currentPositionSeconds) < 10.0`. The 10-second window matches DESIGN.md §5.6 and gives the network round-trip plenty of margin before EOF. Only one prefetch per block (guarded by `prefetchedBlock == nil && prefetchTask == nil`).
 - `LivePlaybackCoordinator.play(channelId:)` issues the cue tune-in by waiting for `PlayerEvent.fileLoaded`, then calling `engine.seek(to: cueSeconds)`. The cue seek is bypassed for prefetch-driven block swaps and for skip-forward-past-last-song — both intentionally start the new block from offset 0.
 - `LivePlaybackCoordinator` lazy-subscribes to `PlayerEngine.events` from inside `play()` via `await ensureEventSubscription()`, NOT from `init`. This is deterministic: by the time `play()` issues the engine command, the actor has already registered an `events` continuation, so events fired by the engine cannot race ahead of the subscription. The init-time `Task { ... }` bootstrap pattern was rejected here because subscription order matters.
+- The shell uses `NSApp.setActivationPolicy(.accessory)` set at runtime (not `LSUIElement` in an Info.plist) because SPM executable targets do not ship an Info.plist. PR 12 introduces the real `.app` bundle and may move this into `LSUIElement`; until then the runtime call is the only way to suppress the Dock icon.
+- The PR 7 menu-bar popup is a borderless `NSPanel` (style `[.borderless, .nonactivatingPanel]`, level `.statusBar`), NOT an `NSPopover`. The plan originally specified `NSPopover`; smoke testing on macOS 26 (Darwin 25.3.0) showed the bubble arrow rendering on top of the status item icon and `.transient` dismissal failing for `.accessory`-policy apps until the panel was clicked. The borderless `NSPanel` gives full positioning control (panel top is aligned to `buttonWindow.frame.minY`, not the button frame, so the panel sits flush with the menu bar without a 2–3 px gap) and uses an `NSEvent.addGlobalMonitorForEvents` global click monitor for outside-click dismissal. Rounded corners are drawn on the content view's layer (`cornerRadius = 10`, `masksToBounds = true`) with the panel itself transparent (`isOpaque = false`, `backgroundColor = .clear`) so the rounded shape shows through and the system shadow follows it.
+- `PopoverController` is a non-`final` class (not a struct) only so tests can override `isShown`. The shell otherwise has no protocol abstractions — PR 11 (`AppContainer`) is the right place to introduce them if real dependencies need to be mocked.
+- `swift test --parallel` currently fails on `KeychainStoreTests.testSaveOverwritesExisting` with `errSecDuplicateItem (-25299)` — multiple test processes race on the same keychain account. Pre-existing (visible since PR 3); not introduced by PR 7. Workaround: use serial `swift test`. Proper fix is to scope each test to a unique keychain account namespace; deferred until it actually blocks something.
 
 ---
 
@@ -80,6 +84,7 @@ PR 6 scope: orchestrate playback via `LivePlaybackCoordinator` actor — fetches
 - After PR 5a: 48 tests
 - After PR 5b: 67 tests
 - After PR 6: 93 tests
+- After PR 7: 101 tests
 
 ---
 
