@@ -36,8 +36,12 @@ final class AppContainer {
     }
 
     func runOnLaunchTasks() async {
-        for task in onLaunchTasksClosures {
-            await task()
+        await withTaskGroup(of: Void.self) { group in
+            for task in onLaunchTasksClosures {
+                group.addTask {
+                    await task()
+                }
+            }
         }
     }
 }
@@ -194,22 +198,22 @@ extension AppContainer {
 }
 
 // Fallback when JSONConfigStore fails to open so SettingsViewModel still constructs.
-final class NoopConfigStore: ConfigStore {
+private final class NoopConfigStore: ConfigStore {
     var settings: AppSettings { .default }
     var changes: AsyncStream<AppSettings> { AsyncStream { $0.finish() } }
     func update(_ mutate: @Sendable (inout AppSettings) -> Void) async throws {}
 }
 
-struct NoopNotificationService: NotificationService {
+private struct NoopNotificationService: NotificationService {
     func requestAuthorization() async throws -> Bool { false }
     func notify(title: String, subtitle: String, attachmentURL: URL?) async throws {}
 }
 
-struct NoopAlbumArtCache: AlbumArtCache {
+private struct NoopAlbumArtCache: AlbumArtCache {
     func image(for coverPath: String) async -> NSImage? { nil }
 }
 
-struct NoopPlayerEngine: PlayerEngine {
+private struct NoopPlayerEngine: PlayerEngine {
     let error: Error
     var events: AsyncStream<PlayerEvent> { AsyncStream { $0.finish() } }
     func play(url: URL) async throws { throw error }

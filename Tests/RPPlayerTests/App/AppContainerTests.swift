@@ -11,6 +11,32 @@ private actor LaunchTaskCounter {
     func increment() { count += 1 }
 }
 
+private actor AsyncSemaphore {
+    private var permits: Int
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    init(value: Int) { self.permits = value }
+
+    func signal() {
+        if let cont = waiters.first {
+            waiters.removeFirst()
+            cont.resume()
+        } else {
+            permits += 1
+        }
+    }
+
+    func wait() async {
+        if permits > 0 {
+            permits -= 1
+            return
+        }
+        await withCheckedContinuation { cont in
+            waiters.append(cont)
+        }
+    }
+}
+
 @MainActor
 final class AppContainerTests: XCTestCase {
     private func makeStubContainer(
@@ -91,5 +117,38 @@ final class AppContainerTests: XCTestCase {
     func testRunOnLaunchTasksWithEmptyArrayReturnsImmediately() async throws {
         let (container, _, _, _) = makeStubContainer(onLaunchTasks: [])
         await container.runOnLaunchTasks()
+    }
+
+    func testRunOnLaunchTasksRunsClosuresConcurrently() async throws {
+        let counter = LaunchTaskCounter()
+        let started = AsyncSemaphore(value: 0)
+        let canFinish = AsyncSemaphore(value: 0)
+
+        let (container, _, _, _) = makeStubContainer(
+            onLaunchTasks: [
+                {
+                    await started.signal()
+                    await canFinish.wait()
+                    await counter.increment()
+                },
+                {
+                    await started.signal()
+                    await canFinish.wait()
+                    await counter.increment()
+                },
+            ]
+        )
+
+        let runTask = Task { await container.runOnLaunchTasks() }
+
+        await started.wait()
+        await started.wait()
+
+        await canFinish.signal()
+        await canFinish.signal()
+
+        await runTask.value
+        let count = await counter.count
+        XCTAssertEqual(count, 2)
     }
 }
