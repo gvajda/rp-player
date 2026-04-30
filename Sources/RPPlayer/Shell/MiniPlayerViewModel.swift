@@ -15,6 +15,7 @@ final class MiniPlayerViewModel: ObservableObject {
     private let api: any RpApiClient
     private let persistChannelId: PersistChannelId
     private var subscriptionTask: Task<Void, Never>?
+    private var inFlightChannelId: Int?
 
     init(
         coordinator: any PlaybackCoordinator,
@@ -59,6 +60,7 @@ final class MiniPlayerViewModel: ObservableObject {
     }
 
     func togglePlayPause() async {
+        errorMessage = nil
         if isPlaying {
             do {
                 try await coordinator.pause()
@@ -77,6 +79,7 @@ final class MiniPlayerViewModel: ObservableObject {
     }
 
     func skipForward() async {
+        errorMessage = nil
         do {
             try await coordinator.skipForward()
         } catch {
@@ -86,18 +89,20 @@ final class MiniPlayerViewModel: ObservableObject {
 
     func selectChannel(_ id: Int) async {
         guard id != selectedChannelId else { return }
+        errorMessage = nil
         let previous = selectedChannelId
         selectedChannelId = id
+        inFlightChannelId = id
         do {
             try await coordinator.changeChannel(to: id)
+            guard inFlightChannelId == id else { return }
+            inFlightChannelId = nil
             await persistChannelId(id)
         } catch {
+            guard inFlightChannelId == id else { return }
+            inFlightChannelId = nil
             selectedChannelId = previous
             errorMessage = "Channel change failed: \(error.localizedDescription)"
         }
-    }
-
-    func setIsPlayingForTesting(_ value: Bool) {
-        isPlaying = value
     }
 }

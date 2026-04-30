@@ -52,12 +52,10 @@ final class MiniPlayerViewModelTests: XCTestCase {
     }
 
     func testTogglePlayPausePausesWhenPlaying() async throws {
-        sut.setIsPlayingForTesting(true)
-
         await sut.togglePlayPause()
-
+        await sut.togglePlayPause()
         let calls = await coordinator.recordedCalls()
-        XCTAssertEqual(calls, [.pause])
+        XCTAssertEqual(calls, [.play(channelId: 0), .pause])
         XCTAssertFalse(sut.isPlaying)
     }
 
@@ -97,5 +95,24 @@ final class MiniPlayerViewModelTests: XCTestCase {
         await model.selectChannel(2)
         let calls = await capture.calls
         XCTAssertEqual(calls, [2])
+    }
+
+    func testSuccessfulOperationClearsPriorErrorMessage() async throws {
+        await coordinator.setNextError(NSError(domain: "test", code: 1))
+        await sut.skipForward()
+        XCTAssertNotNil(sut.errorMessage)
+
+        await sut.skipForward()
+        XCTAssertNil(sut.errorMessage)
+    }
+
+    func testSelectChannelSecondCallSupersedesFirst() async throws {
+        let model = sut!
+        async let first: Void = model.selectChannel(2)
+        async let second: Void = model.selectChannel(5)
+        _ = await (first, second)
+        XCTAssertEqual(sut.selectedChannelId, 5)
+        let calls = await coordinator.recordedCalls()
+        XCTAssertEqual(calls.count, 2)
     }
 }
