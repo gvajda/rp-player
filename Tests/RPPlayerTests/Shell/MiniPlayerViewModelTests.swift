@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 @testable import RPPlayer
 
@@ -10,7 +11,12 @@ final class MiniPlayerViewModelTests: XCTestCase {
     override func setUp() async throws {
         coordinator = MockPlaybackCoordinator()
         api = MockRpApiClient()
-        sut = MiniPlayerViewModel(coordinator: coordinator, api: api, initialChannelId: 0)
+        sut = MiniPlayerViewModel(
+            coordinator: coordinator,
+            api: api,
+            initialChannelId: 0,
+            albumArtCache: StubArtCache()
+        )
     }
 
     override func tearDown() async throws {
@@ -90,6 +96,7 @@ final class MiniPlayerViewModelTests: XCTestCase {
             coordinator: coord,
             api: api,
             initialChannelId: 0,
+            albumArtCache: StubArtCache(),
             persistChannelId: { id in await capture.record(id) }
         )
         await model.selectChannel(2)
@@ -114,5 +121,47 @@ final class MiniPlayerViewModelTests: XCTestCase {
         XCTAssertEqual(sut.selectedChannelId, 5)
         let calls = await coordinator.recordedCalls()
         XCTAssertEqual(calls.count, 2)
+    }
+
+    func testCurrentArtLoadsFromCacheOnNowPlayingUpdate() async throws {
+        let cache = StubArtCache()
+        cache.imageByPath["covers/l/1.jpg"] = NSImage(size: NSSize(width: 1, height: 1))
+        let model = MiniPlayerViewModel(
+            coordinator: coordinator,
+            api: api,
+            initialChannelId: 0,
+            albumArtCache: cache
+        )
+        await model.start()
+        let np = NowPlaying.fixture(cover: "covers/l/1.jpg")
+        await coordinator.setNowPlaying(np)
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertNotNil(model.currentArt)
+        XCTAssertEqual(cache.requestedPaths, ["covers/l/1.jpg"])
+    }
+
+    func testCurrentArtClearsWhenNowPlayingHasNoCover() async throws {
+        let cache = StubArtCache()
+        let model = MiniPlayerViewModel(
+            coordinator: coordinator,
+            api: api,
+            initialChannelId: 0,
+            albumArtCache: cache
+        )
+        await model.start()
+        await coordinator.setNowPlaying(NowPlaying.fixture(cover: nil))
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertNil(model.currentArt)
+        XCTAssertTrue(cache.requestedPaths.isEmpty)
+    }
+}
+
+@MainActor
+final class StubArtCache: AlbumArtCache {
+    var imageByPath: [String: NSImage] = [:]
+    var requestedPaths: [String] = []
+    func image(for coverPath: String) async -> NSImage? {
+        await MainActor.run { self.requestedPaths.append(coverPath) }
+        return await MainActor.run { self.imageByPath[coverPath] }
     }
 }

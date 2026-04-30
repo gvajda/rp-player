@@ -2,6 +2,10 @@ import AppKit
 import Foundation
 import SwiftUI
 
+private struct NoopAlbumArtCache: AlbumArtCache {
+    func image(for coverPath: String) async -> NSImage? { nil }
+}
+
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     struct Bootstrap {
@@ -81,6 +85,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             coordinator: coordinator,
             api: api,
             initialChannelId: initial.selectedChannelId,
+            albumArtCache: NoopAlbumArtCache(),
             persistChannelId: { id in
                 guard let store else { return }
                 try? await store.update { $0.selectedChannelId = id }

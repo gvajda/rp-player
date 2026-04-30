@@ -8,7 +8,12 @@ final class MiniPlayerViewTests: XCTestCase {
     func testHostingControllerRendersWithoutCrash() {
         let coordinator = MockPlaybackCoordinator()
         let api = MockRpApiClient()
-        let viewModel = MiniPlayerViewModel(coordinator: coordinator, api: api, initialChannelId: 0)
+        let viewModel = MiniPlayerViewModel(
+            coordinator: coordinator,
+            api: api,
+            initialChannelId: 0,
+            albumArtCache: StubArtCache()
+        )
         let host = NSHostingController(rootView: MiniPlayerView(viewModel: viewModel))
         host.loadView()
         XCTAssertNotNil(host.view)

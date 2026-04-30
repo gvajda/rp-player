@@ -13,7 +13,8 @@ final class AppDelegateTests: XCTestCase {
             let viewModel = MiniPlayerViewModel(
                 coordinator: coordinator,
                 api: api,
-                initialChannelId: 0
+                initialChannelId: 0,
+                albumArtCache: StubArtCache()
             )
             return AppDelegate.Bootstrap(
                 viewModel: viewModel,

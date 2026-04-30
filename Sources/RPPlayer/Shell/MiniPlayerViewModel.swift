@@ -1,3 +1,4 @@
+import AppKit
 import Combine
 import Foundation
 
@@ -8,11 +9,13 @@ final class MiniPlayerViewModel: ObservableObject {
     @Published private(set) var channels: [Channel] = []
     @Published private(set) var selectedChannelId: Int
     @Published private(set) var errorMessage: String?
+    @Published private(set) var currentArt: NSImage?
 
     typealias PersistChannelId = @Sendable (Int) async -> Void
 
     private let coordinator: any PlaybackCoordinator
     private let api: any RpApiClient
+    private let albumArtCache: any AlbumArtCache
     private let persistChannelId: PersistChannelId
     private var subscriptionTask: Task<Void, Never>?
     private var inFlightChannelId: Int?
@@ -21,10 +24,12 @@ final class MiniPlayerViewModel: ObservableObject {
         coordinator: any PlaybackCoordinator,
         api: any RpApiClient,
         initialChannelId: Int,
+        albumArtCache: any AlbumArtCache,
         persistChannelId: @escaping PersistChannelId = { _ in }
     ) {
         self.coordinator = coordinator
         self.api = api
+        self.albumArtCache = albumArtCache
         self.selectedChannelId = initialChannelId
         self.persistChannelId = persistChannelId
     }
@@ -52,6 +57,7 @@ final class MiniPlayerViewModel: ObservableObject {
                     self.nowPlaying = np
                     self.isPlaying = true
                 }
+                await self.loadArt(for: np)
             }
         }
     }
@@ -106,5 +112,14 @@ final class MiniPlayerViewModel: ObservableObject {
             selectedChannelId = previous
             errorMessage = "Channel change failed: \(error.localizedDescription)"
         }
+    }
+
+    private func loadArt(for np: NowPlaying) async {
+        guard let cover = np.song.cover else {
+            await MainActor.run { self.currentArt = nil }
+            return
+        }
+        let image = await albumArtCache.image(for: cover)
+        await MainActor.run { self.currentArt = image }
     }
 }
