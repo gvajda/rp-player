@@ -5,14 +5,16 @@ import XCTest
 
 @MainActor
 final class PopoverControllerTests: XCTestCase {
-    func testInitConfiguresPopoverContentSizeAndBehavior() {
+    func testInitConfiguresBorderlessPanelWithHostedSwiftUIContent() {
         let controller = PopoverController()
-        XCTAssertEqual(controller.popover.contentSize, NSSize(width: 320, height: 420))
-        XCTAssertEqual(controller.popover.behavior, .transient)
-        XCTAssertTrue(controller.popover.contentViewController is NSHostingController<AppShellPlaceholderView>)
+        XCTAssertEqual(controller.panel.frame.size, NSSize(width: 320, height: 420))
+        XCTAssertTrue(controller.panel.styleMask.contains(.borderless))
+        XCTAssertTrue(controller.panel.styleMask.contains(.nonactivatingPanel))
+        XCTAssertEqual(controller.panel.level, .statusBar)
+        XCTAssertTrue(controller.panel.contentView is NSHostingView<AppShellPlaceholderView>)
     }
 
-    func testIsShownReflectsPopoverState() {
+    func testIsShownReflectsPanelVisibility() {
         let controller = PopoverController()
         XCTAssertFalse(controller.isShown)
     }

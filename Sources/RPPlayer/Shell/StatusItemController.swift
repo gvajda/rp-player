@@ -21,7 +21,13 @@ final class StatusItemController {
 
         self.statusItem = item
         self.popover = popover
-        self.showHandler = show ?? { anchor in popover.show(relativeTo: anchor) }
+        // .accessory apps need an explicit activate so the popover gets key focus —
+        // without it, .transient won't dismiss on outside click and layout can place
+        // the popover on top of the status item.
+        self.showHandler = show ?? { anchor in
+            NSApp.activate(ignoringOtherApps: true)
+            popover.show(relativeTo: anchor)
+        }
         self.closeHandler = close ?? { popover.close() }
 
         item.button?.target = self
