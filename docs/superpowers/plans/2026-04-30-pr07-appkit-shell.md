@@ -1,5 +1,7 @@
 # PR 7 — AppKit Shell Implementation Plan
 
+> **Implementation note (post-merge):** smoke testing on macOS 26 (Darwin 25.3.0) showed that `NSPopover` rendered its bubble arrow on top of the status item icon and that `.transient` dismissal failed for `.accessory`-policy apps until the popover was clicked once. The shipped implementation replaces `NSPopover` with a borderless `NSPanel` (style `[.borderless, .nonactivatingPanel]`, level `.statusBar`, transparent background, content view layer with rounded corners) plus an `NSEvent.addGlobalMonitorForEvents` global click monitor for outside-click dismissal. Panel top is aligned to the status-item window's `frame.minY` (menu-bar bottom) to avoid a small gap. The plan text below is unchanged for historical context — see `CLAUDE.md` "Key technical decisions" for the full rationale.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace the hello-world entry point with a real menu-bar shell — `NSStatusItem` in the system menu bar that toggles an `NSPopover` hosting a SwiftUI placeholder view. PR 8 fills the popover with `MiniPlayerView`; this PR only lands the scaffolding.

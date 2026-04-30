@@ -5,21 +5,32 @@ import XCTest
 @MainActor
 final class StatusItemControllerTests: XCTestCase {
     private var popoverController: PopoverController!
+    private var createdControllers: [StatusItemController] = []
     private var showCount = 0
     private var closeCount = 0
 
     override func setUp() async throws {
         popoverController = PopoverController()
+        createdControllers = []
         showCount = 0
         closeCount = 0
     }
 
+    override func tearDown() async throws {
+        for controller in createdControllers {
+            NSStatusBar.system.removeStatusItem(controller.statusItem)
+        }
+        createdControllers = []
+    }
+
     private func makeController() -> StatusItemController {
-        StatusItemController(
+        let controller = StatusItemController(
             popover: popoverController,
             show: { [unowned self] _ in self.showCount += 1 },
             close: { [unowned self] in self.closeCount += 1 }
         )
+        createdControllers.append(controller)
+        return controller
     }
 
     func testButtonImageAndTooltipAreConfigured() {
@@ -48,6 +59,7 @@ final class StatusItemControllerTests: XCTestCase {
             show: { [unowned self] _ in self.showCount += 1 },
             close: { [unowned self] in self.closeCount += 1 }
         )
+        createdControllers.append(controller)
         controller.toggle()
         XCTAssertEqual(showCount, 0)
         XCTAssertEqual(closeCount, 1)
