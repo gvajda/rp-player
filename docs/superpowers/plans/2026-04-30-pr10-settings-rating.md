@@ -1450,3 +1450,39 @@ Then fast-forward merge to `main` from `/Users/gergely/git/rp-player`.
 - **Test count math:** previous = 127, expected new ≈ 145 (+18). Adjust CLAUDE.md to actual.
 - **No regression:** `swift build` clean, `swift test` 100% pass, manual smoke green for visible behavior.
 - **Plan-vs-shipped drift:** record any compile-time deviations in an "Implementation deviations" section before merging (PR 9's pattern).
+
+---
+
+## Implementation deviations (post-execution, round 1)
+
+- `AudioDevice` does NOT have `isBitPerfectRecommended` — that lives on `TransportType`. Plan's Task 1 sample test code referenced it incorrectly; fix landed in Task 1 implementation.
+- `KeychainAuth.clearCookie()` is `async`, NOT `async throws`. `KeychainAuth` extends `CookieProvider`, so `StubKeychainAuth` had to add `currentCookie() async -> String?`. Plan's Task 1 sample code missed both; fix landed in Task 1 stubs.
+- `CoreAudioDeviceCatalog.init` requires a `lister: CoreAudioDeviceLister()` argument (not zero-arg). Plan's Task 6 sample said `CoreAudioDeviceCatalog()`; fix landed in Task 6.
+- `SettingsWindowController.init` needs an explicit `window.setContentSize(Self.contentSize)` after `contentViewController` assignment, otherwise the hosted SwiftUI view collapses to 0×0 before its `.frame(...)` lays out. Plan's Task 3 sample code missed this; fix landed in Task 3.
+- `LoginCloseBridge` (NSWindowDelegate-based) was deleted in round-1 smoke fixes. The bridge fired on every window close (including cancel), and the keychain write timing did not always observe before `refreshAuthState` ran. Replaced by `LoginWindowController.onLoginSucceeded: (@MainActor () -> Void)?` closure called immediately after a successful `keychainAuth.storeCookie(...)`, before `close()`. AppDelegate sets the closure in `applicationDidFinishLaunching`.
+- `ConfigPaths.logsDirectory` migrated from `~/Library/Logs/RP Player` to `~/Library/Application Support/RP Player/Logs` per round-1 user feedback. Single "Show application data" button replaces the previous Show data folder + Show logs pair. `SettingsViewModel` API: `openDataFolder` + `openLogsFolder` → `openApplicationData`.
+- Settings → engine bridge added in `realBootstrap` so persisted hog-mode + output-device-UID actually reach `LibmpvPlayerEngine`. mpv applies these on next file-load; mid-playback toggle requires stop/play.
+- `MiniPlayerViewModel.togglePlayPause` distinguishes resume (when `nowPlaying != nil`) from play (initial). Without this, post-pause click silently fetched a new block and lost audio device state.
+
+---
+
+## Open follow-ups (carry into next session)
+
+PR 10 is **NOT yet merged** — round-1 smoke landed fixes, but three issues remain from round 2 of smoke. Pick up from HEAD `ba9fa7b` on branch `claude/unruffled-hellman-cdc237`.
+
+1. **Logs subfolder doesn't appear in Application Support.** `ConfigPaths.logsDirectory` resolves to `~/Library/Application Support/RP Player/Logs` but the folder is only created lazily by `RotatingFileSink` on first log write. Production `realBootstrap` constructs `AppLogger(category: "shell")` with `sink: nil` — no file sink is wired. Fix options:
+   - Wire `RotatingFileSink(directory: ConfigPaths.logsDirectory, ...)` into `AppLogger.init(category:sink:minimumLevel:)` in `realBootstrap` so logs actually land on disk. Then the folder gets created on first emit (which happens at startup via the existing `logger.error` / `logger.info` calls).
+   - OR eagerly create the directory inside `realBootstrap` even without a file sink, so the user can always see the (currently empty) folder.
+   The first option is the right architectural fix — there's no point shipping a Settings → Show application data button if the app produces no on-disk logs.
+
+2. **Hog mode wiring needs further smoke testing.** Round-1 added the ConfigStore → engine binder. User confirmed the device picker works (engine receives the new UID). Hog mode toggle was not exhaustively verified; user said "needs further testing." Suspect interaction with mpv's `audio-exclusive` property timing — toggling mid-playback won't apply until the next `play(url:)` call. PR 11 / PR 12 should verify the full matrix: hog on + USB DAC, hog off + AirPlay, hog on + Bluetooth (should fall back), and so on.
+
+3. **Rating POST fails with `RpApiError error 1` (= `.invalidResponse(statusCode:body:)`).** Server returned a non-2xx for `api/rate?song_id=...&rating=...`. Likely root causes (in order of probability):
+   - The cookie format `KeychainCookieProvider` returns may not match what RP's auth-state-checking endpoint expects. Check what cookies the legacy Windows app sends vs. what the keychain blob contains. The `LoginWindowController.rpCookieString` filters for exactly `C_username`, `C_passwd`, `C_validated` and joins with `; ` — verify that's the format `api/rate` accepts.
+   - `api/rate` may require a POST not a GET. Check `LiveRpApiClient.rate(songId:rating:)` — currently uses the same `get(path:query:)` helper as everything else. Inspect the legacy C# client's `Rate` call and a fresh capture from RP's webapp.
+   - Auth state may not survive the request — check `Console.app` filtered on `RPPlayer` for the actual HTTP status code logged by `LiveRpApiClient.get`. The error case logs `"HTTP <code> for <url>"` — that's the diagnostic.
+   - Capture a real successful `api/rate` call (e.g. via the RP web player's network tab while logged in) and replay against `LiveRpApiClient` to compare. Save the fixture under `Tests/RPPlayerTests/Fixtures/Api/rate_success.json` for the test suite.
+
+   Recommended approach for the next session: add a debug log of `(url, method, cookieString)` in `LiveRpApiClient.get` (gated on debug build), reproduce the 4xx, then triangulate by comparing cookie + URL + method against a working capture.
+
+When all three are addressed, round-2 smoke can complete and PR 10 can merge. The merge command (from `/Users/gergely/git/rp-player`) is the standard `git merge --ff-only claude/unruffled-hellman-cdc237`.

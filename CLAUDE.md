@@ -24,11 +24,13 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 | 7 | merged to main | ✅ | AppKit shell (NSStatusItem + borderless NSPanel hosting placeholder) |
 | 8 | merged to main | ✅ | MiniPlayerView (SwiftUI) + AppDelegate real-graph wiring |
 | 9 | merged to main | ✅ | NotificationCoordinator + AlbumArtCache + album art in MiniPlayerView |
-| 10 | **next** | ⬜ | SettingsView + rating row |
+| 10 | **in progress** (round-2 smoke) | 🟡 | SettingsView + rating row + KeychainCookieProvider + login flow |
 | 11 | pending | ⬜ | AppContainer (composition root) |
 | 12 | pending | ⬜ | Distribution CI workflow |
 
 PR 9 shipped scope: `LiveAlbumArtCache` actor (on-disk LRU at `ConfigPaths.albumArtCacheDirectory`, 20 files / 10 MB, SHA-256 keys, in-flight de-dup, validates `NSImage(data:)` before persisting), `LiveNotificationService` actor (wraps `UNUserNotificationCenter` behind `UNUserNotificationCenterProtocol`), `NotificationCoordinator` (`@MainActor final class` subscribing to `nowPlayingUpdates`, posts via service, respects `AppSettings.notificationsEnabled`, looks up channel title via API). `MiniPlayerView` displays cover art via `Image(nsImage:)` when available, falling back to the SF Symbol placeholder. Panel background switched to a SwiftUI `Color(nsColor: .windowBackgroundColor)` so Light/Dark appearance changes are honored. `PlaybackCoordinatorError: LocalizedError` so error banners read as prose. `LiveNotificationService` is bundle-gated in `realBootstrap` — `swift run` (no main bundle proxy) gets a `NoopNotificationService`; production `.app` bundles get the real one. Out of scope (deferred): rating row (PR 10), settings link/window (PR 10), `AppContainer` composition root (PR 11), main-menu/`Cmd-Q` (PR 11), `LSUIElement` Info.plist (PR 12).
+
+PR 10 status (in progress on `claude/unruffled-hellman-cdc237`, not merged): SettingsView + SettingsWindowController + RatingRow + LoginWindowController integration + KeychainCookieProvider swap + ConfigStore→engine bridge for hog mode + output device. Round-1 smoke fixed sign-in propagation (closure not windowWillClose), folder paths (logs under Application Support, single "Show application data" button), pause→resume distinction, FLAC labels, segmented rating row. Round-2 smoke flagged 3 remaining issues: (a) `~/Library/Application Support/RP Player/Logs` not created — `realBootstrap` constructs `AppLogger(... sink: nil)`, no file sink wired; fix is to wire `RotatingFileSink(directory: ConfigPaths.logsDirectory, ...)` so logs actually emit to disk and create the folder. (b) Hog mode wiring needs further smoke testing. (c) `api/rate` returns non-2xx (`RpApiError error 1` = `.invalidResponse`) — likely cookie format / HTTP method / request shape mismatch vs. legacy. Detailed triage in `docs/superpowers/plans/2026-04-30-pr10-settings-rating.md` "Open follow-ups" section. Pick up from HEAD `ba9fa7b`.
 
 ---
 
