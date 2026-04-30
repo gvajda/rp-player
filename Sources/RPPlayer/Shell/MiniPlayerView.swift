@@ -5,99 +5,97 @@ struct MiniPlayerView: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            HStack {
-                Spacer()
-                Button {
-                    viewModel.openSettings()
-                } label: {
-                    Image(systemName: "gearshape")
-                        .font(.system(size: 14, weight: .regular))
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Settings")
+            if let message = viewModel.errorMessage {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .multilineTextAlignment(.center)
+                    .frame(width: 318)
             }
-            artwork
-            metadata
-            transport
-            channelPicker
+            albumArt
+            titleStack
+            channelRow
             RatingRow(
                 currentRating: viewModel.currentRating,
                 isSignedIn: viewModel.isSignedIn
             ) { value in
                 Task { await viewModel.rate(value) }
             }
-            if let message = viewModel.errorMessage {
-                Text(message)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .multilineTextAlignment(.center)
-            }
+            .frame(width: 318)
+            transport
+            footer
         }
-        .frame(width: 320, height: 540)
-        .padding()
+        .padding(12)
+        .frame(width: 342)
         .task { await viewModel.start() }
     }
 
-    private var artwork: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 8)
-                .fill(Color.secondary.opacity(0.15))
+    private var albumArt: some View {
+        Group {
             if let art = viewModel.currentArt {
                 Image(nsImage: art)
                     .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 200, height: 200)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .scaledToFit()
             } else {
-                Image(systemName: "music.quarternote.3")
-                    .font(.system(size: 48))
+                Image(systemName: "music.note")
+                    .resizable()
+                    .scaledToFit()
+                    .padding(80)
                     .foregroundStyle(.secondary)
+                    .background(Color(nsColor: .controlBackgroundColor))
             }
         }
-        .frame(width: 200, height: 200)
+        .frame(width: 318, height: 318)
+        .cornerRadius(6)
     }
 
-    private var metadata: some View {
-        VStack(spacing: 4) {
+    private var titleStack: some View {
+        VStack(spacing: 2) {
             Text(viewModel.nowPlaying?.song.title ?? "—")
                 .font(.headline)
                 .lineLimit(1)
-                .multilineTextAlignment(.center)
-            Text(viewModel.nowPlaying.map { "\($0.song.artist) · \($0.song.album)" } ?? "Press play to start")
+            Text(viewModel.nowPlaying?.song.artist ?? "")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
-                .multilineTextAlignment(.center)
+            if let album = viewModel.nowPlaying?.song.album, !album.isEmpty {
+                Text(album)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
         }
         .frame(maxWidth: .infinity)
     }
 
-    private var transport: some View {
-        HStack(spacing: 24) {
-            Button {
-                Task { await viewModel.togglePlayPause() }
-            } label: {
-                Image(systemName: viewModel.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 28))
+    private var channelRow: some View {
+        HStack(spacing: 8) {
+            channelPicker
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            if let format = viewModel.currentStreamFormat {
+                Text(format.displayString)
+                    .font(.caption2)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(viewModel.isPlaying ? "Pause" : "Play")
 
             Button {
-                Task { await viewModel.skipForward() }
+                viewModel.openSettings()
             } label: {
-                Image(systemName: "forward.fill")
-                    .font(.system(size: 24))
+                Image(systemName: "gearshape")
+                    .font(.system(size: 14, weight: .regular))
             }
-            .buttonStyle(.plain)
-            .disabled(!viewModel.isPlaying)
-            .accessibilityLabel("Skip forward")
+            .buttonStyle(.borderless)
+            .frame(width: 22, height: 22)
+            .accessibilityLabel("Settings")
         }
+        .frame(width: 318)
     }
 
     private var channelPicker: some View {
-        Picker("Channel", selection: Binding(
+        Picker(selection: Binding(
             get: { viewModel.selectedChannelId },
             set: { newId in Task { await viewModel.selectChannel(newId) } }
         )) {
@@ -106,9 +104,43 @@ struct MiniPlayerView: View {
                     Text(channel.title).tag(id)
                 }
             }
+        } label: {
+            EmptyView()
         }
-        .pickerStyle(.menu)
         .labelsHidden()
-        .frame(maxWidth: .infinity)
+        .pickerStyle(.menu)
+    }
+
+    private var transport: some View {
+        HStack(spacing: 18) {
+            Button {
+                Task { await viewModel.togglePlayPause() }
+            } label: {
+                Image(systemName: viewModel.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                    .font(.system(size: 44))
+                    .foregroundStyle(.tint)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(viewModel.isPlaying ? "Pause" : "Play")
+
+            Button {
+                Task { await viewModel.skipForward() }
+            } label: {
+                Image(systemName: "forward.end.fill")
+                    .font(.system(size: 22))
+            }
+            .buttonStyle(.plain)
+            .frame(width: 38, height: 38)
+            .disabled(!viewModel.isPlaying)
+            .accessibilityLabel("Skip Forward")
+        }
+    }
+
+    private var footer: some View {
+        Text("RP Player")
+            .font(.caption2)
+            .foregroundStyle(.tertiary)
+            .frame(maxWidth: .infinity)
+            .padding(.top, 4)
     }
 }
