@@ -22,13 +22,13 @@ macOS menu-bar app (Swift 6.2, macOS 13, SwiftUI + AppKit) that plays Radio Para
 | 5b | merged to main | ✅ | PlayerEngine (libmpv Swift actor) |
 | 6 | merged to main | ✅ | PlaybackCoordinator |
 | 7 | merged to main | ✅ | AppKit shell (NSStatusItem + borderless NSPanel hosting placeholder) |
-| 8 | **next** | ⬜ | MiniPlayerView (SwiftUI) |
-| 9 | pending | ⬜ | NotificationCenterWrapper + AlbumArtCache |
+| 8 | merged to main | ✅ | MiniPlayerView (SwiftUI) + AppDelegate real-graph wiring |
+| 9 | **next** | ⬜ | NotificationCenterWrapper + AlbumArtCache + album art in MiniPlayerView |
 | 10 | pending | ⬜ | SettingsView |
 | 11 | pending | ⬜ | AppContainer (composition root) |
 | 12 | pending | ⬜ | Distribution CI workflow |
 
-PR 7 shipped scope: AppKit shell scaffold — `NSStatusItem` (variable length, template `music.note` SF Symbol) toggles a borderless `NSPanel` that hosts `AppShellPlaceholderView` (SwiftUI). The panel uses `.nonactivatingPanel` style + global event monitor for outside-click dismissal. PR 8 replaces the placeholder body with `MiniPlayerView`. Out of scope (deferred): coordinator wiring (PR 11), main-menu/`Cmd-Q` (PR 11), `LSUIElement` Info.plist (PR 12).
+PR 8 shipped scope: `MiniPlayerView` (SwiftUI) bound to a `MiniPlayerViewModel` (`@MainActor final class: ObservableObject`) that bridges `LivePlaybackCoordinator.nowPlayingUpdates` to `@Published` state. Visible UI: 200×200 album-art placeholder, title/artist/album, play-pause + skip-forward, channel `Picker`. `AppDelegate` builds the real dependency graph (`JSONConfigStore` → `AppLogger` → `AnonymousCookieProvider` → `LiveRpApiClient` → `LibmpvPlayerEngine` → `LivePlaybackCoordinator` → view model) inline and persists `selectedChannelId` via an injected closure. `applicationWillTerminate` blocks the terminate path on `coordinator.shutdown()` for up to 2 s so libmpv releases the audio device. PR 7 review follow-ups landed alongside: Esc-to-dismiss local key monitor in the popover, and `NSApp.activate` moved out of `StatusItemController` into `PopoverController.show`. Out of scope (deferred): album art image loading (PR 9), rating row (PR 9), settings link/window (PR 10), `AppContainer` composition root (PR 11), main-menu/`Cmd-Q` (PR 11), `LSUIElement` Info.plist (PR 12).
 
 ---
 
@@ -64,6 +64,14 @@ PR 7 shipped scope: AppKit shell scaffold — `NSStatusItem` (variable length, t
 - The PR 7 menu-bar popup is a borderless `NSPanel` (style `[.borderless, .nonactivatingPanel]`, level `.statusBar`), NOT an `NSPopover`. The plan originally specified `NSPopover`; smoke testing on macOS 26 (Darwin 25.3.0) showed the bubble arrow rendering on top of the status item icon and `.transient` dismissal failing for `.accessory`-policy apps until the panel was clicked. The borderless `NSPanel` gives full positioning control (panel top is aligned to `buttonWindow.frame.minY`, not the button frame, so the panel sits flush with the menu bar without a 2–3 px gap) and uses an `NSEvent.addGlobalMonitorForEvents` global click monitor for outside-click dismissal. Rounded corners are drawn on the content view's layer (`cornerRadius = 10`, `masksToBounds = true`) with the panel itself transparent (`isOpaque = false`, `backgroundColor = .clear`) so the rounded shape shows through and the system shadow follows it.
 - `PopoverController` is a non-`final` class (not a struct) only so tests can override `isShown`. The shell otherwise has no protocol abstractions — PR 11 (`AppContainer`) is the right place to introduce them if real dependencies need to be mocked.
 - `swift test --parallel` currently fails on `KeychainStoreTests.testSaveOverwritesExisting` with `errSecDuplicateItem (-25299)` — multiple test processes race on the same keychain account. Pre-existing (visible since PR 3); not introduced by PR 7. Workaround: use serial `swift test`. Proper fix is to scope each test to a unique keychain account namespace; deferred until it actually blocks something.
+- `MiniPlayerViewModel` is `@MainActor final class: ObservableObject`, NOT `@Observable`. The `@Observable` macro requires macOS 14; we target macOS 13. Re-evaluate when the deployment target bumps. The view model spawns its coordinator-subscription `Task` from `start()` (called by `MiniPlayerView`'s `.task` modifier on first appear), not from `init` — same Swift-6.2 rule that constrains `LivePlaybackCoordinator`'s pump bootstrap.
+- `MiniPlayerViewModel.selectChannel(_:)` guards rapid double-calls with an `inFlightChannelId` token: if a second `selectChannel` lands before the first awaited `coordinator.changeChannel(to:)` resolves, the late completion short-circuits and the second selection wins. Without this, optimistic-UI rollback on the first call would erase the user's pending choice. Tested via `testSelectChannelSecondCallSupersedesFirst`.
+- `AppDelegate.applicationWillTerminate` blocks the terminate path on `coordinator.shutdown()` via `DispatchGroup.wait(timeout: 2.0)` with the awaiting work spawned via `Task.detached`. The `Task.detached` is load-bearing: `applicationWillTerminate` runs on the main thread, and a non-detached `Task { @MainActor in await shutdown() }` would never start because main is parked in `group.wait`. The 2 s cap matches the libmpv pump shutdown budget.
+- `AppDelegate.realBootstrap` is the temporary composition root for PR 8. It is a `private static func`, not a `private static let` closure, because Swift 6.2 strict concurrency rejects a stored-property closure initializer that captures `@MainActor`-isolated context inside a `@MainActor` final class. PR 11 (`AppContainer`) refactors the wiring out into a dedicated type with proper protocol-based DI.
+- `PopoverController(rootView:)` takes an `AnyView`, not a generic `<RootView: View>`. The popover is the only construction site and the panel's `contentView: NSView?` already erases through AppKit, so generic propagation buys nothing while complicating the call site.
+- The popover installs both a global mouse-down monitor (outside-click dismissal) and a local key-down monitor (Esc) on `show(relativeTo:)`. Esc is the keycode 53 constant `PopoverController.escapeKeyCode`. The local monitor is process-wide — when PR 9 introduces a text field inside the popover or PR 10 ships `SettingsView` in a separate window, gate the monitor on `event.window === panel` (or install only while the popover is key) so Esc isn't hijacked.
+- `LivePlaybackCoordinator.getBlock(... info: true)` is required everywhere. With `info: false` the live API returns `song: null` and omits `image_base`, both required by the `GetBlock` model. The fixture-driven coordinator tests didn't catch this because `MockRpApiClient.getBlock` ignores `info` and returns synthetic `GetBlock` values. PR 8 surfaced and fixed the bug at all three callsites (initial play, channel change, prefetch).
+- `NoopPlayerEngine` (private struct in `AppDelegate.swift`) is a `PlayerEngine` shim that throws a captured init error from every action method and yields an immediately-finished events stream. It keeps the menu-bar shell up so the user can see the error banner if `LibmpvPlayerEngine.init` throws (missing dylib, audio-device contention).
 
 ---
 
@@ -85,6 +93,7 @@ PR 7 shipped scope: AppKit shell scaffold — `NSStatusItem` (variable length, t
 - After PR 5b: 67 tests
 - After PR 6: 93 tests
 - After PR 7: 101 tests
+- After PR 8: 111 tests
 
 ---
 
