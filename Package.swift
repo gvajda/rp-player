@@ -23,7 +23,7 @@ let mpvLinker: [LinkerSetting] = [
 
 let package = Package(
     name: "RPPlayer",
-    platforms: [.macOS(.v13)],
+    platforms: [.macOS(.v14)],
     targets: [
         .systemLibrary(
             name: "CMpv",

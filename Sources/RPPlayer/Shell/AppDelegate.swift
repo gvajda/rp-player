@@ -118,10 +118,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return channels.first(where: { Int($0.chan) == channelId })?.title
             },
             cachedFileURL: { [cache] coverPath in
-                if let liveCache = cache as? LiveAlbumArtCache {
-                    return await liveCache.fileURL(for: coverPath)
-                }
-                return nil
+                await cache.fileURL(for: coverPath)
             }
         )
 

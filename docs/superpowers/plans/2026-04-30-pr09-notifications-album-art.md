@@ -1389,3 +1389,16 @@ If the primary worktree has any non-PR-9 changes, STOP and ask the user. Same et
 - **Test count math:** previous = 111, expected new ≈ 127 (+16). Adjust CLAUDE.md to actual.
 - **No regression:** `swift build` clean, `swift test` 100% pass, manual smoke green for visible behavior.
 - **Plan-vs-shipped drift:** if any compile-time deviations are needed (Swift 6.2 strict concurrency edge cases), record at the bottom of this plan in an "Implementation deviations" section before merging.
+
+---
+
+## Implementation deviations (post-execution)
+
+- `Tests/RPPlayerTests/Notifications/StubURLProtocol.swift` shipped as `AlbumArtStubURLProtocol.swift` (file + class rename). SPM rejects two same-named source files in one test target; the rename was anticipated by Step 2's contingency note.
+- `FakeUNCenter` in `NotificationServiceTests.swift` is `final class ... @unchecked Sendable` with `NSLock`-guarded mutations, NOT `@MainActor`. Swift 6.2 strict concurrency rejects passing a non-`Sendable` `UNNotificationRequest` from `LiveNotificationService` (an actor) into a `@MainActor` fake.
+- `testNotifySwallowsAttachmentInitFailureAndPostsAnyway` uses `/does/not/exist.xyz`, not `/does/not/exist.png`. macOS 26 lazy-validates `.png` attachments, so a `.png` URL that doesn't exist still constructs a valid `UNNotificationAttachment`. `.xyz` reliably throws `Unrecognized attachment file type` and exercises the `try?` swallow path.
+- `NotificationCoordinator.start()`'s `for await np in stream` body checks `Task.isCancelled` before processing each emission. Without the explicit guard, `MockPlaybackCoordinator.setNowPlaying` yields into the still-live `AsyncStream` continuation after `Task.cancel()` because the iterator does not auto-check cancellation, and `testStopCancelsSubscription` would race.
+- `AsyncSignal.signal()` (in `AppDelegateTests.swift`) is a sync method, NOT `async`. Swift 6.2 forbids `NSLock.lock()/unlock()` from async contexts.
+- `LiveNotificationService.init(center:)` lost its planned default argument `= UNUserNotificationCenter.current()`. The default evaluated eagerly at the call site in `realBootstrap`, and `UNUserNotificationCenter.current()` throws an `NSInternalInconsistencyException` ("bundleProxyForCurrentProcess is nil") on macOS 26 inside unbundled processes (`swift run RPPlayer`). `realBootstrap` now constructs `LiveNotificationService(center: UNUserNotificationCenter.current())` only when `Bundle.main.bundleIdentifier != nil`, falling back to a new `NoopNotificationService` shim otherwise. This was a launch-crash regression caught in smoke testing — fix shipped in commit `ecd8b2e`.
+- `AlbumArtCache` protocol gained `func fileURL(for coverPath: String) async -> URL?` with a default `nil` impl in extension. `LiveAlbumArtCache` overrides; mocks/stubs pick up the default. `AppDelegate.realBootstrap`'s `cachedFileURL` closure no longer downcasts `cache as? LiveAlbumArtCache`. Final-review I4 follow-up.
+- `Package.swift` deployment target bumped from `.macOS(.v13)` to `.macOS(.v14)`. Final-review I1 follow-up: `NSImage: Sendable` lands at macOS 14, and `LiveAlbumArtCache.inFlight: [String: Task<NSImage?, Never>]` produces 9 Sendable warnings under v13. Bumping is the cleaner fix vs. routing the cache through `Data` and re-decoding per consumer. The user is on macOS 26 so the higher target is comfortable.

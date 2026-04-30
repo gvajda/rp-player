@@ -4,6 +4,11 @@ import Foundation
 
 public protocol AlbumArtCache: Sendable {
     func image(for coverPath: String) async -> NSImage?
+    func fileURL(for coverPath: String) async -> URL?
+}
+
+public extension AlbumArtCache {
+    func fileURL(for coverPath: String) async -> URL? { nil }
 }
 
 public actor LiveAlbumArtCache: AlbumArtCache {
