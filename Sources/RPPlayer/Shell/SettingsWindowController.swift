@@ -13,7 +13,7 @@ final class SettingsWindowController: NSWindowController {
             backing: .buffered,
             defer: false
         )
-        window.title = "Settings"
+        window.title = "RP Player Settings"
         window.contentViewController = hosting
         window.setContentSize(Self.contentSize)
         window.center()
