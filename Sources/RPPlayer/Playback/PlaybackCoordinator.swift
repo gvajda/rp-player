@@ -95,7 +95,14 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     }
 
     public func resume() async throws {
-        guard currentBlock != nil else { throw PlaybackCoordinatorError.notPlaying }
+        guard let block = currentBlock else { throw PlaybackCoordinatorError.notPlaying }
+        if block.expiration > 0,
+           Date().timeIntervalSince1970 > Double(block.expiration),
+           let channelId = currentChannelId {
+            logger.info("block expired during pause; fetching fresh block before resume")
+            try await play(channelId: channelId)
+            return
+        }
         do { try await engine.resume() } catch { throw PlaybackCoordinatorError.engineError(message: String(describing: error)) }
     }
 

@@ -12,13 +12,14 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
 
     fileprivate func makeBlock(channel: String = "0", url: String = "https://example.com/0-0.flac",
                                 cue: Int = 0,
+                                expiration: Int = 0,
                                 songs: [(String, Int)]) -> GetBlock {
         var dict: [String: PlayListSong] = [:]
         for (idx, pair) in songs.enumerated() {
             dict[String(idx)] = makeSong(id: pair.0, duration: pair.1)
         }
         return GetBlock(
-            url: url, chan: channel, bitrate: nil, cue: cue, expiration: 0,
+            url: url, chan: channel, bitrate: nil, cue: cue, expiration: expiration,
             length: nil, imageBase: "img/", song: dict,
             channel: nil, event: nil, endEvent: nil, type: nil, ext: nil, filename: nil
         )
@@ -488,6 +489,50 @@ extension LivePlaybackCoordinatorTests {
 
         let value = await counter.value
         XCTAssertEqual(value, 0, "fallback callback must not fire for unrelated errors")
+    }
+
+    func testResumeAfterExpiredBlockFetchesFreshBlock() async throws {
+        let api = MockRpApiClient()
+        let pastTimestamp = Int(Date().timeIntervalSince1970) - 60
+        let staleBlock = makeBlock(channel: "0", url: "https://example.com/STALE.flac",
+                                   cue: 0, expiration: pastTimestamp,
+                                   songs: [("a", 60_000), ("b", 60_000), ("c", 60_000), ("d", 60_000)])
+        let freshBlock = makeBlock(channel: "0", url: "https://example.com/FRESH.flac",
+                                   cue: 0, expiration: pastTimestamp + 600,
+                                   songs: [("e", 60_000), ("f", 60_000), ("g", 60_000), ("h", 60_000)])
+        await api.setBlockResponses([staleBlock, freshBlock])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(api: api, engine: engine, logger: silentLogger(), bitrate: 4)
+        try await coordinator.play(channelId: 0)
+        try await coordinator.pause()
+        try await coordinator.resume()
+
+        let engineCalls = await engine.recordedCalls()
+        XCTAssertTrue(
+            engineCalls.contains(.play(url: URL(string: "https://example.com/FRESH.flac")!)),
+            "expected coordinator to fetch fresh block on resume after expiration. calls=\(engineCalls)"
+        )
+    }
+
+    func testResumeWithFreshBlockJustResumesEngine() async throws {
+        let api = MockRpApiClient()
+        let futureTimestamp = Int(Date().timeIntervalSince1970) + 600
+        let freshBlock = makeBlock(channel: "0", url: "https://example.com/FRESH.flac",
+                                   cue: 0, expiration: futureTimestamp,
+                                   songs: [("a", 60_000), ("b", 60_000), ("c", 60_000), ("d", 60_000)])
+        await api.setBlockResponses([freshBlock])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(api: api, engine: engine, logger: silentLogger(), bitrate: 4)
+        try await coordinator.play(channelId: 0)
+        try await coordinator.pause()
+        try await coordinator.resume()
+
+        let engineCalls = await engine.recordedCalls()
+        XCTAssertEqual(engineCalls.filter { $0 == .resume }.count, 1)
+        XCTAssertEqual(
+            engineCalls.filter { if case .play = $0 { return true } else { return false } }.count, 1,
+            "should only have the initial play, not a re-fetch. calls=\(engineCalls)"
+        )
     }
 }
 
