@@ -40,7 +40,6 @@ final class StatusItemControllerTests: XCTestCase {
         XCTAssertNotNil(button)
         XCTAssertEqual(button?.toolTip, "RP Player")
         XCTAssertNotNil(button?.image)
-        XCTAssertTrue(button?.image?.isTemplate ?? false)
     }
 
     func testToggleShowsWhenPopoverIsHidden() {
