@@ -6,10 +6,11 @@ class PopoverController {
     static let contentSize = NSSize(width: 320, height: 420)
 
     let panel: NSPanel
-    private var clickMonitor: Any?
+    private var globalClickMonitor: Any?
+    private var localKeyMonitor: Any?
 
-    init() {
-        let hostingView = NSHostingView(rootView: AppShellPlaceholderView())
+    init(rootView: AnyView) {
+        let hostingView = NSHostingView(rootView: rootView)
         hostingView.frame = NSRect(origin: .zero, size: Self.contentSize)
 
         let panel = NSPanel(
@@ -40,9 +41,9 @@ class PopoverController {
         let buttonRectInScreen = buttonWindow.convertToScreen(
             anchor.convert(anchor.bounds, to: nil)
         )
-        // Panel top should sit flush with the bottom of the menu bar (= the
-        // status item window's minY), not the button frame's minY — the button
-        // is a few px shorter than its window and leaves a visible gap.
+        // Activate so the panel comes to the foreground; otherwise the global
+        // monitor never sees the user's outside clicks until they activate the app.
+        NSApp.activate(ignoringOtherApps: true)
         let panelSize = panel.frame.size
         let origin = NSPoint(
             x: buttonRectInScreen.midX - panelSize.width / 2,
@@ -50,29 +51,45 @@ class PopoverController {
         )
         panel.setFrameOrigin(origin)
         panel.orderFrontRegardless()
-        installClickMonitor()
+        installMonitors()
     }
 
     func close() {
-        removeClickMonitor()
+        removeMonitors()
         panel.orderOut(nil)
     }
 
-    private func installClickMonitor() {
-        guard clickMonitor == nil else { return }
-        clickMonitor = NSEvent.addGlobalMonitorForEvents(
-            matching: [.leftMouseDown, .rightMouseDown]
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.close()
+    private func installMonitors() {
+        if globalClickMonitor == nil {
+            globalClickMonitor = NSEvent.addGlobalMonitorForEvents(
+                matching: [.leftMouseDown, .rightMouseDown]
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.close()
+                }
+            }
+        }
+        if localKeyMonitor == nil {
+            localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                if event.keyCode == 53 {
+                    Task { @MainActor [weak self] in
+                        self?.close()
+                    }
+                    return nil
+                }
+                return event
             }
         }
     }
 
-    private func removeClickMonitor() {
-        if let monitor = clickMonitor {
+    private func removeMonitors() {
+        if let monitor = globalClickMonitor {
             NSEvent.removeMonitor(monitor)
-            clickMonitor = nil
+            globalClickMonitor = nil
+        }
+        if let monitor = localKeyMonitor {
+            NSEvent.removeMonitor(monitor)
+            localKeyMonitor = nil
         }
     }
 }

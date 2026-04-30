@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import XCTest
 @testable import RPPlayer
 
@@ -10,7 +11,7 @@ final class StatusItemControllerTests: XCTestCase {
     private var closeCount = 0
 
     override func setUp() async throws {
-        popoverController = PopoverController()
+        popoverController = PopoverController(rootView: AnyView(EmptyView()))
         createdControllers = []
         showCount = 0
         closeCount = 0
@@ -53,7 +54,7 @@ final class StatusItemControllerTests: XCTestCase {
         final class AlwaysShownPopover: PopoverController {
             override var isShown: Bool { true }
         }
-        let stub = AlwaysShownPopover()
+        let stub = AlwaysShownPopover(rootView: AnyView(EmptyView()))
         let controller = StatusItemController(
             popover: stub,
             show: { [unowned self] _ in self.showCount += 1 },
