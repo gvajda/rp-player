@@ -49,4 +49,16 @@ public enum TransportType: String, Equatable, Sendable, CaseIterable {
         default:                                               self = .unknown
         }
     }
+
+    public var label: String {
+        switch self {
+        case .builtIn:      return "Built-in"
+        case .usb:          return "USB"
+        case .thunderbolt:  return "Thunderbolt"
+        case .hdmi:         return "HDMI"
+        case .bluetooth:    return "Bluetooth"
+        case .airplay:      return "AirPlay"
+        case .unknown:      return "Unknown"
+        }
+    }
 }
