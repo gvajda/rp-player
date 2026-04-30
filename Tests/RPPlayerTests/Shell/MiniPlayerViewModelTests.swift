@@ -15,7 +15,7 @@ final class MiniPlayerViewModelTests: XCTestCase {
             coordinator: coordinator,
             api: api,
             initialChannelId: 0,
-            albumArtCache: StubArtCache()
+            albumArtCache: StubAlbumArtCache()
         )
     }
 
@@ -96,7 +96,7 @@ final class MiniPlayerViewModelTests: XCTestCase {
             coordinator: coord,
             api: api,
             initialChannelId: 0,
-            albumArtCache: StubArtCache(),
+            albumArtCache: StubAlbumArtCache(),
             persistChannelId: { id in await capture.record(id) }
         )
         await model.selectChannel(2)
@@ -124,7 +124,7 @@ final class MiniPlayerViewModelTests: XCTestCase {
     }
 
     func testCurrentArtLoadsFromCacheOnNowPlayingUpdate() async throws {
-        let cache = StubArtCache()
+        let cache = StubAlbumArtCache()
         cache.imageByPath["covers/l/1.jpg"] = NSImage(size: NSSize(width: 1, height: 1))
         let model = MiniPlayerViewModel(
             coordinator: coordinator,
@@ -141,7 +141,7 @@ final class MiniPlayerViewModelTests: XCTestCase {
     }
 
     func testCurrentArtClearsWhenNowPlayingHasNoCover() async throws {
-        let cache = StubArtCache()
+        let cache = StubAlbumArtCache()
         let model = MiniPlayerViewModel(
             coordinator: coordinator,
             api: api,
@@ -153,15 +153,5 @@ final class MiniPlayerViewModelTests: XCTestCase {
         try await Task.sleep(nanoseconds: 50_000_000)
         XCTAssertNil(model.currentArt)
         XCTAssertTrue(cache.requestedPaths.isEmpty)
-    }
-}
-
-@MainActor
-final class StubArtCache: AlbumArtCache {
-    var imageByPath: [String: NSImage] = [:]
-    var requestedPaths: [String] = []
-    func image(for coverPath: String) async -> NSImage? {
-        await MainActor.run { self.requestedPaths.append(coverPath) }
-        return await MainActor.run { self.imageByPath[coverPath] }
     }
 }

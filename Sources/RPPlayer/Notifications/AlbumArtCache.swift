@@ -62,6 +62,12 @@ public actor LiveAlbumArtCache: AlbumArtCache {
         inFlight[coverPath] = nil
     }
 
+    public func fileURL(for coverPath: String) -> URL? {
+        let key = Self.cacheKey(for: coverPath)
+        let url = directory.appendingPathComponent(key)
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
     private func downloadAndStore(coverPath: String, fileURL: URL) async -> NSImage? {
         guard let url = URL(string: coverPath, relativeTo: baseURL)?.absoluteURL else {
             logger.error("Invalid cover URL for path: \(coverPath)")

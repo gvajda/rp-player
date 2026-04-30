@@ -294,3 +294,20 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         emitNowPlaying(forSongIndex: 0)
     }
 }
+
+extension PlaybackCoordinatorError: LocalizedError {
+    public var errorDescription: String? {
+        switch self {
+        case .notPlaying:
+            return "Playback is not currently active."
+        case .channelNotFound(let channelId):
+            return "Channel \(channelId) was not found."
+        case .blockHasNoSongs:
+            return "Stream block contained no songs."
+        case .engineError(let message):
+            return "Audio engine error: \(message)"
+        case .underlying(let message):
+            return message
+        }
+    }
+}

@@ -12,7 +12,7 @@ final class MiniPlayerViewTests: XCTestCase {
             coordinator: coordinator,
             api: api,
             initialChannelId: 0,
-            albumArtCache: StubArtCache()
+            albumArtCache: StubAlbumArtCache()
         )
         let host = NSHostingController(rootView: MiniPlayerView(viewModel: viewModel))
         host.loadView()

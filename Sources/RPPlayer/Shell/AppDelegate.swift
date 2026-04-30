@@ -2,19 +2,17 @@ import AppKit
 import Foundation
 import SwiftUI
 
-private struct NoopAlbumArtCache: AlbumArtCache {
-    func image(for coverPath: String) async -> NSImage? { nil }
-}
-
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     struct Bootstrap {
         let viewModel: MiniPlayerViewModel
+        let notificationCoordinator: NotificationCoordinator
         let coordinatorShutdown: @Sendable () async -> Void
     }
 
     private(set) var statusItemController: StatusItemController?
     private(set) var viewModel: MiniPlayerViewModel?
+    private(set) var notificationCoordinator: NotificationCoordinator?
     private var coordinatorShutdown: (@Sendable () async -> Void)?
     private let bootstrap: () -> Bootstrap
 
@@ -30,13 +28,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         let result = bootstrap()
         self.viewModel = result.viewModel
+        self.notificationCoordinator = result.notificationCoordinator
         self.coordinatorShutdown = result.coordinatorShutdown
+
+        Task { await result.notificationCoordinator.start() }
 
         let popover = PopoverController(rootView: AnyView(MiniPlayerView(viewModel: result.viewModel)))
         statusItemController = StatusItemController(popover: popover)
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        Task { await self.notificationCoordinator?.stop() }
+
         guard let shutdown = coordinatorShutdown else { return }
         // Block the terminate path on a clean shutdown of the coordinator —
         // libmpv must release the audio device before we exit.
@@ -64,6 +67,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let cookieProvider = AnonymousCookieProvider()
         let api = LiveRpApiClient(cookieProvider: cookieProvider, logger: logger)
 
+        let imageBaseURL = URL(string: "https://img.radioparadise.com/")!
+        let cache: any AlbumArtCache
+        do {
+            cache = try LiveAlbumArtCache(
+                directory: ConfigPaths.albumArtCacheDirectory,
+                baseURL: imageBaseURL,
+                logger: logger
+            )
+        } catch {
+            logger.error("Failed to open album art cache: \(error.localizedDescription)")
+            cache = NoopAlbumArtCache()
+        }
+
         let engine: any PlayerEngine
         do {
             engine = try LibmpvPlayerEngine()
@@ -81,19 +97,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             bitrate: initial.bitrate
         )
 
+        let notificationService = LiveNotificationService()
+        let notificationCoordinator = NotificationCoordinator(
+            coordinator: coordinator,
+            cache: cache,
+            service: notificationService,
+            notificationsEnabled: { [store] in
+                guard let store else { return false }
+                return await store.settings.notificationsEnabled
+            },
+            channelTitle: { [api] channelId in
+                guard let channels = try? await api.listChannels() else { return nil }
+                return channels.first(where: { Int($0.chan) == channelId })?.title
+            },
+            cachedFileURL: { [cache] coverPath in
+                if let liveCache = cache as? LiveAlbumArtCache {
+                    return await liveCache.fileURL(for: coverPath)
+                }
+                return nil
+            }
+        )
+
         let viewModel = MiniPlayerViewModel(
             coordinator: coordinator,
             api: api,
             initialChannelId: initial.selectedChannelId,
-            albumArtCache: NoopAlbumArtCache(),
+            albumArtCache: cache,
             persistChannelId: { id in
                 guard let store else { return }
                 try? await store.update { $0.selectedChannelId = id }
             }
         )
 
+        Task {
+            // Best-effort authorization request; fails silently in unbundled processes.
+            _ = try? await notificationService.requestAuthorization()
+        }
+
         return Bootstrap(
             viewModel: viewModel,
+            notificationCoordinator: notificationCoordinator,
             coordinatorShutdown: { await coordinator.shutdown() }
         )
     }
@@ -104,6 +147,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         else { return .default }
         return settings
     }
+}
+
+private struct NoopAlbumArtCache: AlbumArtCache {
+    func image(for coverPath: String) async -> NSImage? { nil }
 }
 
 private struct NoopPlayerEngine: PlayerEngine {
