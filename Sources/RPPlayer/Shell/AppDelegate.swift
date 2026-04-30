@@ -8,12 +8,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     struct Bootstrap {
         let viewModel: MiniPlayerViewModel
         let notificationCoordinator: NotificationCoordinator
+        let settingsViewModel: SettingsViewModel
+        let settingsWindowController: SettingsWindowController
+        let loginWindowController: LoginWindowController
         let coordinatorShutdown: @Sendable () async -> Void
     }
 
     private(set) var statusItemController: StatusItemController?
     private(set) var viewModel: MiniPlayerViewModel?
     private(set) var notificationCoordinator: NotificationCoordinator?
+    private(set) var settingsViewModel: SettingsViewModel?
+    private(set) var settingsWindowController: SettingsWindowController?
+    private(set) var loginWindowController: LoginWindowController?
+    private var loginCloseBridge: LoginCloseBridge?
     private var coordinatorShutdown: (@Sendable () async -> Void)?
     private let bootstrap: () -> Bootstrap
 
@@ -30,7 +37,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let result = bootstrap()
         self.viewModel = result.viewModel
         self.notificationCoordinator = result.notificationCoordinator
+        self.settingsViewModel = result.settingsViewModel
+        self.settingsWindowController = result.settingsWindowController
+        self.loginWindowController = result.loginWindowController
         self.coordinatorShutdown = result.coordinatorShutdown
+
+        let bridge = LoginCloseBridge { [weak self] in
+            self?.viewModel?.refreshAuthState()
+            self?.settingsViewModel?.refreshAuthState()
+        }
+        result.loginWindowController.window?.delegate = bridge
+        self.loginCloseBridge = bridge
 
         Task { await result.notificationCoordinator.start() }
 
@@ -65,8 +82,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             store = nil
         }
 
-        let cookieProvider = AnonymousCookieProvider()
-        let api = LiveRpApiClient(cookieProvider: cookieProvider, logger: logger)
+        let keychainAuth = KeychainCookieProvider()
+        let api = LiveRpApiClient(cookieProvider: keychainAuth, logger: logger)
 
         let imageBaseURL = URL(string: "https://img.radioparadise.com/")!
         let cache: any AlbumArtCache
@@ -98,6 +115,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             bitrate: initial.bitrate
         )
 
+        let deviceCatalog = CoreAudioDeviceCatalog(lister: CoreAudioDeviceLister())
+
         // UNUserNotificationCenter.current() throws on unbundled processes
         // (no main bundle proxy). PR 12 ships the .app; until then `swift run`
         // gets a no-op service so the rest of the wiring still constructs.
@@ -122,13 +141,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         )
 
+        let loginWindowController = LoginWindowController(keychainAuth: keychainAuth)
+
+        let settingsViewModel = SettingsViewModel(
+            configStore: store ?? NoopConfigStore(),
+            deviceCatalog: deviceCatalog,
+            auth: keychainAuth,
+            openLoginWindow: { [loginWindowController] in loginWindowController.show() },
+            openDataFolder: { NSWorkspace.shared.open(ConfigPaths.applicationSupportRoot) },
+            openLogsFolder: { NSWorkspace.shared.open(ConfigPaths.logsDirectory) }
+        )
+
+        let settingsWindowController = SettingsWindowController(viewModel: settingsViewModel)
+
         let viewModel = MiniPlayerViewModel(
             coordinator: coordinator,
             api: api,
             initialChannelId: initial.selectedChannelId,
             albumArtCache: cache,
-            auth: KeychainCookieProvider(),
-            openSettings: { },
+            auth: keychainAuth,
+            openSettings: { [settingsWindowController] in settingsWindowController.show() },
             persistChannelId: { id in
                 guard let store else { return }
                 try? await store.update { $0.selectedChannelId = id }
@@ -143,6 +175,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return Bootstrap(
             viewModel: viewModel,
             notificationCoordinator: notificationCoordinator,
+            settingsViewModel: settingsViewModel,
+            settingsWindowController: settingsWindowController,
+            loginWindowController: loginWindowController,
             coordinatorShutdown: { await coordinator.shutdown() }
         )
     }
@@ -153,6 +188,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         else { return .default }
         return settings
     }
+}
+
+@MainActor
+private final class LoginCloseBridge: NSObject, NSWindowDelegate {
+    private let onClose: @MainActor () -> Void
+
+    init(onClose: @escaping @MainActor () -> Void) {
+        self.onClose = onClose
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        onClose()
+    }
+}
+
+// Fallback when JSONConfigStore fails to open so SettingsViewModel still constructs.
+private final class NoopConfigStore: ConfigStore {
+    var settings: AppSettings { .default }
+    var changes: AsyncStream<AppSettings> { AsyncStream { $0.finish() } }
+    func update(_ mutate: @Sendable (inout AppSettings) -> Void) async throws {}
 }
 
 private struct NoopNotificationService: NotificationService {

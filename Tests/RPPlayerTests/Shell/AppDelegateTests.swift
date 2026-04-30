@@ -12,12 +12,15 @@ final class AppDelegateTests: XCTestCase {
             let api = MockRpApiClient()
             let cache = StubAlbumArtCache()
             let service = MockNotificationService()
+            let auth = StubKeychainAuth()
+            let configStore = StubConfigStore(initial: .default)
+            let deviceCatalog = StubAudioDeviceCatalog(initial: [])
             let viewModel = MiniPlayerViewModel(
                 coordinator: coordinator,
                 api: api,
                 initialChannelId: 0,
                 albumArtCache: cache,
-                auth: StubKeychainAuth(),
+                auth: auth,
                 openSettings: { }
             )
             let notificationCoordinator = NotificationCoordinator(
@@ -28,9 +31,22 @@ final class AppDelegateTests: XCTestCase {
                 channelTitle: { _ in nil },
                 cachedFileURL: { _ in nil }
             )
+            let settingsViewModel = SettingsViewModel(
+                configStore: configStore,
+                deviceCatalog: deviceCatalog,
+                auth: auth,
+                openLoginWindow: { },
+                openDataFolder: { },
+                openLogsFolder: { }
+            )
+            let settingsWindowController = SettingsWindowController(viewModel: settingsViewModel)
+            let loginWindowController = LoginWindowController(keychainAuth: auth)
             return AppDelegate.Bootstrap(
                 viewModel: viewModel,
                 notificationCoordinator: notificationCoordinator,
+                settingsViewModel: settingsViewModel,
+                settingsWindowController: settingsWindowController,
+                loginWindowController: loginWindowController,
                 coordinatorShutdown: { await coordinator.shutdown() }
             )
         })
@@ -58,17 +74,29 @@ final class AppDelegateTests: XCTestCase {
             let api = MockRpApiClient()
             let cache = StubAlbumArtCache()
             let service = MockNotificationService()
+            let auth = StubKeychainAuth()
+            let configStore = StubConfigStore(initial: .default)
+            let deviceCatalog = StubAudioDeviceCatalog(initial: [])
             let viewModel = MiniPlayerViewModel(
                 coordinator: coordinator, api: api, initialChannelId: 0, albumArtCache: cache,
-                auth: StubKeychainAuth(), openSettings: { }
+                auth: auth, openSettings: { }
             )
             let notificationCoordinator = NotificationCoordinator(
                 coordinator: coordinator, cache: cache, service: service,
                 notificationsEnabled: { false }, channelTitle: { _ in nil }, cachedFileURL: { _ in nil }
             )
+            let settingsViewModel = SettingsViewModel(
+                configStore: configStore, deviceCatalog: deviceCatalog, auth: auth,
+                openLoginWindow: { }, openDataFolder: { }, openLogsFolder: { }
+            )
+            let settingsWindowController = SettingsWindowController(viewModel: settingsViewModel)
+            let loginWindowController = LoginWindowController(keychainAuth: auth)
             return AppDelegate.Bootstrap(
                 viewModel: viewModel,
                 notificationCoordinator: notificationCoordinator,
+                settingsViewModel: settingsViewModel,
+                settingsWindowController: settingsWindowController,
+                loginWindowController: loginWindowController,
                 coordinatorShutdown: { didShutDown.signal() }
             )
         })
