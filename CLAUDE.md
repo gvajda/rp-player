@@ -23,12 +23,12 @@ macOS menu-bar app (Swift 6.2, macOS 13, SwiftUI + AppKit) that plays Radio Para
 | 6 | merged to main | ✅ | PlaybackCoordinator |
 | 7 | merged to main | ✅ | AppKit shell (NSStatusItem + borderless NSPanel hosting placeholder) |
 | 8 | merged to main | ✅ | MiniPlayerView (SwiftUI) + AppDelegate real-graph wiring |
-| 9 | **next** | ⬜ | NotificationCenterWrapper + AlbumArtCache + album art in MiniPlayerView |
-| 10 | pending | ⬜ | SettingsView |
+| 9 | merged to main | ✅ | NotificationCoordinator + AlbumArtCache + album art in MiniPlayerView |
+| 10 | **next** | ⬜ | SettingsView + rating row |
 | 11 | pending | ⬜ | AppContainer (composition root) |
 | 12 | pending | ⬜ | Distribution CI workflow |
 
-PR 8 shipped scope: `MiniPlayerView` (SwiftUI) bound to a `MiniPlayerViewModel` (`@MainActor final class: ObservableObject`) that bridges `LivePlaybackCoordinator.nowPlayingUpdates` to `@Published` state. Visible UI: 200×200 album-art placeholder, title/artist/album, play-pause + skip-forward, channel `Picker`. `AppDelegate` builds the real dependency graph (`JSONConfigStore` → `AppLogger` → `AnonymousCookieProvider` → `LiveRpApiClient` → `LibmpvPlayerEngine` → `LivePlaybackCoordinator` → view model) inline and persists `selectedChannelId` via an injected closure. `applicationWillTerminate` blocks the terminate path on `coordinator.shutdown()` for up to 2 s so libmpv releases the audio device. PR 7 review follow-ups landed alongside: Esc-to-dismiss local key monitor in the popover, and `NSApp.activate` moved out of `StatusItemController` into `PopoverController.show`. Out of scope (deferred): album art image loading (PR 9), rating row (PR 9), settings link/window (PR 10), `AppContainer` composition root (PR 11), main-menu/`Cmd-Q` (PR 11), `LSUIElement` Info.plist (PR 12).
+PR 9 shipped scope: `LiveAlbumArtCache` actor (on-disk LRU at `ConfigPaths.albumArtCacheDirectory`, 20 files / 10 MB, SHA-256 keys, in-flight de-dup, validates `NSImage(data:)` before persisting), `LiveNotificationService` actor (wraps `UNUserNotificationCenter` behind `UNUserNotificationCenterProtocol`), `NotificationCoordinator` (`@MainActor final class` subscribing to `nowPlayingUpdates`, posts via service, respects `AppSettings.notificationsEnabled`, looks up channel title via API). `MiniPlayerView` displays cover art via `Image(nsImage:)` when available, falling back to the SF Symbol placeholder. Panel background switched to a SwiftUI `Color(nsColor: .windowBackgroundColor)` so Light/Dark appearance changes are honored. `PlaybackCoordinatorError: LocalizedError` so error banners read as prose. `LiveNotificationService` is bundle-gated in `realBootstrap` — `swift run` (no main bundle proxy) gets a `NoopNotificationService`; production `.app` bundles get the real one. Out of scope (deferred): rating row (PR 10), settings link/window (PR 10), `AppContainer` composition root (PR 11), main-menu/`Cmd-Q` (PR 11), `LSUIElement` Info.plist (PR 12).
 
 ---
 
@@ -72,6 +72,11 @@ PR 8 shipped scope: `MiniPlayerView` (SwiftUI) bound to a `MiniPlayerViewModel` 
 - The popover installs both a global mouse-down monitor (outside-click dismissal) and a local key-down monitor (Esc) on `show(relativeTo:)`. Esc is the keycode 53 constant `PopoverController.escapeKeyCode`. The local monitor is process-wide — when PR 9 introduces a text field inside the popover or PR 10 ships `SettingsView` in a separate window, gate the monitor on `event.window === panel` (or install only while the popover is key) so Esc isn't hijacked.
 - `LivePlaybackCoordinator.getBlock(... info: true)` is required everywhere. With `info: false` the live API returns `song: null` and omits `image_base`, both required by the `GetBlock` model. The fixture-driven coordinator tests didn't catch this because `MockRpApiClient.getBlock` ignores `info` and returns synthetic `GetBlock` values. PR 8 surfaced and fixed the bug at all three callsites (initial play, channel change, prefetch).
 - `NoopPlayerEngine` (private struct in `AppDelegate.swift`) is a `PlayerEngine` shim that throws a captured init error from every action method and yields an immediately-finished events stream. It keeps the menu-bar shell up so the user can see the error banner if `LibmpvPlayerEngine.init` throws (missing dylib, audio-device contention).
+- `LiveAlbumArtCache` keys files by SHA-256(coverPath) + ".jpg", not by `songId`. Multiple songs share an album, so song-keyed cache would re-download the same JPEG. Cap is 20 files / 10 MB; eviction runs on every successful write and removes oldest by `contentModificationDate`. In-flight de-dup via a `coverPath → Task<NSImage?, Never>` map prevents duplicate downloads when two callers race. Response bodies are validated with `NSImage(data:)` before persisting so a 200 with non-image bytes (HTML error page, partial body) does not poison the cache.
+- `LiveNotificationService.init(center:)` has NO default argument. The previous default `= UNUserNotificationCenter.current()` evaluated eagerly at the call site and `current()` throws an `NSInternalInconsistencyException` ("bundleProxyForCurrentProcess is nil") on macOS 26 inside unbundled processes (`swift run RPPlayer`). `realBootstrap` constructs `LiveNotificationService(center: UNUserNotificationCenter.current())` only when `Bundle.main.bundleIdentifier != nil`, otherwise it uses `NoopNotificationService`. PR 12 ships the `.app` bundle and the real path lights up.
+- `NotificationCoordinator` is `@MainActor final class` (not an actor) because it bridges `nowPlayingUpdates` to AppKit / UserNotifications types that are main-thread anchored. The subscription `Task` is spawned in `start()`, mirroring `MiniPlayerViewModel`. The `for await` body checks `Task.isCancelled` before processing each emission so `stop()` reliably drops in-flight events. Configuration (notifications-enabled flag, channel title, on-disk file URL) is injected as `@Sendable` async closures so production wires them to live `JSONConfigStore` / `RpApiClient` / cache reads while tests substitute lightweight stubs.
+- The popover's panel background was migrated from a `cgColor` snapshot on `panel.contentView.layer` to a SwiftUI `Color(nsColor: .windowBackgroundColor)` background applied via `.background(...)` on the wrapped root view. Layer-side `cornerRadius = 10` and `masksToBounds = true` stay because `NSPanel`'s system shadow needs a non-clear hosting view to derive its shape. Light/Dark appearance toggles now re-render the popover without recomposing the layer.
+- `PlaybackCoordinatorError: LocalizedError` provides clean `errorDescription` strings for all five cases (`notPlaying`, `channelNotFound`, `blockHasNoSongs`, `engineError`, `underlying`). The view model surfaces `error.localizedDescription`, which now picks up these strings instead of Swift's default `engineError(message: "...")`-style print.
 
 ---
 
@@ -94,6 +99,7 @@ PR 8 shipped scope: `MiniPlayerView` (SwiftUI) bound to a `MiniPlayerViewModel` 
 - After PR 6: 93 tests
 - After PR 7: 101 tests
 - After PR 8: 111 tests
+- After PR 9: 127 tests
 
 ---
 
