@@ -25,9 +25,17 @@ struct MiniPlayerView: View {
         ZStack {
             RoundedRectangle(cornerRadius: 8)
                 .fill(Color.secondary.opacity(0.15))
-            Image(systemName: "music.quarternote.3")
-                .font(.system(size: 48))
-                .foregroundStyle(.secondary)
+            if let art = viewModel.currentArt {
+                Image(nsImage: art)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 200, height: 200)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            } else {
+                Image(systemName: "music.quarternote.3")
+                    .font(.system(size: 48))
+                    .foregroundStyle(.secondary)
+            }
         }
         .frame(width: 200, height: 200)
     }

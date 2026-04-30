@@ -11,7 +11,11 @@ class PopoverController {
     private var localKeyMonitor: Any?
 
     init(rootView: AnyView) {
-        let hostingView = NSHostingView(rootView: rootView)
+        let wrapped = AnyView(
+            rootView
+                .background(Color(nsColor: .windowBackgroundColor))
+        )
+        let hostingView = NSHostingView(rootView: wrapped)
         hostingView.frame = NSRect(origin: .zero, size: Self.contentSize)
 
         let panel = NSPanel(
@@ -28,7 +32,6 @@ class PopoverController {
         panel.isReleasedWhenClosed = false
         panel.contentView = hostingView
         panel.contentView?.wantsLayer = true
-        panel.contentView?.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
         panel.contentView?.layer?.cornerRadius = 10
         panel.contentView?.layer?.masksToBounds = true
 
