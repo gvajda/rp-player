@@ -30,6 +30,8 @@ final class MiniPlayerViewModel: ObservableObject {
     }
 
     func start() async {
+        subscriptionTask?.cancel()
+        subscriptionTask = nil
         do {
             self.channels = try await api.listChannels()
             self.errorMessage = nil

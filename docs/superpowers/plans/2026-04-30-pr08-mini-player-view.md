@@ -1179,3 +1179,14 @@ If any non-PR-8 changes are present in the primary worktree, STOP and ask the us
 - **Test count math:** previous = 101, expected new = 108 (+8 model + 1 view + 0 view-test additions − 2 placeholder), adjust to match reality.
 - **No new abstractions in the view layer:** MiniPlayerView reads the concrete `MiniPlayerViewModel`. PR 11 will introduce protocols if mockable wiring becomes necessary.
 - **No regression:** `swift build` clean, `swift test` 100% pass, manual smoke green.
+
+---
+
+## Implementation deviations (post-execution)
+
+- `applicationWillTerminate` shipped `Task.detached { ... group.leave() }`, not the planned `Task { @MainActor in ... }`. The latter deadlocks: `applicationWillTerminate` runs on `MainActor` and `DispatchGroup.wait` parks the calling thread, so the main-actor task body never gets to run. The captured `coordinatorShutdown` closure was retyped as `@Sendable () async -> Void` to allow the detached-task capture.
+- `realBootstrap` shipped as `private static func`, not the planned `private static let realBootstrap: () -> Bootstrap = { ... }`. Swift 6.2 strict concurrency rejects the closure-form because it captures `@MainActor`-isolated context (`Self.loadSettings`, `AppLogger.init`, the `MainActor`-bound `MiniPlayerViewModel.init`) inside a `@MainActor final class`'s stored-property initializer.
+- `NoopPlayerEngine.events` shipped as `AsyncStream { $0.finish() }`, not the planned `AsyncStream { _ in }`. The planned form leaks the coordinator's event-subscription task forever (the `for await` loop never gets a `.finish()`); the shipped form lets the loop exit cleanly.
+- `LivePlaybackCoordinator.getBlock(... info: false)` was changed to `info: true` at all three callsites (initial play, channel change, prefetch). The plan inherited the PR 6 coordinator code, which passed `info: false`. Manual smoke caught a `RpApiError.decoding` because the live API returns `song: null` and omits `image_base` for `info: false` while the `GetBlock` model requires both. Test assertions in `LivePlaybackCoordinatorTests` were updated to match.
+- `MiniPlayerViewModel.start()` cancels any prior `subscriptionTask` at its head before spawning a new one. Final-review I1 follow-up; the plan's listing was non-idempotent.
+- `MiniPlayerViewModel.selectChannel` re-entrancy guard (`inFlightChannelId`) and sticky-`errorMessage` clearing were added in a Task 1 fix-up commit (`078fe29`) per the Task 1 code-quality review.
