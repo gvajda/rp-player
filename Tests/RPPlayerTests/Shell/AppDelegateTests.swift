@@ -71,6 +71,16 @@ final class AppDelegateTests: XCTestCase {
         XCTAssertNotNil(delegate.container?.viewModel)
     }
 
+    func testApplicationDidFinishLaunchingInstallsMainMenu() async throws {
+        NSApp.mainMenu = nil
+        delegate.applicationDidFinishLaunching(
+            Notification(name: NSApplication.didFinishLaunchingNotification)
+        )
+        let menu = try XCTUnwrap(NSApp.mainMenu)
+        XCTAssertEqual(menu.items.count, 2)
+        XCTAssertEqual(menu.items.first?.submenu?.title, ProcessInfo.processInfo.processName)
+    }
+
     func testApplicationWillTerminateInvokesShutdown() async throws {
         let didShutDown = AsyncSignal()
         delegate = AppDelegate(containerFactory: {
