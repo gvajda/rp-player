@@ -14,6 +14,7 @@ actor MockRpApiClient: RpApiClient {
 
     var blockResponses: [GetBlock] = []
     var listChannelsResponse: [Channel] = []
+    var listChannelsError: Error?
     var infoResponse: SongInfo?
     var ratingResponse: Rating = Rating(status: "ok", songId: nil, userId: nil, userRating: nil)
     var authStateResponse: Auth = Auth(userId: nil, postOk: nil, username: nil, level: nil,
@@ -27,8 +28,18 @@ actor MockRpApiClient: RpApiClient {
         self.infoResponse = response
     }
 
+    func setListChannelsResponse(_ response: [Channel]) {
+        self.listChannelsResponse = response
+        self.listChannelsError = nil
+    }
+
+    func setListChannelsError(_ error: Error) {
+        self.listChannelsError = error
+    }
+
     func listChannels() async throws -> [Channel] {
         calls.append(.listChannels)
+        if let error = listChannelsError { throw error }
         return listChannelsResponse
     }
 
