@@ -49,13 +49,17 @@ public actor LiveAlbumArtCache: AlbumArtCache {
         if let existing = inFlight[coverPath] {
             return await existing.value
         }
-        let task = Task { [self] in
-            await self.downloadAndStore(coverPath: coverPath, fileURL: fileURL)
+        let task = Task { [weak self] () -> NSImage? in
+            let result = await self?.downloadAndStore(coverPath: coverPath, fileURL: fileURL) ?? nil
+            await self?.clearInFlight(coverPath: coverPath)
+            return result
         }
         inFlight[coverPath] = task
-        let result = await task.value
+        return await task.value
+    }
+
+    private func clearInFlight(coverPath: String) {
         inFlight[coverPath] = nil
-        return result
     }
 
     private func downloadAndStore(coverPath: String, fileURL: URL) async -> NSImage? {
@@ -69,9 +73,13 @@ public actor LiveAlbumArtCache: AlbumArtCache {
                 logger.error("Cover fetch failed: HTTP \((response as? HTTPURLResponse)?.statusCode ?? -1) for \(url.absoluteString)")
                 return nil
             }
+            guard !data.isEmpty, let image = NSImage(data: data) else {
+                logger.error("Cover response was empty or not a valid image: \(url.absoluteString)")
+                return nil
+            }
             try data.write(to: fileURL, options: [.atomic])
             evictIfNeeded()
-            return NSImage(data: data)
+            return image
         } catch {
             logger.error("Cover fetch threw: \(error.localizedDescription) for \(url.absoluteString)")
             return nil
@@ -86,12 +94,15 @@ public actor LiveAlbumArtCache: AlbumArtCache {
             options: [.skipsHiddenFiles]
         ) else { return }
 
-        var aged: [(URL, Date, Int)] = entries.compactMap { url in
-            guard let v = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey]),
-                  let modDate = v.contentModificationDate,
-                  let size = v.fileSize
-            else { return nil }
-            return (url, modDate, size)
+        var aged: [(URL, Date, Int)] = []
+        for url in entries {
+            do {
+                let v = try url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+                guard let modDate = v.contentModificationDate, let size = v.fileSize else { continue }
+                aged.append((url, modDate, size))
+            } catch {
+                logger.error("Album art eviction skipped \(url.lastPathComponent): \(error.localizedDescription)")
+            }
         }
         aged.sort { $0.1 < $1.1 }
 

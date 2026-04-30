@@ -1,10 +1,12 @@
 import Foundation
 
 final class AlbumArtStubURLProtocol: URLProtocol {
-    nonisolated(unsafe) static var responses: [URL: (Data, HTTPURLResponse)] = [:]
-    nonisolated(unsafe) static var failures: [URL: Error] = [:]
+    nonisolated(unsafe) private static var responses: [URL: (Data, HTTPURLResponse)] = [:]
+    nonisolated(unsafe) private static var failures: [URL: Error] = [:]
+    private static let lock = NSLock()
 
     static func reset() {
+        lock.lock(); defer { lock.unlock() }
         responses = [:]
         failures = [:]
     }
@@ -17,11 +19,15 @@ final class AlbumArtStubURLProtocol: URLProtocol {
             client?.urlProtocol(self, didFailWithError: URLError(.badURL))
             return
         }
-        if let error = Self.failures[url] {
+        Self.lock.lock()
+        let failure = Self.failures[url]
+        let response = Self.responses[url]
+        Self.lock.unlock()
+        if let error = failure {
             client?.urlProtocol(self, didFailWithError: error)
             return
         }
-        if let (data, response) = Self.responses[url] {
+        if let (data, response) = response {
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
             client?.urlProtocol(self, didLoad: data)
             client?.urlProtocolDidFinishLoading(self)
@@ -38,10 +44,12 @@ extension AlbumArtStubURLProtocol {
         let response = HTTPURLResponse(
             url: url, statusCode: statusCode, httpVersion: nil, headerFields: nil
         )!
+        lock.lock(); defer { lock.unlock() }
         responses[url] = (data, response)
     }
 
     static func registerFailure(url: URL, error: Error) {
+        lock.lock(); defer { lock.unlock() }
         failures[url] = error
     }
 }
