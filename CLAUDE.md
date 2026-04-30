@@ -12,21 +12,21 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 
 ## PR status
 
-| PR | Branch | Status | Contents |
-|----|--------|--------|----------|
-| 1 | merged to main | ✅ | Scaffold, AppLogger, RotatingFileSink, AppSettings, ConfigStore |
-| 2 | merged to main | ✅ | RpApiClient, ApiModels, CookieProvider, StubURLProtocol, fixtures |
-| 3 | merged to main | ✅ | KeychainStore, KeychainCookieProvider, LoginWindowController |
-| 4 | merged to main | ✅ | AudioDeviceCatalog |
-| 5a | merged to main | ✅ | libmpv vendoring + RPSmoke CLI |
-| 5b | merged to main | ✅ | PlayerEngine (libmpv Swift actor) |
-| 6 | merged to main | ✅ | PlaybackCoordinator |
-| 7 | merged to main | ✅ | AppKit shell (NSStatusItem + borderless NSPanel hosting placeholder) |
-| 8 | merged to main | ✅ | MiniPlayerView (SwiftUI) + AppDelegate real-graph wiring |
-| 9 | merged to main | ✅ | NotificationCoordinator + AlbumArtCache + album art in MiniPlayerView |
-| 10 | merged to main | ✅ | SettingsView + rating row + KeychainCookieProvider + login flow |
+| PR  | Branch         | Status | Contents                                                              |
+| --- | -------------- | ------ | --------------------------------------------------------------------- |
+| 1   | merged to main | ✅      | Scaffold, AppLogger, RotatingFileSink, AppSettings, ConfigStore       |
+| 2   | merged to main | ✅      | RpApiClient, ApiModels, CookieProvider, StubURLProtocol, fixtures     |
+| 3   | merged to main | ✅      | KeychainStore, KeychainCookieProvider, LoginWindowController          |
+| 4   | merged to main | ✅      | AudioDeviceCatalog                                                    |
+| 5a  | merged to main | ✅      | libmpv vendoring + RPSmoke CLI                                        |
+| 5b  | merged to main | ✅      | PlayerEngine (libmpv Swift actor)                                     |
+| 6   | merged to main | ✅      | PlaybackCoordinator                                                   |
+| 7   | merged to main | ✅      | AppKit shell (NSStatusItem + borderless NSPanel hosting placeholder)  |
+| 8   | merged to main | ✅      | MiniPlayerView (SwiftUI) + AppDelegate real-graph wiring              |
+| 9   | merged to main | ✅      | NotificationCoordinator + AlbumArtCache + album art in MiniPlayerView |
+| 10  | merged to main | ✅      | SettingsView + rating row + KeychainCookieProvider + login flow       |
 | 11  | merged to main | ✅      | AppContainer composition root + App/Edit main menu                    |
-| 12 | pending | ⬜ | Distribution CI workflow |
+| 12  | pending        | ⬜      | Distribution CI workflow                                              |
 
 PR 9 shipped scope: `LiveAlbumArtCache` actor (on-disk LRU at `ConfigPaths.albumArtCacheDirectory`, 20 files / 10 MB, SHA-256 keys, in-flight de-dup, validates `NSImage(data:)` before persisting), `LiveNotificationService` actor (wraps `UNUserNotificationCenter` behind `UNUserNotificationCenterProtocol`), `NotificationCoordinator` (`@MainActor final class` subscribing to `nowPlayingUpdates`, posts via service, respects `AppSettings.notificationsEnabled`, looks up channel title via API). `MiniPlayerView` displays cover art via `Image(nsImage:)` when available, falling back to the SF Symbol placeholder. Panel background switched to a SwiftUI `Color(nsColor: .windowBackgroundColor)` so Light/Dark appearance changes are honored. `PlaybackCoordinatorError: LocalizedError` so error banners read as prose. `LiveNotificationService` is bundle-gated in `AppContainer.live()` — `swift run` (no main bundle proxy) gets a `NoopNotificationService`; production `.app` bundles get the real one. Out of scope (deferred): rating row (PR 10), settings link/window (PR 10), `AppContainer` composition root (PR 11), main-menu/`Cmd-Q` (PR 11), `LSUIElement` Info.plist (PR 12).
 
