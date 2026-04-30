@@ -78,6 +78,7 @@ class PopoverController {
         }
         if localKeyMonitor == nil {
             localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                guard let self, event.window === self.panel else { return event }
                 if event.keyCode == Self.escapeKeyCode {
                     Task { @MainActor [weak self] in
                         self?.close()
