@@ -10,7 +10,10 @@ public actor LibmpvPlayerEngine: PlayerEngine {
     private var currentDeviceUID: String?
     private var lastEmittedStreamFormat: StreamFormat?
 
-    public init() throws {
+    public init(
+        initialDeviceUID: String? = nil,
+        initialHogMode: Bool = false
+    ) throws {
         guard let h = mpv_create() else {
             throw PlayerEngineError.createFailed
         }
@@ -36,6 +39,27 @@ public actor LibmpvPlayerEngine: PlayerEngine {
             }
         }
 
+        // Set audio-exclusive + audio-device BEFORE mpv_initialize so coreaudio_exclusive
+        // negotiates the DAC's exclusive-mode format from the start instead of trying to
+        // flip from mixer mode after init.
+        if initialHogMode {
+            let status = mpv_set_option_string(h, "audio-exclusive", "yes")
+            if status < 0 {
+                let message = String(cString: mpv_error_string(status))
+                mpv_terminate_destroy(h)
+                throw PlayerEngineError.setOptionFailed(name: "audio-exclusive", code: Int(status), message: message)
+            }
+        }
+        if let uid = initialDeviceUID, !uid.isEmpty {
+            let ao = initialHogMode ? "coreaudio_exclusive" : "coreaudio"
+            let status = mpv_set_option_string(h, "audio-device", "\(ao)/\(uid)")
+            if status < 0 {
+                let message = String(cString: mpv_error_string(status))
+                mpv_terminate_destroy(h)
+                throw PlayerEngineError.setOptionFailed(name: "audio-device", code: Int(status), message: message)
+            }
+        }
+
         let initStatus = mpv_initialize(h)
         if initStatus < 0 {
             let message = String(cString: mpv_error_string(initStatus))
@@ -53,6 +77,8 @@ public actor LibmpvPlayerEngine: PlayerEngine {
         _ = mpv_request_log_messages(h, "error")
 
         self.handle = h
+        self.currentHogMode = initialHogMode
+        self.currentDeviceUID = initialDeviceUID
         // Pump must be started after init returns: Swift 6 nonisolated init can't
         // capture self into a detached Task, but a follow-up actor method can.
         Task { await self.startPump() }

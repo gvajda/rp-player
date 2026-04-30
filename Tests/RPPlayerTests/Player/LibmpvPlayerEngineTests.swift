@@ -202,6 +202,32 @@ extension LibmpvPlayerEngineTests {
         XCTAssertEqual(d2, "auto")
     }
 
+    func testInitWithInitialDeviceAndHogModeAppliesAudioDeviceBeforeInitialize() async throws {
+        let engine = try LibmpvPlayerEngine(initialDeviceUID: "TestDeviceUID", initialHogMode: true)
+        defer { Task { await engine.shutdown() } }
+
+        let device = await engine.currentAudioDeviceForTesting()
+        XCTAssertEqual(device, "coreaudio_exclusive/TestDeviceUID",
+                       "init should leave audio-device set to the hog-mode AO with the supplied UID")
+    }
+
+    func testInitWithInitialDeviceAndHogModeOffSelectsSharedAO() async throws {
+        let engine = try LibmpvPlayerEngine(initialDeviceUID: "TestDeviceUID", initialHogMode: false)
+        defer { Task { await engine.shutdown() } }
+
+        let device = await engine.currentAudioDeviceForTesting()
+        XCTAssertEqual(device, "coreaudio/TestDeviceUID",
+                       "init without hog mode should use the standard coreaudio AO")
+    }
+
+    func testInitWithoutInitialDeviceLeavesAudioDeviceAsAuto() async throws {
+        let engine = try LibmpvPlayerEngine()
+        defer { Task { await engine.shutdown() } }
+
+        let device = await engine.currentAudioDeviceForTesting()
+        XCTAssertEqual(device, "auto", "no initial UID should leave the default 'auto'")
+    }
+
     func testStreamFormatChangedEmittedAfterFileLoaded() async throws {
         let engine = try LibmpvPlayerEngine()
         defer { Task { await engine.shutdown() } }

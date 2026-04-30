@@ -77,7 +77,10 @@ extension AppContainer {
 
         let engine: any PlayerEngine
         do {
-            engine = try LibmpvPlayerEngine()
+            engine = try LibmpvPlayerEngine(
+                initialDeviceUID: initial.outputDeviceUID,
+                initialHogMode: initial.hogModeEnabled
+            )
         } catch {
             // Keep the menu-bar shell up so the user can see the error banner
             // even when libmpv fails to initialise (missing dylib, audio-device
