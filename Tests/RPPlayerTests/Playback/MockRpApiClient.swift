@@ -17,6 +17,7 @@ actor MockRpApiClient: RpApiClient {
     var listChannelsError: Error?
     var infoResponse: SongInfo?
     var ratingResponse: Rating = Rating(status: "ok", songId: nil, userId: nil, userRating: nil)
+    var rateError: Error?
     var authStateResponse: Auth = Auth(userId: nil, postOk: nil, username: nil, level: nil,
                                         countryCode: nil, avatar: nil, privmsgNew: nil, status: nil)
 
@@ -35,6 +36,10 @@ actor MockRpApiClient: RpApiClient {
 
     func setListChannelsError(_ error: Error) {
         self.listChannelsError = error
+    }
+
+    func setRateError(_ error: Error) {
+        self.rateError = error
     }
 
     func listChannels() async throws -> [Channel] {
@@ -59,6 +64,7 @@ actor MockRpApiClient: RpApiClient {
 
     func rate(songId: Int, rating: Int) async throws -> Rating {
         calls.append(.rate(songId: songId, rating: rating))
+        if let error = rateError { throw error }
         return ratingResponse
     }
 

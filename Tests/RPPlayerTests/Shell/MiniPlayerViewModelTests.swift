@@ -6,16 +6,22 @@ import XCTest
 final class MiniPlayerViewModelTests: XCTestCase {
     private var coordinator: MockPlaybackCoordinator!
     private var api: MockRpApiClient!
+    private var auth: StubKeychainAuth!
+    private var openSettingsCalls = 0
     private var sut: MiniPlayerViewModel!
 
     override func setUp() async throws {
         coordinator = MockPlaybackCoordinator()
         api = MockRpApiClient()
+        auth = StubKeychainAuth()
+        openSettingsCalls = 0
         sut = MiniPlayerViewModel(
             coordinator: coordinator,
             api: api,
             initialChannelId: 0,
-            albumArtCache: StubAlbumArtCache()
+            albumArtCache: StubAlbumArtCache(),
+            auth: auth,
+            openSettings: { [unowned self] in self.openSettingsCalls += 1 }
         )
     }
 
@@ -97,6 +103,8 @@ final class MiniPlayerViewModelTests: XCTestCase {
             api: api,
             initialChannelId: 0,
             albumArtCache: StubAlbumArtCache(),
+            auth: StubKeychainAuth(),
+            openSettings: { },
             persistChannelId: { id in await capture.record(id) }
         )
         await model.selectChannel(2)
@@ -130,7 +138,9 @@ final class MiniPlayerViewModelTests: XCTestCase {
             coordinator: coordinator,
             api: api,
             initialChannelId: 0,
-            albumArtCache: cache
+            albumArtCache: cache,
+            auth: StubKeychainAuth(),
+            openSettings: { }
         )
         await model.start()
         let np = NowPlaying.fixture(cover: "covers/l/1.jpg")
@@ -146,12 +156,82 @@ final class MiniPlayerViewModelTests: XCTestCase {
             coordinator: coordinator,
             api: api,
             initialChannelId: 0,
-            albumArtCache: cache
+            albumArtCache: cache,
+            auth: StubKeychainAuth(),
+            openSettings: { }
         )
         await model.start()
         await coordinator.setNowPlaying(NowPlaying.fixture(cover: nil))
         try await Task.sleep(nanoseconds: 50_000_000)
         XCTAssertNil(model.currentArt)
         XCTAssertTrue(cache.requestedPaths.isEmpty)
+    }
+
+    func testIsSignedInTracksKeychainOnNowPlaying() async throws {
+        auth.loggedIn = true
+        await sut.start()
+        await coordinator.setNowPlaying(NowPlaying.fixture(userRating: "7"))
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertTrue(sut.isSignedIn)
+        XCTAssertEqual(sut.currentRating, 7)
+    }
+
+    func testRateNoOpsWhenSignedOut() async throws {
+        auth.loggedIn = false
+        await sut.start()
+        await coordinator.setNowPlaying(NowPlaying.fixture())
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        await sut.rate(8)
+        let calls = await api.calls
+        XCTAssertFalse(calls.contains(where: { if case .rate = $0 { return true } else { return false } }))
+    }
+
+    func testRateCallsApiAndUpdatesCurrentRatingWhenSignedIn() async throws {
+        auth.loggedIn = true
+        await sut.start()
+        await coordinator.setNowPlaying(NowPlaying.fixture(songId: "61209"))
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        await sut.rate(9)
+
+        let calls = await api.calls
+        XCTAssertTrue(calls.contains(.rate(songId: 61209, rating: 9)))
+        XCTAssertEqual(sut.currentRating, 9)
+    }
+
+    func testRateSurfacesErrorAndDoesNotUpdateRating() async throws {
+        auth.loggedIn = true
+        await api.setRateError(RpApiError.network(URLError(.notConnectedToInternet)))
+        await sut.start()
+        await coordinator.setNowPlaying(NowPlaying.fixture(songId: "1"))
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        await sut.rate(5)
+
+        XCTAssertNotNil(sut.errorMessage)
+        XCTAssertNil(sut.currentRating)
+    }
+
+    func testCurrentArtClearsImmediatelyOnNowPlayingChange() async throws {
+        let cache = StubAlbumArtCache()
+        cache.imageByPath["covers/l/a.jpg"] = NSImage(size: NSSize(width: 1, height: 1))
+        sut = MiniPlayerViewModel(
+            coordinator: coordinator, api: api, initialChannelId: 0,
+            albumArtCache: cache, auth: auth, openSettings: { }
+        )
+        await sut.start()
+        await coordinator.setNowPlaying(NowPlaying.fixture(cover: "covers/l/a.jpg"))
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertNotNil(sut.currentArt)
+
+        await coordinator.setNowPlaying(NowPlaying.fixture(cover: nil))
+        try await Task.sleep(nanoseconds: 10_000_000)
+        XCTAssertNil(sut.currentArt)
+    }
+
+    func testOpenSettingsInvokesInjectedClosure() {
+        sut.openSettings()
+        XCTAssertEqual(openSettingsCalls, 1)
     }
 }

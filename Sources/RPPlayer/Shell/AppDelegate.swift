@@ -127,6 +127,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             api: api,
             initialChannelId: initial.selectedChannelId,
             albumArtCache: cache,
+            auth: KeychainCookieProvider(),
+            openSettings: { },
             persistChannelId: { id in
                 guard let store else { return }
                 try? await store.update { $0.selectedChannelId = id }

@@ -16,7 +16,9 @@ final class AppDelegateTests: XCTestCase {
                 coordinator: coordinator,
                 api: api,
                 initialChannelId: 0,
-                albumArtCache: cache
+                albumArtCache: cache,
+                auth: StubKeychainAuth(),
+                openSettings: { }
             )
             let notificationCoordinator = NotificationCoordinator(
                 coordinator: coordinator,
@@ -57,7 +59,8 @@ final class AppDelegateTests: XCTestCase {
             let cache = StubAlbumArtCache()
             let service = MockNotificationService()
             let viewModel = MiniPlayerViewModel(
-                coordinator: coordinator, api: api, initialChannelId: 0, albumArtCache: cache
+                coordinator: coordinator, api: api, initialChannelId: 0, albumArtCache: cache,
+                auth: StubKeychainAuth(), openSettings: { }
             )
             let notificationCoordinator = NotificationCoordinator(
                 coordinator: coordinator, cache: cache, service: service,

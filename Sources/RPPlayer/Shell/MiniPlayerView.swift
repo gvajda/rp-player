@@ -5,10 +5,28 @@ struct MiniPlayerView: View {
 
     var body: some View {
         VStack(spacing: 12) {
+            HStack {
+                Spacer()
+                Button {
+                    viewModel.openSettings()
+                } label: {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 14, weight: .regular))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Settings")
+            }
             artwork
             metadata
             transport
             channelPicker
+            RatingRow(
+                currentRating: viewModel.currentRating,
+                isSignedIn: viewModel.isSignedIn
+            ) { value in
+                Task { await viewModel.rate(value) }
+            }
             if let message = viewModel.errorMessage {
                 Text(message)
                     .font(.caption)
@@ -16,7 +34,7 @@ struct MiniPlayerView: View {
                     .multilineTextAlignment(.center)
             }
         }
-        .frame(width: 320, height: 420)
+        .frame(width: 320, height: 540)
         .padding()
         .task { await viewModel.start() }
     }
