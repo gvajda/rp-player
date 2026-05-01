@@ -750,3 +750,45 @@ extension LivePlaybackCoordinatorTests {
         XCTAssertNotNil(np, "coordinator must have nowPlaying after skip")
     }
 }
+
+extension LivePlaybackCoordinatorTests {
+    func testChannelSwitchPreservesCursors() async throws {
+        let api = MockRpApiClient()
+        let block0a = makeBlock(
+            channel: "0",
+            endEvent: "801",
+            prebuiltSongs: [
+                makeSong(id: "1", duration: 60_000, elapsed: 0, event: "800"),
+                makeSong(id: "2", duration: 60_000, elapsed: 60_000, event: "801"),
+            ]
+        )
+        let block1 = makeBlock(
+            channel: "1",
+            endEvent: "900",
+            prebuiltSongs: [
+                makeSong(id: "3", duration: 60_000, elapsed: 0, event: "900"),
+            ]
+        )
+        let block0b = makeBlock(channel: "0", songs: [("s1", 60_000)])
+        await api.setBlockResponses([block0a, block1, block0b])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine,
+            logger: AppLogger(category: "test"),
+            bitrateProvider: { 4 }
+        )
+
+        try await coordinator.play(channelId: 0)
+        await engine.fire(.positionUpdate(seconds: 60.5))
+        try await Task.sleep(nanoseconds: 50_000_000)
+        try await coordinator.changeChannel(to: 1)
+        try await coordinator.changeChannel(to: 0)
+
+        let calls = await api.calls
+        let events = calls.compactMap { call -> Int?? in
+            if case let .getBlock(_, _, _, event) = call { return event }
+            return nil
+        }
+        XCTAssertEqual(events, [nil, nil, 800])
+    }
+}
