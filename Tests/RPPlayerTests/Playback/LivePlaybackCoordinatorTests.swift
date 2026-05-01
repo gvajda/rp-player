@@ -539,4 +539,35 @@ extension LivePlaybackCoordinatorTests {
         XCTAssertNil(eventParams[0], "first play must have event=nil")
         XCTAssertEqual(eventParams[1], 100, "second play must pass cursor event=100")
     }
+
+    func testInBlockAutoAdvanceUpdatesCursorToFinishedSongEvent() async throws {
+        let api = MockRpApiClient()
+        let song0 = makeSong(id: "1", duration: 60_000, elapsed: 0, event: "100")
+        let song1 = makeSong(id: "2", duration: 60_000, elapsed: 60_000, event: "101")
+        let block = makeBlock(
+            cue: 0,
+            endEvent: "101",
+            prebuiltSongs: [song0, song1]
+        )
+        await api.setBlockResponses([block])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine,
+            logger: AppLogger(category: "test"),
+            bitrateProvider: { 4 }
+        )
+
+        try await coordinator.play(channelId: 0)
+        await engine.fire(.positionUpdate(seconds: 60.5))
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        await api.setBlockResponses([block])
+        try await coordinator.play(channelId: 0)
+        let calls = await api.calls
+        let lastEvent: Int? = {
+            if case let .getBlock(_, _, _, event) = calls.last { return event }
+            return nil
+        }()
+        XCTAssertEqual(lastEvent, 100)
+    }
 }

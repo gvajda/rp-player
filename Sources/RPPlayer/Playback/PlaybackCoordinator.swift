@@ -222,6 +222,12 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             let newIndex = BlockSongs.indexOfSong(at: seconds, in: startsAt)
             if newIndex != currentSongIndex {
                 logger.debug("song boundary crossed: \(currentSongIndex) -> \(newIndex) at pos=\(seconds)")
+                if let chan = currentChannelId,
+                   currentSongIndex < orderedSongs.count,
+                   let finishedEvent = Int(orderedSongs[currentSongIndex].event ?? "") {
+                    channelCursors[chan] = finishedEvent
+                    logger.debug("cursor[\(chan)] = \(finishedEvent) (auto-advance)")
+                }
                 currentSongIndex = newIndex
                 emitNowPlaying(forSongIndex: newIndex)
             }
