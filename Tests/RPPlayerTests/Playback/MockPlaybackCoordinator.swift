@@ -15,6 +15,8 @@ actor MockPlaybackCoordinator: PlaybackCoordinator {
     private(set) var calls: [Call] = []
     private var current: NowPlaying?
     private var continuations: [UUID: AsyncStream<NowPlaying>.Continuation] = [:]
+    private var positionContinuations: [UUID: AsyncStream<Double>.Continuation] = [:]
+    private var lastPosition: Double = 0
     private var nextError: Error?
 
     func setNextError(_ error: Error) { nextError = error }
@@ -23,6 +25,10 @@ actor MockPlaybackCoordinator: PlaybackCoordinator {
         if let value = value {
             for c in continuations.values { c.yield(value) }
         }
+    }
+    func firePosition(_ seconds: Double) {
+        lastPosition = seconds
+        for c in positionContinuations.values { c.yield(seconds) }
     }
     func recordedCalls() -> [Call] { calls }
 
@@ -39,7 +45,19 @@ actor MockPlaybackCoordinator: PlaybackCoordinator {
         }
     }
 
+    var positionUpdates: AsyncStream<Double> {
+        let id = UUID()
+        return AsyncStream { continuation in
+            self.positionContinuations[id] = continuation
+            continuation.yield(self.lastPosition)
+            continuation.onTermination = { [weak self] _ in
+                Task { [weak self] in await self?.unregisterPosition(id: id) }
+            }
+        }
+    }
+
     private func unregister(id: UUID) { continuations.removeValue(forKey: id) }
+    private func unregisterPosition(id: UUID) { positionContinuations.removeValue(forKey: id) }
 
     private func recordOrThrow(_ call: Call) throws {
         if let err = nextError {
@@ -61,5 +79,7 @@ actor MockPlaybackCoordinator: PlaybackCoordinator {
         calls.append(.shutdown)
         for c in continuations.values { c.finish() }
         continuations.removeAll()
+        for c in positionContinuations.values { c.finish() }
+        positionContinuations.removeAll()
     }
 }
