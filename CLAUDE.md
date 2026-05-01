@@ -12,7 +12,7 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 
 ## Current state
 
-- Last merged: **PR 12** (smoke fixes + UI polish) + post-merge follow-ups (pull-based bitrate, libmpv hog vestige cleanup, bitrate-display fix, stream-format pipeline removal, now_playing-based song match + elapsed-based offsets, settings bitrate picker corrected, **event-cursor block resume**). 208 tests passing on branch `claude/event-cursor-resume`.
+- Last merged: **PR 12.5** (event-cursor block resume) + all PR 12 follow-ups (pull-based bitrate, libmpv hog vestige cleanup, bitrate-display fix, stream-format pipeline removal, elapsed-based offsets, settings bitrate picker corrected). 209 tests passing on `main`.
 - Next: **PR 13** — distribution CI workflow + `.app` bundling.
 
 ### PR 12 follow-ups (landed post-merge)
@@ -31,21 +31,21 @@ All open smoke bugs from `docs/notes/pr12-outstanding-2026-05-01.md` resolved. A
 
 | PR   | Branch                     | Status | Contents                                                                |
 | ---- | -------------------------- | ------ | ----------------------------------------------------------------------- |
-| 1    | merged to main             | ✅     | Scaffold, AppLogger, RotatingFileSink, AppSettings, ConfigStore         |
-| 2    | merged to main             | ✅     | RpApiClient, ApiModels, CookieProvider, StubURLProtocol, fixtures       |
-| 3    | merged to main             | ✅     | KeychainStore, KeychainCookieProvider, LoginWindowController            |
-| 4    | merged to main             | ✅     | AudioDeviceCatalog                                                      |
-| 5a   | merged to main             | ✅     | libmpv vendoring + RPSmoke CLI                                          |
-| 5b   | merged to main             | ✅     | PlayerEngine (libmpv Swift actor)                                       |
-| 6    | merged to main             | ✅     | PlaybackCoordinator                                                     |
-| 7    | merged to main             | ✅     | AppKit shell (NSStatusItem + borderless NSPanel hosting placeholder)    |
-| 8    | merged to main             | ✅     | MiniPlayerView (SwiftUI) + AppDelegate real-graph wiring                |
-| 9    | merged to main             | ✅     | NotificationCoordinator + AlbumArtCache + album art in MiniPlayerView   |
-| 10   | merged to main             | ✅     | SettingsView + rating row + KeychainCookieProvider + login flow         |
-| 11   | merged to main             | ✅     | AppContainer composition root + App/Edit main menu                      |
-| 12   | merged to main             | ✅     | Smoke fixes + UI polish (rp.ico, Layout E, live bitrate, cue, hog mode) |
-| 12.5 | claude/event-cursor-resume | ⬜     | Event-cursor block resume (drops now_playing API; per-channel cursor)   |
-| 13   | pending                    | ⬜     | Distribution CI workflow                                                |
+| 1    | merged to main             | ✅      | Scaffold, AppLogger, RotatingFileSink, AppSettings, ConfigStore         |
+| 2    | merged to main             | ✅      | RpApiClient, ApiModels, CookieProvider, StubURLProtocol, fixtures       |
+| 3    | merged to main             | ✅      | KeychainStore, KeychainCookieProvider, LoginWindowController            |
+| 4    | merged to main             | ✅      | AudioDeviceCatalog                                                      |
+| 5a   | merged to main             | ✅      | libmpv vendoring + RPSmoke CLI                                          |
+| 5b   | merged to main             | ✅      | PlayerEngine (libmpv Swift actor)                                       |
+| 6    | merged to main             | ✅      | PlaybackCoordinator                                                     |
+| 7    | merged to main             | ✅      | AppKit shell (NSStatusItem + borderless NSPanel hosting placeholder)    |
+| 8    | merged to main             | ✅      | MiniPlayerView (SwiftUI) + AppDelegate real-graph wiring                |
+| 9    | merged to main             | ✅      | NotificationCoordinator + AlbumArtCache + album art in MiniPlayerView   |
+| 10   | merged to main             | ✅      | SettingsView + rating row + KeychainCookieProvider + login flow         |
+| 11   | merged to main             | ✅      | AppContainer composition root + App/Edit main menu                      |
+| 12   | merged to main             | ✅      | Smoke fixes + UI polish (rp.ico, Layout E, live bitrate, cue, hog mode) |
+| 12.5 | merged to main             | ✅      | Event-cursor block resume (drops now_playing API; per-channel cursor)   |
+| 13   | pending                    | ⬜      | Distribution CI workflow                                                |
 
 ---
 
@@ -130,7 +130,7 @@ All open smoke bugs from `docs/notes/pr12-outstanding-2026-05-01.md` resolved. A
 - `GetBlock.chan` is `String` (live API returns `"0"`, not `Int`). `GetBlock.endEvent` is `String?` (same reason). `PlayListSong.event` is `String?` for the same reason.
 - `RpApiClient.getBlock(channel:bitrate:info:event:)` takes an optional `event: Int?`; non-nil appends `event=<id>` to the query (sorted alphabetically with the other items: `bitrate`, `chan`, `event`, `info`). The cursor model in the coordinator drives this argument.
 - `SongInfo.songId` has a custom `init(from:)` that handles both `Int` and `String` JSON values.
-- **Promo block edge case (`type: "P"`).** RP serves DJ-talk segments between music blocks. The promo block has `type: "P"`, `block_id: "0"`, single song with `song_id: "0"`, `artist: "Commercial-free"`, `title: "Listener-supported"`, short duration (~5s), `event == end_event`, and **no `album` field on the song dict** (also no `year`, `user_rating`, `rating`). `PlayListSong.album` is therefore `String?`. Symptom of regression: `keyNotFound(CodingKeys(stringValue: "album", ...))` decode error on `api/get_block`. Fixture: `Tests/RPPlayerTests/Fixtures/Api/get_block_promo.json`. Other RP block types observed: `"M"` = music. If a future log shows a similar `keyNotFound` for a different field, check whether the request was for an unusual block type and add the missing field to the optional set.
+- **Promo block edge case (**`type: "P"`**).** RP serves DJ-talk segments between music blocks. The promo block has `type: "P"`, `block_id: "0"`, single song with `song_id: "0"`, `artist: "Commercial-free"`, `title: "Listener-supported"`, short duration (~5s), `event == end_event`, and **no **`album`** field on the song dict** (also no `year`, `user_rating`, `rating`). `PlayListSong.album` is therefore `String?`. Symptom of regression: `keyNotFound(CodingKeys(stringValue: "album", ...))` decode error on `api/get_block`. Fixture: `Tests/RPPlayerTests/Fixtures/Api/get_block_promo.json`. Other RP block types observed: `"M"` = music. If a future log shows a similar `keyNotFound` for a different field, check whether the request was for an unusual block type and add the missing field to the optional set.
 
 ### Auth + cookies
 
@@ -188,6 +188,7 @@ All open smoke bugs from `docs/notes/pr12-outstanding-2026-05-01.md` resolved. A
 - After stream-format pipeline removal (deleted `StreamFormat`, `PlayerEvent.streamFormatChanged`, mpv `audio-bitrate` property observer + handler, coordinator `currentStreamFormat`, view-model `currentStreamFormat`; pipeline became dead once display switched to `block.bitrate`): 199
 - After now_playing-based song match + elapsed-based offsets (added `RpApiClient.nowPlaying`, `NowPlayingEntry`, `resolveStart` in coordinator; `BlockSongs.startsAtSeconds` reads `elapsed` instead of summing durations; replaced cue-seeded tests with nowPlaying-match + cue-fallback tests; settings bitrate picker shows the 7-option API mapping): 201
 - After event-cursor block resume (channelCursors map, drop now_playing API path, deterministic next-block fetch via event=endEvent, prefetch-adoption + cancellation in skipForward past-last): 208
+- After promo block fix (PlayListSong.album optional; promo block decode test + fixture): 209
 
 ---
 
