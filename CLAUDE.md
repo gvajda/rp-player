@@ -12,7 +12,7 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 
 ## Current state
 
-- Last merged: **PR 12** (smoke fixes + UI polish) + post-merge follow-ups (pull-based bitrate, libmpv hog vestige cleanup, bitrate-display fix, stream-format pipeline removal, **now_playing-based song match + elapsed-based offsets**, settings bitrate picker corrected). 201 tests passing on `main`.
+- Last merged: **PR 12** (smoke fixes + UI polish) + post-merge follow-ups (pull-based bitrate, libmpv hog vestige cleanup, bitrate-display fix, stream-format pipeline removal, now_playing-based song match + elapsed-based offsets, settings bitrate picker corrected, **event-cursor block resume**). 208 tests passing on branch `claude/event-cursor-resume`.
 - Next: **PR 13** — distribution CI workflow + `.app` bundling.
 
 ### PR 12 follow-ups (landed post-merge)
@@ -22,28 +22,30 @@ All open smoke bugs from `docs/notes/pr12-outstanding-2026-05-01.md` resolved. A
 1. **Bitrate runtime propagation.** Root cause not pinpointed by static analysis (binder Task may not have fired at all, or raced with channel change). Structural fix: `LivePlaybackCoordinator` now takes `bitrateProvider: @Sendable () async -> Int` instead of stored `bitrate: Int` + `setBitrate`. Every `play` / `skipForward` / prefetch reads bitrate via `await bitrateProvider()`. `AppContainer.live()` wires the provider to `store.settings.bitrate`, so the freshest persisted value is read on the next call regardless of binder timing. `setBitrate` is removed from the protocol and binder.
 2. **Song / metadata offset.** Two stacked root causes:
    - **Block audio file does not start at song "0".** RP serves a single audio file per block whose first listed song begins partway through (4–5 minutes in is typical). Each `song.elapsed` field is the song's absolute ms offset from the **file** start (not from song "0"). Old `BlockSongs.startsAtSeconds` accumulated durations from 0, which is wrong whenever the song dict is partial or pre-song content exists. Fix: `startsAtSeconds` now reads `song.elapsed / 1000` directly; `totalDurationSeconds` returns `last.elapsed + last.duration` (absolute file end, not sum-of-durations). `block.cue` is in the same reference frame (current playback position in ms from file start).
-   - **Initial song selection ignored what was actually streaming.** Old code seeded the displayed song from `block.cue`, which only roughly approximates where audio enters. Fix: `play(channelId:)` now fetches `api/now_playing` concurrently with `getBlock` (`async let`) and resolves the start via `resolveStart(songs:starts:entry:cue:)`: case-insensitive artist+title match against the block → seek to `starts[i]` and emit that song. Cue is the fallback when no match (returns `BlockSongs.indexOfSong(at: cueSeconds, in: starts)`). First-listed-song is the final fallback when both nowPlaying and cue are missing. Covered by `testPlaySeeksToStartOfSongMatchedByNowPlaying`, `testPlayUsesCueFallbackWhenNowPlayingHasNoMatch`, `testPlayStartsFromFirstListedSongWhenBothNowPlayingAndCueMissing`.
+   - **Initial song selection** was later superseded by the event-cursor model (see item 3 below), which makes song-start resolution server-side and deterministic.
+3. **Event-cursor block resume.** Replaced the `api/now_playing`-based song-match approach with a per-channel cursor that tracks the last finished event id. `LivePlaybackCoordinator` keeps `channelCursors: [Int: Int]`; `play(channelId:)` passes the cursor as the `event` query param to `RpApiClient.getBlock(...event:)` so the server returns the block starting after the last known song. All four cursor-write points (in-block auto-advance, in-block skipForward, skipForward-past-last-song, prefetch swap) keep the map current. `api/now_playing`, `NowPlayingEntry`, and `resolveStart` are fully removed. Covered by `testPlayWithCursorCallsGetBlockWithEventParam`, `testInBlockAutoAdvanceUpdatesCursorToFinishedSongEvent`, `testSkipForwardPastLastSongUsesEndEventAsCursorAndFetchParam`, `testSwapToPrefetchedBlockUpdatesCursorToOldEndEvent`, `testSkipForwardPastLastSongAdoptsPrefetchedBlockWhenAvailable`, `testSkipForwardPastLastSongCancelsInFlightPrefetchAndFetches`, `testChannelSwitchPreservesCursors`.
 
 ---
 
 ## PR status
 
-| PR  | Branch         | Status | Contents                                                                |
-| --- | -------------- | ------ | ----------------------------------------------------------------------- |
-| 1   | merged to main | ✅      | Scaffold, AppLogger, RotatingFileSink, AppSettings, ConfigStore         |
-| 2   | merged to main | ✅      | RpApiClient, ApiModels, CookieProvider, StubURLProtocol, fixtures       |
-| 3   | merged to main | ✅      | KeychainStore, KeychainCookieProvider, LoginWindowController            |
-| 4   | merged to main | ✅      | AudioDeviceCatalog                                                      |
-| 5a  | merged to main | ✅      | libmpv vendoring + RPSmoke CLI                                          |
-| 5b  | merged to main | ✅      | PlayerEngine (libmpv Swift actor)                                       |
-| 6   | merged to main | ✅      | PlaybackCoordinator                                                     |
-| 7   | merged to main | ✅      | AppKit shell (NSStatusItem + borderless NSPanel hosting placeholder)    |
-| 8   | merged to main | ✅      | MiniPlayerView (SwiftUI) + AppDelegate real-graph wiring                |
-| 9   | merged to main | ✅      | NotificationCoordinator + AlbumArtCache + album art in MiniPlayerView   |
-| 10  | merged to main | ✅      | SettingsView + rating row + KeychainCookieProvider + login flow         |
-| 11  | merged to main | ✅      | AppContainer composition root + App/Edit main menu                      |
-| 12  | merged to main | ✅      | Smoke fixes + UI polish (rp.ico, Layout E, live bitrate, cue, hog mode) |
-| 13  | pending        | ⬜      | Distribution CI workflow                                                |
+| PR   | Branch                     | Status | Contents                                                                |
+| ---- | -------------------------- | ------ | ----------------------------------------------------------------------- |
+| 1    | merged to main             | ✅     | Scaffold, AppLogger, RotatingFileSink, AppSettings, ConfigStore         |
+| 2    | merged to main             | ✅     | RpApiClient, ApiModels, CookieProvider, StubURLProtocol, fixtures       |
+| 3    | merged to main             | ✅     | KeychainStore, KeychainCookieProvider, LoginWindowController            |
+| 4    | merged to main             | ✅     | AudioDeviceCatalog                                                      |
+| 5a   | merged to main             | ✅     | libmpv vendoring + RPSmoke CLI                                          |
+| 5b   | merged to main             | ✅     | PlayerEngine (libmpv Swift actor)                                       |
+| 6    | merged to main             | ✅     | PlaybackCoordinator                                                     |
+| 7    | merged to main             | ✅     | AppKit shell (NSStatusItem + borderless NSPanel hosting placeholder)    |
+| 8    | merged to main             | ✅     | MiniPlayerView (SwiftUI) + AppDelegate real-graph wiring                |
+| 9    | merged to main             | ✅     | NotificationCoordinator + AlbumArtCache + album art in MiniPlayerView   |
+| 10   | merged to main             | ✅     | SettingsView + rating row + KeychainCookieProvider + login flow         |
+| 11   | merged to main             | ✅     | AppContainer composition root + App/Edit main menu                      |
+| 12   | merged to main             | ✅     | Smoke fixes + UI polish (rp.ico, Layout E, live bitrate, cue, hog mode) |
+| 12.5 | claude/event-cursor-resume | ⬜     | Event-cursor block resume (drops now_playing API; per-channel cursor)   |
+| 13   | pending                    | ⬜     | Distribution CI workflow                                                |
 
 ---
 
@@ -70,11 +72,11 @@ All open smoke bugs from `docs/notes/pr12-outstanding-2026-05-01.md` resolved. A
 
 ### Audio pipeline
 
-- **Hog mode is owned by `HogModeController`** (`Sources/RPPlayer/Audio/HogModeController.swift`), not mpv. The actor writes `getpid()` to `kAudioDevicePropertyHogMode` via `AudioObjectSetPropertyData` BEFORE mpv opens the device. mpv is configured with the plain `coreaudio` AO and `audio-exclusive` is never set. This bypasses mpv's `coreaudio_exclusive` AO format-negotiation failures observed on USB DACs (Qudelix-5K and similar). `AppContainer.live()`'s settings binder calls `acquire(deviceUID:)` / `release()` based on `(hogModeEnabled, outputDeviceUID)`. `release()` runs on app termination so the device returns to shared use. The engine has no `setHogMode` method and no `hogModeChanged` event — the libmpv-owned hog era is fully gone.
-- **Cue handling: `loadfile <url> replace start=<seconds>`**, NOT a post-`fileLoaded` `engine.seek(to:)`. mpv reports `time-pos = cue` immediately on seek for HTTP streams while the audio buffer hasn't caught up — UI saw the cue position before audio reached it. Public engine API is `play(url:startSeconds:)`; a default-arg `play(url:)` shim preserves back-compat for tests that don't care about cue. `LivePlaybackCoordinator.play(channelId:)` resolves the actual start via `resolveStart(...)` (now_playing match → cue fallback → first listed song), seeds `currentSongIndex` accordingly, and emits that index immediately so the displayed track matches the audio without waiting for mpv's first `time-pos` event.
+- **Hog mode is owned by**`HogModeController` (`Sources/RPPlayer/Audio/HogModeController.swift`), not mpv. The actor writes `getpid()` to `kAudioDevicePropertyHogMode` via `AudioObjectSetPropertyData` BEFORE mpv opens the device. mpv is configured with the plain `coreaudio` AO and `audio-exclusive` is never set. This bypasses mpv's `coreaudio_exclusive` AO format-negotiation failures observed on USB DACs (Qudelix-5K and similar). `AppContainer.live()`'s settings binder calls `acquire(deviceUID:)` / `release()` based on `(hogModeEnabled, outputDeviceUID)`. `release()` runs on app termination so the device returns to shared use. The engine has no `setHogMode` method and no `hogModeChanged` event — the libmpv-owned hog era is fully gone.
+- **Cue handling:**`loadfile <url> replace start=<seconds>`, NOT a post-`fileLoaded` `engine.seek(to:)`. mpv reports `time-pos = cue` immediately on seek for HTTP streams while the audio buffer hasn't caught up — UI saw the cue position before audio reached it. Public engine API is `play(url:startSeconds:)`; a default-arg `play(url:)` shim preserves back-compat for tests that don't care about cue. `LivePlaybackCoordinator.play(channelId:)` always seeds `currentSongIndex = 0` and seeks to `block.cue / 1000.0` if non-zero — the server returns the block whose first listed song matches the per-channel cursor, so song[0] is always what should play next.
 - **Block audio file ≠ first listed song.** Each block has one continuous audio file with content before song "0" (typically 4–5 min). The API encodes the true offset on each song's `elapsed` field (absolute ms from file start). `block.cue` is the user's tune-in point in the same reference frame. `BlockSongs.startsAtSeconds` reads `elapsed / 1000` per song (NOT cumulative `duration` sum from 0); `BlockSongs.totalDurationSeconds` returns `last.elapsed + last.duration` (file end). All seeks use this absolute-file-offset frame.
 - **No engine-side hog fallback.** `LivePlaybackCoordinator.handleEngineEvent` just logs `.error(message:)` from mpv. The earlier `isHogModeAcquisitionFailure` heuristic + `engine.setHogMode(false)` retry was a vestige of the libmpv-owned hog era and is gone. If `HogModeController.acquire` itself returns false (CoreAudio status non-zero), surfacing that to the UI is a follow-up.
-- **Bitrate label in the popover comes from `block.bitrate` (the API field), not mpv.** mpv's `audio-bitrate` observer reported the decoded stream's running average — confusing because it lagged settings changes (still showed "AAC" after switching to FLAC). The whole observer pipeline is gone: no `mpv_observe_property("audio-bitrate", …)`, no `StreamFormat`, no `PlayerEvent.streamFormatChanged`. The coordinator threads `currentBlock?.bitrate` through `NowPlaying.blockBitrate` and `BlockBitrateLabel.display(_:)` surfaces it verbatim (trim + uppercase only). Confirmed integer→label mapping (exhaustive, from manual API enumeration): 0 → "32k aac", 1 → "64k aac", 2 → "128k aac", 3 → "320k aac", 4 → "flac", 5 → "128k mp3", 6 → "320k mp3". Display is still verbatim (trim + uppercase) — no switch table — so any future server-side renames appear automatically. `MiniPlayerView` renders `viewModel.currentBitrateLabel`.
+- **Bitrate label in the popover comes from **`block.bitrate`** (the API field), not mpv.** mpv's `audio-bitrate` observer reported the decoded stream's running average — confusing because it lagged settings changes (still showed "AAC" after switching to FLAC). The whole observer pipeline is gone: no `mpv_observe_property("audio-bitrate", …)`, no `StreamFormat`, no `PlayerEvent.streamFormatChanged`. The coordinator threads `currentBlock?.bitrate` through `NowPlaying.blockBitrate` and `BlockBitrateLabel.display(_:)` surfaces it verbatim (trim + uppercase only). Confirmed integer→label mapping (exhaustive, from manual API enumeration): 0 → "32k aac", 1 → "64k aac", 2 → "128k aac", 3 → "320k aac", 4 → "flac", 5 → "128k mp3", 6 → "320k mp3". Display is still verbatim (trim + uppercase) — no switch table — so any future server-side renames appear automatically. `MiniPlayerView` renders `viewModel.currentBitrateLabel`.
 
 ### libmpv vendoring + linkage
 
@@ -100,7 +102,11 @@ All open smoke bugs from `docs/notes/pr12-outstanding-2026-05-01.md` resolved. A
 - **Bitrate is pull, not push.** `LivePlaybackCoordinator` takes `bitrateProvider: @Sendable () async -> Int` at init and calls `await bitrateProvider()` at the top of `play(channelId:)`, on the next-block branch of `skipForward()`, and inside the prefetch Task. There is no `setBitrate` and no settings-binder hop for bitrate. `AppContainer.live()` wires the provider to `store.settings.bitrate`. This eliminates a class of races where a Settings change had to traverse `store.changes → AppContainer binder Task → coordinator.setBitrate` before the user's next channel change, which previously left the coordinator using the old bitrate when the binder hadn't completed in time.
 - `LivePlaybackCoordinator` lazy-subscribes to `PlayerEngine.events` from inside `play()` via `await ensureEventSubscription()`, NOT from `init`. Deterministic: by the time `play()` issues the engine command, the actor has already registered an `events` continuation, so events fired by the engine cannot race ahead.
 - `LivePlaybackCoordinator.getBlock(... info: true)` is required everywhere. With `info: false` the live API returns `song: null` and omits `image_base`, both required by the `GetBlock` model.
-- `LivePlaybackCoordinator.play(channelId:)` issues `getBlock` and `nowPlaying` concurrently via `async let`. The nowPlaying response (single `{artist, title, album, year, cover, time}` — no `song_id`) is matched against the block's song list by case-insensitive artist+title to pick the correct in-block start position. nowPlaying failure is non-fatal (`try?`); falls back to `block.cue` then to first listed song. Tests that mock `RpApiClient` must stub both calls — `MockRpApiClient.setNowPlayingResponse(_:)` / `setNowPlayingError(_:)`.
+- `LivePlaybackCoordinator` keeps a per-channel `channelCursors: [Int: Int]` map that tracks the most recently finished or skipped-from event id per channel. `play(channelId:)` reads `channelCursors[channelId]` and passes it as `event:` to `RpApiClient.getBlock(...event:)`; the server returns the block whose first listed song is `cursor + 1` (i.e. "songs after cursor"). Empty cursor → no event param → server returns the live block.
+- The cursor mutates at four boundary-cross points: in-block auto-advance (engine `positionUpdate` crosses a song boundary), in-block `skipForward()`, `skipForward()` past last song, and prefetched-block auto-swap (`swapToPrefetchedBlockIfAvailable`). Each writes the event id of the song just finished or skipped from. Channel switch-away is *not* a cursor-write point — the cursor already reflects the right value via the four points above.
+- `skipForward()` past last song uses `currentBlock.endEvent` as both the cursor value and the `event` query param for the next-block fetch. If a prefetched block is already present it is adopted via `swapToPrefetchedBlockIfAvailable()` (no extra fetch). If a prefetch task is in flight it is cancelled before the synchronous fetch.
+- Prefetch uses `event=<currentBlock.endEvent>` (parsed from `String?`) so the prefetched block is the deterministic next block, not just whatever the live channel happens to be.
+- The earlier `now_playing`-based song-match path (`api.nowPlaying(channel:)` + `resolveStart(...)` + `NowPlayingEntry`) is gone. The cursor model makes it redundant: server tells us where the listener is by what we hand back.
 - `LivePlaybackCoordinator.resume()` checks `block.expiration` and re-issues `play(channelId:)` for a fresh block when expired (per DESIGN.md §7).
 
 ### Shell (AppKit + SwiftUI)
@@ -121,7 +127,8 @@ All open smoke bugs from `docs/notes/pr12-outstanding-2026-05-01.md` resolved. A
 
 - `JSONDecoder.rpDecoder` is a shared `static let` (snake_case → camelCase). Use it for all RP API decodes.
 - Query items in `LiveRpApiClient` are sorted alphabetically — `StubURLProtocol` test URLs must match this order.
-- `GetBlock.chan` is `String` (live API returns `"0"`, not `Int`). `GetBlock.endEvent` is `String?` (same reason).
+- `GetBlock.chan` is `String` (live API returns `"0"`, not `Int`). `GetBlock.endEvent` is `String?` (same reason). `PlayListSong.event` is `String?` for the same reason.
+- `RpApiClient.getBlock(channel:bitrate:info:event:)` takes an optional `event: Int?`; non-nil appends `event=<id>` to the query (sorted alphabetically with the other items: `bitrate`, `chan`, `event`, `info`). The cursor model in the coordinator drives this argument.
 - `SongInfo.songId` has a custom `init(from:)` that handles both `Int` and `String` JSON values.
 
 ### Auth + cookies
@@ -179,6 +186,7 @@ All open smoke bugs from `docs/notes/pr12-outstanding-2026-05-01.md` resolved. A
 - After bitrate-display fix (NowPlaying.blockBitrate + `BlockBitrateLabel` raw-string display; popover shows `block.bitrate` from API instead of mpv's runtime audio-bitrate observer): 210
 - After stream-format pipeline removal (deleted `StreamFormat`, `PlayerEvent.streamFormatChanged`, mpv `audio-bitrate` property observer + handler, coordinator `currentStreamFormat`, view-model `currentStreamFormat`; pipeline became dead once display switched to `block.bitrate`): 199
 - After now_playing-based song match + elapsed-based offsets (added `RpApiClient.nowPlaying`, `NowPlayingEntry`, `resolveStart` in coordinator; `BlockSongs.startsAtSeconds` reads `elapsed` instead of summing durations; replaced cue-seeded tests with nowPlaying-match + cue-fallback tests; settings bitrate picker shows the 7-option API mapping): 201
+- After event-cursor block resume (channelCursors map, drop now_playing API path, deterministic next-block fetch via event=endEvent, prefetch-adoption + cancellation in skipForward past-last): 208
 
 ---
 
