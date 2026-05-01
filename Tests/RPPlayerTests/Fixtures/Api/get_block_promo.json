@@ -1,0 +1,87 @@
+{
+    "event": "2869038",
+    "block_id": "0",
+    "slice_num": "0",
+    "sched_time_millis": 1777669018541,
+    "type": "P",
+    "end_event": "2869038",
+    "length": "4.725",
+    "url": "https://audio-geo.radioparadise.com/promos/0/5/1862.mp3",
+    "timeout_millis": 2700000,
+    "chan": "0",
+    "channel": {
+        "chan": "0",
+        "title": "The Main Mix",
+        "stream_name": "main-mix",
+        "isER": false
+    },
+    "bitrate": "128k mp3",
+    "ext": "mp3",
+    "cue": 0,
+    "expiration": 1777755169,
+    "filename": {
+        "0": "1862"
+    },
+    "image_base": "//img.radioparadise.com/",
+    "slide_base": "//img.radioparadise.com/slideshow/720/",
+    "song": {
+        "0": {
+            "song_id": "0",
+            "ratings_num": "554",
+            "ratings_dist": {
+                "0": 48,
+                "1": 51,
+                "2": 47,
+                "3": 42,
+                "4": 52,
+                "5": 63,
+                "6": 116,
+                "7": 88,
+                "8": 25,
+                "9": 22
+            },
+            "artist": "Commercial-free",
+            "song_credit_list": {
+                "0": {
+                    "artist_id": "3932",
+                    "artist_title": "The Rolling Stones",
+                    "artist_joinphrase": ""
+                }
+            },
+            "title": "Listener-supported",
+            "duration": 4725,
+            "asin": "102",
+            "slideshow": "6896,26076,38583,61760,35848",
+            "cover": "covers/l/102.jpg",
+            "cover_large": "covers/l/102.jpg",
+            "cover_medium": "covers/m/102.jpg",
+            "cover_small": "covers/s/102.jpg",
+            "type": "P",
+            "event": "2869038",
+            "audio_id": "1862",
+            "priority": "0",
+            "block_id": "0",
+            "slice_num": "0",
+            "sched_time_millis": 1777669018541,
+            "elapsed": 0,
+            "timeout_millis": 2700000,
+            "gapless_url": "https://audio-geo.radioparadise.com/promos/0/5/1862.mp3",
+            "episode_id": 0,
+            "episode_slug": "",
+            "isRateable": false,
+            "isPlayableAfterSkip": false,
+            "isPlayableOnStart": false,
+            "updateHistory": false,
+            "updateProgressIntervalMillis": 0,
+            "skipAllowedMillis": 1777663623266
+        }
+    },
+    "cache_ahead_timeout": {
+        "0": {
+            "cache_length_millis_max": 1800000,
+            "timeout_millis": 900000
+        }
+    },
+    "current_event_id": 2869037,
+    "max_gapless_event_id": 2869087
+}

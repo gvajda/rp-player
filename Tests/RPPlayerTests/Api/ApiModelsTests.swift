@@ -25,6 +25,17 @@ final class ApiModelsTests: XCTestCase {
         XCTAssertGreaterThan(block.expiration, 0)
     }
 
+    func testDecodesGetBlockPromoTypeWithMissingAlbum() throws {
+        let data = try loadFixture("get_block_promo")
+        let block = try decoder.decode(GetBlock.self, from: data)
+        XCTAssertEqual(block.type, "P")
+        XCTAssertEqual(block.song.count, 1)
+        let song = try XCTUnwrap(block.song["0"])
+        XCTAssertEqual(song.artist, "Commercial-free")
+        XCTAssertEqual(song.title, "Listener-supported")
+        XCTAssertNil(song.album)
+    }
+
     func testDecodesSongInfo() throws {
         let data = try loadFixture("info")
         let info = try decoder.decode(SongInfo.self, from: data)

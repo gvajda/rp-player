@@ -52,9 +52,16 @@ public final class NotificationCoordinator {
     private func handle(_ np: NowPlaying) async {
         guard await notificationsEnabled() else { return }
         let title = "\(np.song.artist) — \(np.song.title)"
-        let subtitlePrefix = np.song.album
+        let subtitlePrefix = np.song.album ?? ""
         let channel = await channelTitle(np.channelId) ?? ""
-        let subtitle = channel.isEmpty ? subtitlePrefix : "\(subtitlePrefix) · \(channel)"
+        let subtitle: String
+        if subtitlePrefix.isEmpty {
+            subtitle = channel
+        } else if channel.isEmpty {
+            subtitle = subtitlePrefix
+        } else {
+            subtitle = "\(subtitlePrefix) · \(channel)"
+        }
 
         var attachmentURL: URL?
         if let cover = np.song.cover {

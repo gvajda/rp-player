@@ -58,7 +58,9 @@ struct MiniPlayerView: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
-            if let album = viewModel.nowPlaying?.song.album, !album.isEmpty {
+            if let song = viewModel.nowPlaying?.song,
+               let album = song.album,
+               !album.isEmpty {
                 Text(album)
                     .font(.caption)
                     .foregroundStyle(.tertiary)

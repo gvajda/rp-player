@@ -13,7 +13,8 @@ public struct PlayListSong: Codable, Sendable, Equatable {
     public let songId: String
     public let artist: String
     public let title: String
-    public let album: String
+    /// Optional because RP "promo" blocks (DJ talk, type "P") omit album.
+    public let album: String?
     /// Duration in milliseconds. The legacy C# typed this as `string`, but the
     /// live API returns it as an integer (e.g. 158807).
     public let duration: Int
