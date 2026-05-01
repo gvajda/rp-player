@@ -7,7 +7,10 @@ public struct NowPlaying: Sendable, Equatable {
     public let blockDurationSeconds: Double
     public let songStartSeconds: Double
     public let songEndSeconds: Double
-    public var streamFormat: StreamFormat?
+    /// Raw `bitrate` field from the live API's get_block response (server-defined
+    /// label, e.g. "flac", "flacm", "320", "32k aac"). Reflects what the app
+    /// requested + the server served — single source of truth for the popover label.
+    public var blockBitrate: String?
 
     public init(
         channelId: Int,
@@ -16,7 +19,7 @@ public struct NowPlaying: Sendable, Equatable {
         blockDurationSeconds: Double,
         songStartSeconds: Double,
         songEndSeconds: Double,
-        streamFormat: StreamFormat? = nil
+        blockBitrate: String? = nil
     ) {
         self.channelId = channelId
         self.song = song
@@ -24,7 +27,20 @@ public struct NowPlaying: Sendable, Equatable {
         self.blockDurationSeconds = blockDurationSeconds
         self.songStartSeconds = songStartSeconds
         self.songEndSeconds = songEndSeconds
-        self.streamFormat = streamFormat
+        self.blockBitrate = blockBitrate
+    }
+}
+
+public enum BlockBitrateLabel {
+    /// Surfaces the raw `block.bitrate` string from the live API verbatim, only
+    /// trimming whitespace and uppercasing for legibility. Real-world values
+    /// observed include "flac", "flacm", "320", "32k aac", etc. — the set isn't
+    /// formally documented, so the safest display is the server's own label.
+    public static func display(_ raw: String?) -> String? {
+        guard let raw else { return nil }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return trimmed.uppercased()
     }
 }
 

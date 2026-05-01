@@ -2,18 +2,20 @@ import XCTest
 @testable import RPPlayer
 
 final class BlockSongsTests: XCTestCase {
-    private func song(id: String, duration: Int) -> PlayListSong {
+    private func song(id: String, duration: Int, elapsed: Int) -> PlayListSong {
         PlayListSong(
             songId: id, artist: "A", title: id, album: "Al", duration: duration,
             event: nil, schedTime: nil, chan: nil, year: nil, asin: nil,
-            rating: nil, userRating: nil, cover: nil, elapsed: nil, slideshow: nil
+            rating: nil, userRating: nil, cover: nil, elapsed: elapsed, slideshow: nil
         )
     }
 
     private func block(songs: [(String, Int)], cue: Int = 0) -> GetBlock {
         var dict: [String: PlayListSong] = [:]
+        var elapsed = 0
         for (idx, pair) in songs.enumerated() {
-            dict[String(idx)] = song(id: pair.0, duration: pair.1)
+            dict[String(idx)] = song(id: pair.0, duration: pair.1, elapsed: elapsed)
+            elapsed += pair.1
         }
         return GetBlock(
             url: "https://example.com/x.flac",
@@ -28,9 +30,9 @@ final class BlockSongsTests: XCTestCase {
             url: "u", chan: "0", bitrate: nil, cue: 0, expiration: 0,
             length: nil, imageBase: "",
             song: [
-                "2": song(id: "c", duration: 10000),
-                "0": song(id: "a", duration: 30000),
-                "1": song(id: "b", duration: 20000),
+                "2": song(id: "c", duration: 10000, elapsed: 50000),
+                "0": song(id: "a", duration: 30000, elapsed: 0),
+                "1": song(id: "b", duration: 20000, elapsed: 30000),
             ],
             channel: nil, event: nil, endEvent: nil, type: nil, ext: nil, filename: nil
         )
@@ -38,7 +40,7 @@ final class BlockSongsTests: XCTestCase {
         XCTAssertEqual(ordered.map(\.songId), ["a", "b", "c"])
     }
 
-    func testStartsAtSecondsCumulativeFromZero() {
+    func testStartsAtSecondsUsesElapsedField() {
         let b = block(songs: [("a", 60_000), ("b", 120_000), ("c", 90_000), ("d", 100_000)])
         let starts = BlockSongs.startsAtSeconds(songs: BlockSongs.orderedSongs(from: b))
         XCTAssertEqual(starts, [0, 60, 180, 270])
@@ -50,7 +52,7 @@ final class BlockSongsTests: XCTestCase {
         XCTAssertEqual(starts, [])
     }
 
-    func testTotalDurationSecondsSumsAllSongs() {
+    func testTotalDurationSecondsReturnsEndOfLastSong() {
         let b = block(songs: [("a", 60_000), ("b", 120_000), ("c", 90_000), ("d", 100_000)])
         let total = BlockSongs.totalDurationSeconds(songs: BlockSongs.orderedSongs(from: b))
         XCTAssertEqual(total, 370.0, accuracy: 0.001)

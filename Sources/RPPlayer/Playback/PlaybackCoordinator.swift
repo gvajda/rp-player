@@ -10,7 +10,6 @@ public protocol PlaybackCoordinator: Sendable {
     func stop() async throws
     func skipForward() async throws
     func changeChannel(to channelId: Int) async throws
-    func setBitrate(_ newBitrate: Int) async
     func shutdown() async
 }
 
@@ -18,8 +17,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     private let api: any RpApiClient
     private let engine: any PlayerEngine
     private let logger: any Logging
-    private var bitrate: Int
-    private let onHogModeFallback: (@Sendable () async -> Void)?
+    private let bitrateProvider: @Sendable () async -> Int
 
     private var currentChannelId: Int?
     private var currentBlock: GetBlock?
@@ -33,21 +31,17 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     private var prefetchedBlock: GetBlock?
     private var prefetchTask: Task<Void, Never>?
     private var isShutdown = false
-    private var hogModeFallbackTriggered = false
-    private var currentStreamFormat: StreamFormat?
 
     public init(
         api: any RpApiClient,
         engine: any PlayerEngine,
         logger: any Logging,
-        bitrate: Int,
-        onHogModeFallback: (@Sendable () async -> Void)? = nil
+        bitrateProvider: @escaping @Sendable () async -> Int
     ) {
         self.api = api
         self.engine = engine
         self.logger = logger
-        self.bitrate = bitrate
-        self.onHogModeFallback = onHogModeFallback
+        self.bitrateProvider = bitrateProvider
     }
 
     public var nowPlaying: NowPlaying? { current }
@@ -67,29 +61,44 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     public func play(channelId: Int) async throws {
         logger.debug("play(channelId: \(channelId))")
         await ensureEventSubscription()
-        let block = try await api.getBlock(channel: channelId, bitrate: bitrate, info: true)
+        let bitrate = await bitrateProvider()
+        logger.debug("play resolved bitrate=\(bitrate)")
+        async let blockFetch = api.getBlock(channel: channelId, bitrate: bitrate, info: true)
+        async let nowPlayingFetch = api.nowPlaying(channel: channelId)
+        let block = try await blockFetch
+        let nowPlayingEntry = try? await nowPlayingFetch
         let songs = BlockSongs.orderedSongs(from: block)
         guard !songs.isEmpty else { throw PlaybackCoordinatorError.blockHasNoSongs }
-        logger.debug("play got block url=\(block.url) cue=\(block.cue) songs=\(songs.count) expiration=\(block.expiration)")
 
+        let starts = BlockSongs.startsAtSeconds(songs: songs)
+        logger.debug("play block (expiration=\(block.expiration)):\n\(describeBlock(url: block.url, songs: songs, starts: starts))")
+
+        if let entry = nowPlayingEntry {
+            logger.debug("play nowPlaying API: artist='\(entry.artist)' title='\(entry.title)'")
+        } else {
+            logger.debug("play nowPlaying API: failed or unavailable — will start from beginning")
+        }
+
+        let cueFallback = block.cue > 0 ? Double(block.cue) / 1000.0 : nil
+        let (startIndex, startPos) = resolveStart(songs: songs, starts: starts, entry: nowPlayingEntry, cue: cueFallback)
         currentChannelId = channelId
         currentBlock = block
         orderedSongs = songs
-        startsAt = BlockSongs.startsAtSeconds(songs: songs)
-        currentSongIndex = 0
-        currentPositionSeconds = 0
-        hogModeFallbackTriggered = false
+        startsAt = starts
+        currentSongIndex = startIndex
+        currentPositionSeconds = startPos
 
-        let startSeconds: Double? = block.cue > 0 ? Double(block.cue) / 1000.0 : nil
+        let startSeconds: Double? = startPos > 0 ? startPos : nil
         guard let url = URL(string: block.url) else {
             throw PlaybackCoordinatorError.engineError(message: "invalid block url: \(block.url)")
         }
+        logger.debug("play engine.play url=\(url.absoluteString) startSeconds=\(startSeconds.map { "\($0)s" } ?? "nil (beginning)")")
         do {
             try await engine.play(url: url, startSeconds: startSeconds)
         } catch {
             throw PlaybackCoordinatorError.engineError(message: String(describing: error))
         }
-        emitNowPlaying(forSongIndex: 0)
+        emitNowPlaying(forSongIndex: currentSongIndex)
     }
 
     public func pause() async throws {
@@ -140,6 +149,8 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         if nextIndex < orderedSongs.count {
             // Seek slightly past the boundary so positionUpdate trips into the new song.
             let target = startsAt[nextIndex] + 0.05
+            let nextSong = orderedSongs[nextIndex]
+            logger.debug("skipForward in-block: url=\(currentBlock?.url ?? "?") seek to \(target)s → song [\(nextIndex)] '\(nextSong.artist) – \(nextSong.title)'")
             do {
                 try await engine.seek(to: target)
             } catch {
@@ -150,19 +161,23 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             emitNowPlaying(forSongIndex: nextIndex)
         } else {
             // Past the last song — fetch a fresh block from the same channel
-            // and play from offset 0 (no cue tune-in: user's intent is "next block").
-            logger.debug("skipForward past last song, fetching next block channel=\(channelId)")
+            // and play from offset 0 (user's intent is "next block", not tune-in).
+            let bitrate = await bitrateProvider()
+            logger.debug("skipForward past last song, fetching next block channel=\(channelId) bitrate=\(bitrate)")
             let block = try await api.getBlock(channel: channelId, bitrate: bitrate, info: true)
             let songs = BlockSongs.orderedSongs(from: block)
             guard !songs.isEmpty else { throw PlaybackCoordinatorError.blockHasNoSongs }
+            let newStarts = BlockSongs.startsAtSeconds(songs: songs)
+            logger.debug("skipForward next block:\n\(describeBlock(url: block.url, songs: songs, starts: newStarts))")
             currentBlock = block
             orderedSongs = songs
-            startsAt = BlockSongs.startsAtSeconds(songs: songs)
+            startsAt = newStarts
             currentSongIndex = 0
             currentPositionSeconds = 0
             guard let url = URL(string: block.url) else {
                 throw PlaybackCoordinatorError.engineError(message: "invalid block url: \(block.url)")
             }
+            logger.debug("skipForward engine.play url=\(url.absoluteString) startSeconds=nil (beginning)")
             do {
                 try await engine.play(url: url, startSeconds: nil)
             } catch {
@@ -178,13 +193,6 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         prefetchedBlock = nil
         try await stop()
         try await play(channelId: channelId)
-    }
-
-    public func setBitrate(_ newBitrate: Int) {
-        if bitrate != newBitrate {
-            logger.debug("coordinator setBitrate \(bitrate) -> \(newBitrate)")
-        }
-        bitrate = newBitrate
     }
 
     public func shutdown() async {
@@ -233,36 +241,9 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             }
         case .error(let message):
             logger.error("player engine reported error: \(message)")
-            if !hogModeFallbackTriggered, Self.isHogModeAcquisitionFailure(message) {
-                hogModeFallbackTriggered = true
-                logger.warn("hog mode acquisition failed — falling back to shared mode")
-                do {
-                    try await engine.setHogMode(false)
-                    if let block = currentBlock, let url = URL(string: block.url) {
-                        let startSeconds: Double? = block.cue > 0 ? Double(block.cue) / 1000.0 : nil
-                        try await engine.play(url: url, startSeconds: startSeconds)
-                    }
-                } catch {
-                    logger.error("hog-mode fallback failed: \(error)")
-                }
-                await onHogModeFallback?()
-            }
-        case .streamFormatChanged(let format):
-            logger.debug("engine streamFormat: \(format.codec) \(format.sampleRateHz)Hz kbps=\(format.kbps ?? 0)")
-            currentStreamFormat = format
-            emitNowPlaying(forSongIndex: currentSongIndex)
-        case .hogModeChanged, .outputDeviceChanged, .shutdown:
+        case .outputDeviceChanged, .shutdown:
             break
         }
-    }
-
-    private static func isHogModeAcquisitionFailure(_ message: String) -> Bool {
-        // mpv emits one MPV_EVENT_LOG_MESSAGE per line; any AO init failure or
-        // hardware-format mismatch in exclusive mode trips the fallback.
-        message.contains("Failed to initialize audio driver 'coreaudio_exclusive'")
-            || message.contains("Failed to initialize audio driver 'coreaudio'")
-            || message.contains("hardware format not supported")
-            || message.contains("Could not open/initialize audio device")
     }
 
     private func emitNowPlaying(forSongIndex idx: Int) {
@@ -277,10 +258,40 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             blockDurationSeconds: BlockSongs.totalDurationSeconds(songs: orderedSongs),
             songStartSeconds: songStart,
             songEndSeconds: songEnd,
-            streamFormat: currentStreamFormat
+            blockBitrate: currentBlock?.bitrate
         )
         current = np
         for c in continuations.values { c.yield(np) }
+    }
+
+    private func describeBlock(url: String, songs: [PlayListSong], starts: [Double]) -> String {
+        let lines = songs.enumerated().map { i, song in
+            String(format: "  [%d] %7.1fs  %@ – %@ (%.1fs)", i, starts[i], song.artist, song.title, Double(song.duration) / 1000.0)
+        }
+        return "url=\(url)\n" + lines.joined(separator: "\n")
+    }
+
+    private func resolveStart(songs: [PlayListSong], starts: [Double], entry: NowPlayingEntry?, cue: Double?) -> (index: Int, seconds: Double) {
+        if let entry {
+            for (i, song) in songs.enumerated() {
+                if song.artist.caseInsensitiveCompare(entry.artist) == .orderedSame,
+                   song.title.caseInsensitiveCompare(entry.title) == .orderedSame {
+                    logger.debug("nowPlaying match: '\(entry.artist)' / '\(entry.title)' → song \(i) at \(starts[i])s")
+                    return (i, starts[i])
+                }
+            }
+            logger.debug("nowPlaying no match for '\(entry.artist)' / '\(entry.title)'")
+        } else {
+            logger.debug("nowPlaying API unavailable")
+        }
+        if let cue, !starts.isEmpty {
+            let idx = BlockSongs.indexOfSong(at: cue, in: starts)
+            logger.debug("cue fallback: \(cue)s → song \(idx), seeking to exact cue position")
+            return (idx, cue)
+        }
+        let firstStart = starts.first ?? 0
+        logger.debug("defaulting to first listed song at \(firstStart)s")
+        return (0, firstStart)
     }
 
     private func unregister(id: UUID) { continuations.removeValue(forKey: id) }
@@ -295,10 +306,11 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         let remaining = totalSeconds - currentPositionSeconds
         guard remaining < 10.0 else { return }
 
-        logger.debug("prefetch start, channel=\(channelId), bitrate=\(bitrate)")
         let api = self.api
-        let bitrate = self.bitrate
+        let provider = self.bitrateProvider
+        logger.debug("prefetch start, channel=\(channelId)")
         prefetchTask = Task { [weak self] in
+            let bitrate = await provider()
             let result = try? await api.getBlock(channel: channelId, bitrate: bitrate, info: true)
             await self?.absorbPrefetchResult(result)
         }
@@ -325,18 +337,20 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             current = nil
             return
         }
-        logger.info("swap to prefetched block: url=\(block.url)")
         prefetchedBlock = nil
         let songs = BlockSongs.orderedSongs(from: block)
+        let swapStarts = BlockSongs.startsAtSeconds(songs: songs)
+        logger.info("swap to prefetched block:\n\(describeBlock(url: block.url, songs: songs, starts: swapStarts))")
         currentBlock = block
         orderedSongs = songs
-        startsAt = BlockSongs.startsAtSeconds(songs: songs)
+        startsAt = swapStarts
         currentSongIndex = 0
         currentPositionSeconds = 0
         guard let url = URL(string: block.url) else {
             logger.error("prefetched block had invalid url: \(block.url)")
             return
         }
+        logger.debug("swap engine.play url=\(url.absoluteString) startSeconds=nil (beginning)")
         do {
             try await engine.play(url: url, startSeconds: nil)
         } catch {

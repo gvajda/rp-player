@@ -1,13 +1,12 @@
 import CMpv
 import Foundation
 
-public actor LibmpvPlayerEngine: PlayerEngine {
+public actor MpvPlayerEngine: PlayerEngine {
     private var handle: OpaquePointer?
     private var continuations: [UUID: AsyncStream<PlayerEvent>.Continuation] = [:]
     private var pumpTask: Task<Void, Never>?
     private var isShutdown = false
     private var currentDeviceUID: String?
-    private var lastEmittedStreamFormat: StreamFormat?
     private let logger: (any Logging)?
 
     public init(
@@ -57,8 +56,6 @@ public actor LibmpvPlayerEngine: PlayerEngine {
 
         // Subscribe to time-pos so position updates flow through the pump.
         _ = mpv_observe_property(h, /*reply_userdata*/ 0, "time-pos", MPV_FORMAT_DOUBLE)
-        // audio-bitrate fires after AO init; codec/samplerate aren't populated at MPV_EVENT_FILE_LOADED.
-        _ = mpv_observe_property(h, /*reply_userdata*/ 1, "audio-bitrate", MPV_FORMAT_DOUBLE)
 
         // Required for MPV_EVENT_LOG_MESSAGE delivery; without this the bridge's
         // .error(message:) translation path is unreachable.
@@ -67,7 +64,7 @@ public actor LibmpvPlayerEngine: PlayerEngine {
         self.handle = h
         self.currentDeviceUID = initialDeviceUID
         self.logger = logger
-        logger?.debug("LibmpvPlayerEngine init done; initialDeviceUID=\(initialDeviceUID ?? "nil")")
+        logger?.debug("MpvPlayerEngine init done; initialDeviceUID=\(initialDeviceUID ?? "nil")")
         // Pump must be started after init returns: Swift 6 nonisolated init can't
         // capture self into a detached Task, but a follow-up actor method can.
         Task { await self.startPump() }
@@ -85,9 +82,6 @@ public actor LibmpvPlayerEngine: PlayerEngine {
                 handle: box.handle,
                 deliver: { [weak self] event in
                     await self?.deliver(event)
-                },
-                onAudioBitrateChange: { [weak self] in
-                    await self?.handleAudioBitrateChange()
                 }
             )
         }
@@ -118,8 +112,7 @@ public actor LibmpvPlayerEngine: PlayerEngine {
     /// Uses a 0.5s timeout so cancellation is observed even if mpv produces no events.
     private static func pump(
         handle: OpaquePointer,
-        deliver: @Sendable @escaping (PlayerEvent) async -> Void,
-        onAudioBitrateChange: @Sendable @escaping () async -> Void
+        deliver: @Sendable @escaping (PlayerEvent) async -> Void
     ) async {
         while !Task.isCancelled {
             guard let eventPtr = mpv_wait_event(handle, /*timeout*/ 0.5) else { continue }
@@ -128,12 +121,6 @@ public actor LibmpvPlayerEngine: PlayerEngine {
             if let translated = MpvEventBridge.playerEvent(from: event) {
                 await deliver(translated)
                 if case .shutdown = translated { return }
-            } else if event.event_id == MPV_EVENT_PROPERTY_CHANGE {
-                let propPtr = event.data.assumingMemoryBound(to: mpv_event_property.self)
-                if let namePtr = propPtr.pointee.name,
-                   String(cString: namePtr) == "audio-bitrate" {
-                    await onAudioBitrateChange()
-                }
             } else if event.event_id == MPV_EVENT_SHUTDOWN {
                 return
             }
@@ -142,29 +129,10 @@ public actor LibmpvPlayerEngine: PlayerEngine {
 
     private func deliver(_ event: PlayerEvent) {
         for c in continuations.values { c.yield(event) }
-        if case .fileLoaded = event {
-            lastEmittedStreamFormat = nil
-        }
         if case .shutdown = event {
             for c in continuations.values { c.finish() }
             continuations.removeAll()
         }
-    }
-
-    private func handleAudioBitrateChange() {
-        let format = readCurrentStreamFormat()
-        // logger?.debug("audio-bitrate observer fired; format=\(format?.codec ?? "nil") rate=\(format?.sampleRateHz ?? 0) kbps=\(format?.kbps ?? 0)")
-        guard let format else { return }
-        if !Self.shouldEmit(format, lastEmitted: lastEmittedStreamFormat) { return }
-        lastEmittedStreamFormat = format
-        for c in continuations.values { c.yield(.streamFormatChanged(format)) }
-    }
-
-    // mpv reports instantaneous audio-bitrate which jitters per chunk on FLAC.
-    // Compare on (codec, sampleRateHz) only so kbps fluctuation does not re-emit.
-    static func shouldEmit(_ new: StreamFormat, lastEmitted: StreamFormat?) -> Bool {
-        guard let last = lastEmitted else { return true }
-        return last.codec != new.codec || last.sampleRateHz != new.sampleRateHz
     }
 
     public func play(url: URL, startSeconds: Double?) async throws {
@@ -196,14 +164,6 @@ public actor LibmpvPlayerEngine: PlayerEngine {
         try runCommand(["seek", String(seconds), "absolute"])
     }
 
-    public func setHogMode(_ enabled: Bool) async throws {
-        try requireHandle()
-        // HogModeController owns hog mode via direct CoreAudio calls; this method
-        // only emits the event so subscribers stay in sync.
-        logger?.debug("engine setHogMode(\(enabled)) — emit-only (HogModeController owns hog mode)")
-        deliver(.hogModeChanged(enabled: enabled))
-    }
-
     public func setOutputDevice(uid: String?) async throws {
         logger?.debug("engine setOutputDevice(uid: \(uid ?? "nil"))")
         try requireHandle()
@@ -228,20 +188,6 @@ public actor LibmpvPlayerEngine: PlayerEngine {
         guard let raw = mpv_get_property_string(h, "audio-device") else { return nil }
         defer { mpv_free(raw) }
         return String(cString: raw)
-    }
-
-    func readCurrentStreamFormat() -> StreamFormat? {
-        guard let h = handle else { return nil }
-        var rate: Int64 = 0
-        let rateStatus = mpv_get_property(h, "audio-params/samplerate", MPV_FORMAT_INT64, &rate)
-        guard rateStatus >= 0, rate > 0 else { return nil }
-        guard let codecRaw = mpv_get_property_string(h, "audio-codec-name") else { return nil }
-        defer { mpv_free(codecRaw) }
-        let codec = String(cString: codecRaw)
-        var bitrate: Double = 0
-        let bitrateStatus = mpv_get_property(h, "audio-bitrate", MPV_FORMAT_DOUBLE, &bitrate)
-        let kbps: Double? = (bitrateStatus >= 0 && bitrate > 0) ? bitrate / 1000.0 : nil
-        return StreamFormat(codec: codec, sampleRateHz: Int(rate), kbps: kbps)
     }
 
     public func shutdown() async {

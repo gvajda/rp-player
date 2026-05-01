@@ -12,7 +12,7 @@ final class MiniPlayerViewModel: ObservableObject {
     @Published private(set) var currentArt: NSImage?
     @Published private(set) var isSignedIn: Bool = false
     @Published private(set) var currentRating: Int?
-    @Published private(set) var currentStreamFormat: StreamFormat?
+    @Published private(set) var currentBitrateLabel: String?
 
     typealias PersistChannelId = @Sendable (Int) async -> Void
 
@@ -68,7 +68,7 @@ final class MiniPlayerViewModel: ObservableObject {
                     self.isPlaying = true
                     self.isSignedIn = self.auth.isLoggedIn
                     self.currentRating = Self.parseRating(from: np.song.userRating)
-                    self.currentStreamFormat = np.streamFormat
+                    self.currentBitrateLabel = BlockBitrateLabel.display(np.blockBitrate)
                     let newCover = np.song.cover
                     if newCover != self.lastLoadedCoverPath {
                         self.lastLoadedCoverPath = newCover

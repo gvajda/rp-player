@@ -8,7 +8,6 @@ public protocol PlayerEngine: Sendable {
     func resume() async throws
     func stop() async throws
     func seek(to seconds: Double) async throws
-    func setHogMode(_ enabled: Bool) async throws
     func setOutputDevice(uid: String?) async throws
     func shutdown() async
 }
@@ -24,9 +23,7 @@ public enum PlayerEvent: Sendable, Equatable {
     case fileLoaded
     case fileEnded(reason: PlayerEndReason)
     case error(message: String)
-    case hogModeChanged(enabled: Bool)
     case outputDeviceChanged(uid: String?)
-    case streamFormatChanged(StreamFormat)
     case shutdown
 }
 

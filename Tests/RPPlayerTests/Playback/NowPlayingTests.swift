@@ -23,6 +23,23 @@ final class NowPlayingTests: XCTestCase {
         XCTAssertNotEqual(np1, differentChannel)
     }
 
+    func testBlockBitrateLabelUppercasesRawValue() {
+        XCTAssertEqual(BlockBitrateLabel.display("flac"), "FLAC")
+        XCTAssertEqual(BlockBitrateLabel.display("flacm"), "FLACM")
+        XCTAssertEqual(BlockBitrateLabel.display("32k aac"), "32K AAC")
+        XCTAssertEqual(BlockBitrateLabel.display("320"), "320")
+    }
+
+    func testBlockBitrateLabelTrimsWhitespace() {
+        XCTAssertEqual(BlockBitrateLabel.display("  flac  "), "FLAC")
+    }
+
+    func testBlockBitrateLabelReturnsNilForEmptyOrMissing() {
+        XCTAssertNil(BlockBitrateLabel.display(nil))
+        XCTAssertNil(BlockBitrateLabel.display(""))
+        XCTAssertNil(BlockBitrateLabel.display("   "))
+    }
+
     func testCoordinatorErrorEquality() {
         XCTAssertEqual(
             PlaybackCoordinatorError.channelNotFound(channelId: 5),

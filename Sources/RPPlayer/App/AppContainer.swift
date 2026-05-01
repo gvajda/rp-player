@@ -80,7 +80,7 @@ extension AppContainer {
 
         let engine: any PlayerEngine
         do {
-            engine = try LibmpvPlayerEngine(
+            engine = try MpvPlayerEngine(
                 initialDeviceUID: initial.outputDeviceUID,
                 logger: logger
             )
@@ -100,10 +100,12 @@ extension AppContainer {
             api: api,
             engine: engine,
             logger: logger,
-            bitrate: initial.bitrate,
-            onHogModeFallback: { [store] in
-                guard let store else { return }
-                try? await store.update { $0.hogModeEnabled = false }
+            // Pull-based: every play/skip/prefetch reads the live bitrate from the
+            // store. Avoids any push-binder race where a stale bitrate could be in
+            // flight when the user changes channels.
+            bitrateProvider: { [store] in
+                guard let store else { return initial.bitrate }
+                return await store.settings.bitrate
             }
         )
 
@@ -113,7 +115,7 @@ extension AppContainer {
         // propagate on every save. mpv applies these on next file-load, so
         // toggling mid-playback requires a stop/play to take effect.
         if let store {
-            Task { [engine, coordinator, hogController] in
+            Task { [engine, hogController] in
                 let stream = await store.changes
                 for await settings in stream {
                     if settings.hogModeEnabled, let uid = settings.outputDeviceUID, !uid.isEmpty {
@@ -122,7 +124,6 @@ extension AppContainer {
                         await hogController.release()
                     }
                     try? await engine.setOutputDevice(uid: settings.outputDeviceUID)
-                    await coordinator.setBitrate(settings.bitrate)
                 }
             }
             Task { [logger] in
@@ -244,7 +245,6 @@ private struct NoopPlayerEngine: PlayerEngine {
     func resume() async throws { throw error }
     func stop() async throws { throw error }
     func seek(to seconds: Double) async throws { throw error }
-    func setHogMode(_ enabled: Bool) async throws { throw error }
     func setOutputDevice(uid: String?) async throws { throw error }
     func shutdown() async {}
 }

@@ -73,8 +73,8 @@ struct MiniPlayerView: View {
             channelPicker
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            if let format = viewModel.currentStreamFormat {
-                Text(format.displayString)
+            if let label = viewModel.currentBitrateLabel {
+                Text(label)
                     .font(.caption2)
                     .monospacedDigit()
                     .foregroundStyle(.secondary)

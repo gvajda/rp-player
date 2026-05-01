@@ -2,24 +2,27 @@ import XCTest
 @testable import RPPlayer
 
 final class LivePlaybackCoordinatorTests: XCTestCase {
-    fileprivate func makeSong(id: String, duration: Int) -> PlayListSong {
+    fileprivate func makeSong(id: String, duration: Int, elapsed: Int) -> PlayListSong {
         PlayListSong(
             songId: id, artist: "Artist-\(id)", title: "Title-\(id)", album: "Al", duration: duration,
             event: nil, schedTime: nil, chan: nil, year: nil, asin: nil,
-            rating: nil, userRating: nil, cover: nil, elapsed: nil, slideshow: nil
+            rating: nil, userRating: nil, cover: nil, elapsed: elapsed, slideshow: nil
         )
     }
 
     fileprivate func makeBlock(channel: String = "0", url: String = "https://example.com/0-0.flac",
                                 cue: Int = 0,
                                 expiration: Int = 0,
+                                bitrate: String? = nil,
                                 songs: [(String, Int)]) -> GetBlock {
         var dict: [String: PlayListSong] = [:]
+        var elapsed = 0
         for (idx, pair) in songs.enumerated() {
-            dict[String(idx)] = makeSong(id: pair.0, duration: pair.1)
+            dict[String(idx)] = makeSong(id: pair.0, duration: pair.1, elapsed: elapsed)
+            elapsed += pair.1
         }
         return GetBlock(
-            url: url, chan: channel, bitrate: nil, cue: cue, expiration: expiration,
+            url: url, chan: channel, bitrate: bitrate, cue: cue, expiration: expiration,
             length: nil, imageBase: "img/", song: dict,
             channel: nil, event: nil, endEvent: nil, type: nil, ext: nil, filename: nil
         )
@@ -35,29 +38,104 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         await api.setBlockResponses([block])
         let engine = MockPlayerEngine()
         let coordinator = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrate: 4
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
         )
         try await coordinator.play(channelId: 0)
         let apiCalls = await api.calls
         let engineCalls = await engine.recordedCalls()
-        XCTAssertEqual(apiCalls, [.getBlock(channel: 0, bitrate: 4, info: true)])
+        XCTAssertTrue(apiCalls.contains(.getBlock(channel: 0, bitrate: 4, info: true)))
+        XCTAssertTrue(apiCalls.contains(.nowPlaying(channel: 0)))
         XCTAssertEqual(engineCalls, [.play(url: URL(string: "https://example.com/0-0.flac")!, startSeconds: nil)])
     }
 
-    func testPlayPassesCueAsStartSecondsToEngine() async throws {
+    func testPlaySeeksToStartOfSongMatchedByNowPlaying() async throws {
+        // Block: s1(60s), s2(120s), s3(90s), s4(100s) → starts [0, 60, 180, 270]
+        // now_playing says s3 is on air → engine must seek to 180s (start of s3).
         let api = MockRpApiClient()
-        let block = makeBlock(cue: 90_000,
-                              songs: [("s1", 60_000), ("s2", 120_000), ("s3", 90_000), ("s4", 100_000)])
+        let block = makeBlock(songs: [("s1", 60_000), ("s2", 120_000), ("s3", 90_000), ("s4", 100_000)])
         await api.setBlockResponses([block])
+        await api.setNowPlayingResponse(NowPlayingEntry(
+            artist: "Artist-s3", title: "Title-s3", album: nil, year: nil, cover: nil, time: nil
+        ))
         let engine = MockPlayerEngine()
         let coordinator = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrate: 4
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
         )
         try await coordinator.play(channelId: 0)
         let engineCalls = await engine.recordedCalls()
         XCTAssertEqual(engineCalls, [
-            .play(url: URL(string: "https://example.com/0-0.flac")!, startSeconds: 90.0),
+            .play(url: URL(string: "https://example.com/0-0.flac")!, startSeconds: 180.0),
         ])
+    }
+
+    func testPlayPropagatesBlockBitrateIntoNowPlaying() async throws {
+        // Display label comes from `block.bitrate` (what was requested + served)
+        // not mpv's runtime audio-bitrate observer, which can disagree.
+        let api = MockRpApiClient()
+        let block = makeBlock(bitrate: "flac",
+                              songs: [("s1", 60_000), ("s2", 60_000)])
+        await api.setBlockResponses([block])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
+        )
+        try await coordinator.play(channelId: 0)
+        let np = await coordinator.nowPlaying
+        XCTAssertEqual(np?.blockBitrate, "flac")
+    }
+
+    func testPlaySeedsNowPlayingFromNowPlayingMatch() async throws {
+        // now_playing says s4 is on air → initial nowPlaying must reflect song index 3
+        // immediately, not index 0.
+        let api = MockRpApiClient()
+        let block = makeBlock(songs: [("s1", 60_000), ("s2", 60_000), ("s3", 60_000), ("s4", 60_000)])
+        await api.setBlockResponses([block])
+        await api.setNowPlayingResponse(NowPlayingEntry(
+            artist: "Artist-s4", title: "Title-s4", album: nil, year: nil, cover: nil, time: nil
+        ))
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
+        )
+        try await coordinator.play(channelId: 0)
+        let np = await coordinator.nowPlaying
+        XCTAssertEqual(np?.songIndexInBlock, 3)
+        XCTAssertEqual(np?.song.title, "Title-s4")
+    }
+
+    func testPlayUsesCueFallbackWhenNowPlayingHasNoMatch() async throws {
+        // Block: 4×60s songs, elapsed [0, 60k, 120k, 180k]. cue=180_000ms → song 3 at 180s.
+        let api = MockRpApiClient()
+        let block = makeBlock(cue: 180_000, songs: [("s1", 60_000), ("s2", 60_000), ("s3", 60_000), ("s4", 60_000)])
+        await api.setBlockResponses([block])
+        await api.setNowPlayingResponse(NowPlayingEntry(
+            artist: "Unknown Artist", title: "Unknown Title", album: nil, year: nil, cover: nil, time: nil
+        ))
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
+        )
+        try await coordinator.play(channelId: 0)
+        let engineCalls = await engine.recordedCalls()
+        XCTAssertEqual(engineCalls, [.play(url: URL(string: "https://example.com/0-0.flac")!, startSeconds: 180.0)])
+        let np = await coordinator.nowPlaying
+        XCTAssertEqual(np?.songIndexInBlock, 3)
+    }
+
+    func testPlayStartsFromFirstListedSongWhenBothNowPlayingAndCueMissing() async throws {
+        let api = MockRpApiClient()
+        // cue=0 and no nowPlaying → start from first listed song (elapsed=0 → startSeconds nil)
+        let block = makeBlock(songs: [("s1", 60_000), ("s2", 60_000)])
+        await api.setBlockResponses([block])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
+        )
+        try await coordinator.play(channelId: 0)
+        let engineCalls = await engine.recordedCalls()
+        XCTAssertEqual(engineCalls, [.play(url: URL(string: "https://example.com/0-0.flac")!, startSeconds: nil)])
+        let np = await coordinator.nowPlaying
+        XCTAssertEqual(np?.songIndexInBlock, 0)
     }
 
     func testPlayThrowsWhenBlockHasNoSongs() async throws {
@@ -66,7 +144,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         await api.setBlockResponses([block])
         let engine = MockPlayerEngine()
         let coordinator = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrate: 4
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
         )
         do {
             try await coordinator.play(channelId: 0)
@@ -80,7 +158,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         let api = MockRpApiClient()
         let engine = MockPlayerEngine()
         let coordinator = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrate: 4
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
         )
         let np = await coordinator.nowPlaying
         XCTAssertNil(np)
@@ -94,7 +172,7 @@ extension LivePlaybackCoordinatorTests {
         await api.setBlockResponses([block])
         let engine = MockPlayerEngine()
         let coordinator = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrate: 0
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 0 }
         )
 
         let stream = await coordinator.nowPlayingUpdates
@@ -121,7 +199,7 @@ extension LivePlaybackCoordinatorTests {
         await api.setBlockResponses([block])
         let engine = MockPlayerEngine()
         let coordinator = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrate: 0
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 0 }
         )
 
         let stream = await coordinator.nowPlayingUpdates
@@ -152,7 +230,7 @@ extension LivePlaybackCoordinatorTests {
         await api.setBlockResponses([block])
         let engine = MockPlayerEngine()
         let coordinator = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrate: 0
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 0 }
         )
         try await coordinator.play(channelId: 0)
         try await coordinator.skipForward()
@@ -173,7 +251,7 @@ extension LivePlaybackCoordinatorTests {
         await api.setBlockResponses([firstBlock, secondBlock])
         let engine = MockPlayerEngine()
         let coordinator = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrate: 0
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 0 }
         )
         try await coordinator.play(channelId: 0)
         await engine.fire(.positionUpdate(seconds: 280.0))
@@ -181,7 +259,7 @@ extension LivePlaybackCoordinatorTests {
         try await coordinator.skipForward()
         let apiCalls = await api.calls
         let engineCalls = await engine.recordedCalls()
-        XCTAssertEqual(apiCalls.count, 2)
+        XCTAssertEqual(apiCalls.count, 3)
         XCTAssertEqual(apiCalls.last, .getBlock(channel: 0, bitrate: 0, info: true))
         XCTAssertEqual(engineCalls.last, .play(url: URL(string: "https://example.com/0-2.flac")!, startSeconds: nil))
     }
@@ -190,7 +268,7 @@ extension LivePlaybackCoordinatorTests {
         let api = MockRpApiClient()
         let engine = MockPlayerEngine()
         let coordinator = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrate: 0
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 0 }
         )
         do {
             try await coordinator.skipForward()
@@ -215,13 +293,13 @@ extension LivePlaybackCoordinatorTests {
         await api.setBlockResponses([firstBlock, secondBlock])
         let engine = MockPlayerEngine()
         let coordinator = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrate: 0
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 0 }
         )
         try await coordinator.play(channelId: 0)
         await engine.fire(.positionUpdate(seconds: 232.0))
         try await Task.sleep(nanoseconds: 100_000_000)
         let apiCalls = await api.calls
-        XCTAssertEqual(apiCalls.count, 2, "second getBlock call should have been triggered as prefetch")
+        XCTAssertEqual(apiCalls.count, 3, "second getBlock call should have been triggered as prefetch")
     }
 
     func testPrefetchOnlyHappensOncePerBlock() async throws {
@@ -237,7 +315,7 @@ extension LivePlaybackCoordinatorTests {
         await api.setBlockResponses([firstBlock, secondBlock])
         let engine = MockPlayerEngine()
         let coordinator = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrate: 0
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 0 }
         )
         try await coordinator.play(channelId: 0)
         await engine.fire(.positionUpdate(seconds: 232.0))
@@ -246,7 +324,7 @@ extension LivePlaybackCoordinatorTests {
         await engine.fire(.positionUpdate(seconds: 238.0))
         try await Task.sleep(nanoseconds: 50_000_000)
         let apiCalls = await api.calls
-        XCTAssertEqual(apiCalls.count, 2, "prefetch should happen at most once per block")
+        XCTAssertEqual(apiCalls.count, 3, "prefetch should happen at most once per block")
     }
 
     func testEndOfFileSwapsToPrefetchedBlock() async throws {
@@ -262,7 +340,7 @@ extension LivePlaybackCoordinatorTests {
         await api.setBlockResponses([firstBlock, secondBlock])
         let engine = MockPlayerEngine()
         let coordinator = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrate: 0
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 0 }
         )
         try await coordinator.play(channelId: 0)
         await engine.fire(.positionUpdate(seconds: 232.0))
@@ -296,7 +374,7 @@ extension LivePlaybackCoordinatorTests {
         await api.setBlockResponses([chan0Block, prefetchVictim, chan1Block])
         let engine = MockPlayerEngine()
         let coordinator = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrate: 0
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 0 }
         )
         try await coordinator.play(channelId: 0)
         await engine.fire(.positionUpdate(seconds: 232.0))
@@ -315,7 +393,7 @@ extension LivePlaybackCoordinatorTests {
         let api = MockRpApiClient()
         let engine = MockPlayerEngine()
         let coordinator = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrate: 0
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 0 }
         )
         do {
             try await coordinator.pause()
@@ -331,7 +409,7 @@ extension LivePlaybackCoordinatorTests {
         await api.setBlockResponses([block])
         let engine = MockPlayerEngine()
         let coordinator = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrate: 0
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 0 }
         )
         try await coordinator.play(channelId: 0)
         try await coordinator.pause()
@@ -358,7 +436,7 @@ extension LivePlaybackCoordinatorTests {
         await api.setBlockResponses([firstBlock, prefetchVictim, restartBlock])
         let engine = MockPlayerEngine()
         let coordinator = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrate: 0
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 0 }
         )
         try await coordinator.play(channelId: 0)
         // Trigger prefetch (in-flight call to api.getBlock). Sleep gives the
@@ -385,109 +463,6 @@ extension LivePlaybackCoordinatorTests {
 }
 
 extension LivePlaybackCoordinatorTests {
-    func testCoordinatorFallsBackToSharedModeOnAudioInitFailure() async throws {
-        let api = MockRpApiClient()
-        let block = makeBlock(songs: [("s1", 60_000), ("s2", 60_000), ("s3", 60_000), ("s4", 60_000)])
-        await api.setBlockResponses([block])
-        let engine = MockPlayerEngine()
-        let coordinator = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrate: 4
-        )
-
-        try await coordinator.play(channelId: 0)
-        await engine.fire(.error(message: "Failed to initialize audio driver 'coreaudio_exclusive'"))
-        try await Task.sleep(nanoseconds: 100_000_000)
-
-        let calls = await engine.recordedCalls()
-        XCTAssertTrue(
-            calls.contains(.setHogMode(enabled: false)),
-            "expected setHogMode(false) on hog acquisition failure. calls=\(calls)"
-        )
-        let playCount = calls.filter {
-            if case .play(url: URL(string: "https://example.com/0-0.flac")!, startSeconds: _) = $0 { return true }
-            return false
-        }.count
-        XCTAssertEqual(playCount, 2, "expected initial play + retry. calls=\(calls)")
-    }
-
-    func testCoordinatorFallbackOnlyTriggersOnce() async throws {
-        let api = MockRpApiClient()
-        let block = makeBlock(songs: [("s1", 60_000), ("s2", 60_000), ("s3", 60_000), ("s4", 60_000)])
-        await api.setBlockResponses([block])
-        let engine = MockPlayerEngine()
-        let coordinator = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrate: 4
-        )
-
-        try await coordinator.play(channelId: 0)
-        await engine.fire(.error(message: "Failed to initialize audio driver 'coreaudio_exclusive'"))
-        try await Task.sleep(nanoseconds: 80_000_000)
-        await engine.fire(.error(message: "Failed to initialize audio driver 'coreaudio_exclusive'"))
-        try await Task.sleep(nanoseconds: 80_000_000)
-
-        let calls = await engine.recordedCalls()
-        let setHogModeFalseCount = calls.filter { $0 == .setHogMode(enabled: false) }.count
-        XCTAssertEqual(setHogModeFalseCount, 1, "fallback must not loop. calls=\(calls)")
-    }
-
-    func testUnrelatedEngineErrorDoesNotTriggerFallback() async throws {
-        let api = MockRpApiClient()
-        let block = makeBlock(songs: [("s1", 60_000), ("s2", 60_000), ("s3", 60_000), ("s4", 60_000)])
-        await api.setBlockResponses([block])
-        let engine = MockPlayerEngine()
-        let coordinator = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrate: 4
-        )
-
-        try await coordinator.play(channelId: 0)
-        await engine.fire(.error(message: "some unrelated mpv error"))
-        try await Task.sleep(nanoseconds: 80_000_000)
-
-        let calls = await engine.recordedCalls()
-        XCTAssertFalse(
-            calls.contains(.setHogMode(enabled: false)),
-            "non-audio-init errors must not trigger hog fallback. calls=\(calls)"
-        )
-    }
-
-    func testCoordinatorInvokesFallbackCallbackOnHogAcquisitionFailure() async throws {
-        let api = MockRpApiClient()
-        let block = makeBlock(songs: [("s1", 60_000), ("s2", 60_000), ("s3", 60_000), ("s4", 60_000)])
-        await api.setBlockResponses([block])
-        let engine = MockPlayerEngine()
-        let counter = CallCounter()
-        let coordinator = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrate: 4,
-            onHogModeFallback: { await counter.increment() }
-        )
-
-        try await coordinator.play(channelId: 0)
-        await engine.fire(.error(message: "Failed to initialize audio driver 'coreaudio_exclusive'"))
-        try await Task.sleep(nanoseconds: 100_000_000)
-
-        let value = await counter.value
-        XCTAssertEqual(value, 1, "expected onHogModeFallback to fire exactly once")
-    }
-
-    func testCoordinatorDoesNotFireFallbackCallbackForUnrelatedErrors() async throws {
-        let api = MockRpApiClient()
-        let block = makeBlock(songs: [("s1", 60_000), ("s2", 60_000), ("s3", 60_000), ("s4", 60_000)])
-        await api.setBlockResponses([block])
-        let engine = MockPlayerEngine()
-        let counter = CallCounter()
-        let coordinator = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrate: 4,
-            onHogModeFallback: { await counter.increment() }
-        )
-
-        try await coordinator.play(channelId: 0)
-        await engine.fire(.error(message: "some unrelated mpv error"))
-        try await Task.sleep(nanoseconds: 80_000_000)
-
-        let value = await counter.value
-        XCTAssertEqual(value, 0, "fallback callback must not fire for unrelated errors")
-    }
-
     func testResumeAfterExpiredBlockFetchesFreshBlock() async throws {
         let api = MockRpApiClient()
         let pastTimestamp = Int(Date().timeIntervalSince1970) - 60
@@ -499,7 +474,7 @@ extension LivePlaybackCoordinatorTests {
                                    songs: [("e", 60_000), ("f", 60_000), ("g", 60_000), ("h", 60_000)])
         await api.setBlockResponses([staleBlock, freshBlock])
         let engine = MockPlayerEngine()
-        let coordinator = LivePlaybackCoordinator(api: api, engine: engine, logger: silentLogger(), bitrate: 4)
+        let coordinator = LivePlaybackCoordinator(api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 })
         try await coordinator.play(channelId: 0)
         try await coordinator.pause()
         try await coordinator.resume()
@@ -519,7 +494,7 @@ extension LivePlaybackCoordinatorTests {
                                    songs: [("a", 60_000), ("b", 60_000), ("c", 60_000), ("d", 60_000)])
         await api.setBlockResponses([freshBlock])
         let engine = MockPlayerEngine()
-        let coordinator = LivePlaybackCoordinator(api: api, engine: engine, logger: silentLogger(), bitrate: 4)
+        let coordinator = LivePlaybackCoordinator(api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 })
         try await coordinator.play(channelId: 0)
         try await coordinator.pause()
         try await coordinator.resume()
@@ -533,46 +508,14 @@ extension LivePlaybackCoordinatorTests {
     }
 }
 
-private actor CallCounter {
-    private(set) var value = 0
-    func increment() { value += 1 }
-}
-
-private actor NowPlayingCollector {
-    private var items: [NowPlaying] = []
-    func add(_ np: NowPlaying) { items.append(np) }
-    func last() -> NowPlaying? { items.last }
+private actor BitrateBox {
+    private(set) var value: Int
+    init(_ initial: Int) { value = initial }
+    func set(_ newValue: Int) { value = newValue }
 }
 
 extension LivePlaybackCoordinatorTests {
-    func testStreamFormatPropagatesIntoNowPlayingUpdates() async throws {
-        let api = MockRpApiClient()
-        let block = makeBlock(songs: [("a", 60_000), ("b", 60_000), ("c", 60_000), ("d", 60_000)])
-        await api.setBlockResponses([block])
-        let engine = MockPlayerEngine()
-        let coordinator = LivePlaybackCoordinator(api: api, engine: engine, logger: silentLogger(), bitrate: 4)
-
-        let captured = NowPlayingCollector()
-        let stream = await coordinator.nowPlayingUpdates
-        let sub = Task {
-            for await np in stream {
-                await captured.add(np)
-                if np.streamFormat != nil { break }
-            }
-        }
-        try await coordinator.play(channelId: 0)
-        await engine.fire(.streamFormatChanged(StreamFormat(codec: "flac", sampleRateHz: 44100, kbps: 850)))
-        try await Task.sleep(nanoseconds: 100_000_000)
-        sub.cancel()
-
-        let last = await captured.last()
-        XCTAssertEqual(last?.streamFormat?.codec, "flac")
-        XCTAssertEqual(last?.streamFormat?.sampleRateHz, 44100)
-    }
-}
-
-extension LivePlaybackCoordinatorTests {
-    func testSetBitrateUpdatesNextGetBlockCall() async throws {
+    func testCoordinatorReadsBitrateFromProviderOnEveryPlay() async throws {
         let api = MockRpApiClient()
         let block1 = makeBlock(channel: "0", url: "https://example.com/A.flac",
                                songs: [("a", 60_000), ("b", 60_000), ("c", 60_000), ("d", 60_000)])
@@ -580,10 +523,14 @@ extension LivePlaybackCoordinatorTests {
                                songs: [("a", 60_000), ("b", 60_000), ("c", 60_000), ("d", 60_000)])
         await api.setBlockResponses([block1, block2])
         let engine = MockPlayerEngine()
-        let coordinator = LivePlaybackCoordinator(api: api, engine: engine, logger: silentLogger(), bitrate: 0)
+        let box = BitrateBox(0)
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(),
+            bitrateProvider: { await box.value }
+        )
 
         try await coordinator.play(channelId: 0)
-        await coordinator.setBitrate(4)
+        await box.set(4)
         try await coordinator.play(channelId: 0)
 
         let calls = await api.calls

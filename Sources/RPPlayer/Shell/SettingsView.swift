@@ -26,11 +26,13 @@ struct SettingsView: View {
             Toggle("Hog mode (bit-perfect)", isOn: hogModeBinding)
             Toggle("Software volume control", isOn: softwareVolumeBinding)
             Picker("Bitrate", selection: bitrateBinding) {
-                Text("AAC 64 kbps").tag(0)
-                Text("AAC 128 kbps").tag(1)
-                Text("MP3 320 kbps").tag(2)
-                Text("FLAC").tag(3)
-                Text("FLAC (with metadata)").tag(4)
+                Text("32K AAC").tag(0)
+                Text("64K AAC").tag(1)
+                Text("128K AAC").tag(2)
+                Text("128K MP3").tag(5)
+                Text("320K AAC").tag(3)
+                Text("320K MP3").tag(6)
+                Text("FLAC").tag(4)
             }
         }
     }

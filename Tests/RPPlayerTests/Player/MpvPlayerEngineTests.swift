@@ -1,20 +1,20 @@
 import XCTest
 @testable import RPPlayer
 
-final class LibmpvPlayerEngineTests: XCTestCase {
+final class MpvPlayerEngineTests: XCTestCase {
     func testInitAndShutdownDoesNotCrash() async throws {
-        let engine = try LibmpvPlayerEngine()
+        let engine = try MpvPlayerEngine()
         await engine.shutdown()
     }
 
     func testShutdownIsIdempotent() async throws {
-        let engine = try LibmpvPlayerEngine()
+        let engine = try MpvPlayerEngine()
         await engine.shutdown()
         await engine.shutdown()
     }
 
     func testCommandsAfterShutdownThrowAlreadyShutdown() async throws {
-        let engine = try LibmpvPlayerEngine()
+        let engine = try MpvPlayerEngine()
         await engine.shutdown()
 
         let url = URL(string: "https://example.com/audio.mp3")!
@@ -24,7 +24,6 @@ final class LibmpvPlayerEngineTests: XCTestCase {
             ("resume",          { try await engine.resume() }),
             ("stop",            { try await engine.stop() }),
             ("seek",            { try await engine.seek(to: 1.0) }),
-            ("setHogMode",      { try await engine.setHogMode(true) }),
             ("setOutputDevice", { try await engine.setOutputDevice(uid: nil) }),
         ]
         for (name, call) in invocations {
@@ -38,11 +37,11 @@ final class LibmpvPlayerEngineTests: XCTestCase {
     }
 }
 
-extension LibmpvPlayerEngineTests {
+extension MpvPlayerEngineTests {
     /// Verifies the pump task converts MPV_EVENT_SHUTDOWN into PlayerEvent.shutdown
     /// and finishes all subscriber streams.
     func testShutdownEventIsEmittedAndStreamFinishes() async throws {
-        let engine = try LibmpvPlayerEngine()
+        let engine = try MpvPlayerEngine()
         let stream = await engine.events
         let collector = Task { () -> [PlayerEvent] in
             var events: [PlayerEvent] = []
@@ -63,7 +62,7 @@ extension LibmpvPlayerEngineTests {
     /// NOTE: this test depends on `play(url:)` being implemented (Task 6). It will
     /// FAIL after Task 5 lands and PASS once Task 6 lands.
     func testPositionUpdatesArriveDuringPlayback() async throws {
-        let engine = try LibmpvPlayerEngine()
+        let engine = try MpvPlayerEngine()
         defer { Task { await engine.shutdown() } }
         let stream = await engine.events
 
@@ -96,26 +95,9 @@ extension LibmpvPlayerEngineTests {
     }
 }
 
-extension LibmpvPlayerEngineTests {
-    func testSetHogModeEmitsHogModeChanged() async throws {
-        let engine = try LibmpvPlayerEngine()
-        defer { Task { await engine.shutdown() } }
-        let stream = await engine.events
-
-        let collector = Task { () -> PlayerEvent? in
-            for await event in stream {
-                if case .hogModeChanged = event { return event }
-            }
-            return nil
-        }
-
-        try await engine.setHogMode(true)
-        let captured = await collector.value
-        XCTAssertEqual(captured, .hogModeChanged(enabled: true))
-    }
-
+extension MpvPlayerEngineTests {
     func testSetOutputDeviceWithUidEmitsOutputDeviceChanged() async throws {
-        let engine = try LibmpvPlayerEngine()
+        let engine = try MpvPlayerEngine()
         defer { Task { await engine.shutdown() } }
         let stream = await engine.events
 
@@ -132,7 +114,7 @@ extension LibmpvPlayerEngineTests {
     }
 
     func testSetOutputDeviceWithNilEmitsClearedEvent() async throws {
-        let engine = try LibmpvPlayerEngine()
+        let engine = try MpvPlayerEngine()
         defer { Task { await engine.shutdown() } }
         let stream = await engine.events
 
@@ -148,62 +130,27 @@ extension LibmpvPlayerEngineTests {
         XCTAssertEqual(captured, .outputDeviceChanged(uid: nil))
     }
 
-    func testHogOnUsesCoreAudioAO() async throws {
-        let engine = try LibmpvPlayerEngine()
+    func testSetOutputDeviceUsesCoreAudioAO() async throws {
+        let engine = try MpvPlayerEngine()
         defer { Task { await engine.shutdown() } }
 
-        try await engine.setHogMode(true)
         try await engine.setOutputDevice(uid: "TestDeviceUID")
 
         let device = await engine.currentAudioDeviceForTesting()
         XCTAssertEqual(device, "coreaudio/TestDeviceUID")
     }
 
-    func testHogOffUsesCoreAudioAO() async throws {
-        let engine = try LibmpvPlayerEngine()
-        defer { Task { await engine.shutdown() } }
-
-        try await engine.setHogMode(false)
-        try await engine.setOutputDevice(uid: "TestDeviceUID")
-
-        let device = await engine.currentAudioDeviceForTesting()
-        XCTAssertEqual(device, "coreaudio/TestDeviceUID")
-    }
-
-    func testTogglingHogModeKeepsSameAO() async throws {
-        let engine = try LibmpvPlayerEngine()
-        defer { Task { await engine.shutdown() } }
-
-        try await engine.setHogMode(true)
-        try await engine.setOutputDevice(uid: "TestDeviceUID")
-        let d1 = await engine.currentAudioDeviceForTesting()
-        XCTAssertEqual(d1, "coreaudio/TestDeviceUID")
-
-        try await engine.setHogMode(false)
-        let d2 = await engine.currentAudioDeviceForTesting()
-        XCTAssertEqual(d2, "coreaudio/TestDeviceUID", "AO doesn't change when hog mode flips")
-
-        try await engine.setHogMode(true)
-        let d3 = await engine.currentAudioDeviceForTesting()
-        XCTAssertEqual(d3, "coreaudio/TestDeviceUID")
-    }
-
-    func testNilUidSelectsAutoRegardlessOfHogMode() async throws {
-        let engine = try LibmpvPlayerEngine()
+    func testNilUidSelectsAuto() async throws {
+        let engine = try MpvPlayerEngine()
         defer { Task { await engine.shutdown() } }
 
         try await engine.setOutputDevice(uid: nil)
-        try await engine.setHogMode(true)
-        let d1 = await engine.currentAudioDeviceForTesting()
-        XCTAssertEqual(d1, "auto")
-
-        try await engine.setHogMode(false)
-        let d2 = await engine.currentAudioDeviceForTesting()
-        XCTAssertEqual(d2, "auto")
+        let device = await engine.currentAudioDeviceForTesting()
+        XCTAssertEqual(device, "auto")
     }
 
     func testInitWithInitialDeviceAppliesAudioDeviceBeforeInitialize() async throws {
-        let engine = try LibmpvPlayerEngine(initialDeviceUID: "TestDeviceUID")
+        let engine = try MpvPlayerEngine(initialDeviceUID: "TestDeviceUID")
         defer { Task { await engine.shutdown() } }
 
         let device = await engine.currentAudioDeviceForTesting()
@@ -212,78 +159,11 @@ extension LibmpvPlayerEngineTests {
     }
 
     func testInitWithoutInitialDeviceLeavesAudioDeviceAsAuto() async throws {
-        let engine = try LibmpvPlayerEngine()
+        let engine = try MpvPlayerEngine()
         defer { Task { await engine.shutdown() } }
 
         let device = await engine.currentAudioDeviceForTesting()
         XCTAssertEqual(device, "auto", "no initial UID should leave the default 'auto'")
     }
 
-    func testStreamFormatChangedEmittedAfterFileLoaded() async throws {
-        let engine = try LibmpvPlayerEngine()
-        defer { Task { await engine.shutdown() } }
-        let stream = await engine.events
-
-        let collector = Task { () -> StreamFormat? in
-            for await event in stream {
-                if case .streamFormatChanged(let format) = event {
-                    return format
-                }
-            }
-            return nil
-        }
-
-        try await engine.play(url: URL(string: "https://stream.radioparadise.com/mp3-320")!)
-
-        let outcome = try await withThrowingTaskGroup(of: StreamFormat?.self) { group in
-            group.addTask { await collector.value }
-            group.addTask {
-                try await Task.sleep(nanoseconds: 8_000_000_000)
-                collector.cancel()
-                return nil
-            }
-            let first = try await group.next()!
-            group.cancelAll()
-            return first
-        }
-
-        let format = try XCTUnwrap(outcome, "expected streamFormatChanged within 8 s")
-        XCTAssertEqual(format.codec.lowercased(), "mp3")
-        XCTAssertEqual(format.sampleRateHz, 44100)
-    }
-
-    func testStreamFormatDedupIgnoresKbpsFluctuation() {
-        let prior = StreamFormat(codec: "flac", sampleRateHz: 44100, kbps: 850)
-        let withDifferentKbps = StreamFormat(codec: "flac", sampleRateHz: 44100, kbps: 920)
-        XCTAssertFalse(
-            LibmpvPlayerEngine.shouldEmit(withDifferentKbps, lastEmitted: prior),
-            "kbps-only differences must NOT trigger re-emit"
-        )
-    }
-
-    func testStreamFormatDedupEmitsOnSampleRateChange() {
-        let prior = StreamFormat(codec: "flac", sampleRateHz: 44100, kbps: 850)
-        let differentRate = StreamFormat(codec: "flac", sampleRateHz: 48000, kbps: 850)
-        XCTAssertTrue(
-            LibmpvPlayerEngine.shouldEmit(differentRate, lastEmitted: prior),
-            "sample-rate change must trigger re-emit"
-        )
-    }
-
-    func testStreamFormatDedupEmitsOnCodecChange() {
-        let prior = StreamFormat(codec: "flac", sampleRateHz: 44100, kbps: 850)
-        let differentCodec = StreamFormat(codec: "mp3", sampleRateHz: 44100, kbps: 320)
-        XCTAssertTrue(
-            LibmpvPlayerEngine.shouldEmit(differentCodec, lastEmitted: prior),
-            "codec change must trigger re-emit"
-        )
-    }
-
-    func testStreamFormatDedupEmitsOnFirstEver() {
-        let format = StreamFormat(codec: "flac", sampleRateHz: 44100, kbps: 850)
-        XCTAssertTrue(
-            LibmpvPlayerEngine.shouldEmit(format, lastEmitted: nil),
-            "first ever emission must fire"
-        )
-    }
 }

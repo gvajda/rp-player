@@ -8,7 +8,6 @@ actor MockPlayerEngine: PlayerEngine {
         case resume
         case stop
         case seek(seconds: Double)
-        case setHogMode(enabled: Bool)
         case setOutputDevice(uid: String?)
         case shutdown
     }
@@ -52,9 +51,6 @@ actor MockPlayerEngine: PlayerEngine {
     func resume() async throws          { try recordOrThrow(.resume) }
     func stop() async throws            { try recordOrThrow(.stop) }
     func seek(to seconds: Double) async throws { try recordOrThrow(.seek(seconds: seconds)) }
-    func setHogMode(_ enabled: Bool) async throws {
-        try recordOrThrow(.setHogMode(enabled: enabled))
-    }
     func setOutputDevice(uid: String?) async throws {
         try recordOrThrow(.setOutputDevice(uid: uid))
     }

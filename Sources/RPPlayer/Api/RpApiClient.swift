@@ -3,6 +3,7 @@ import Foundation
 public protocol RpApiClient: Sendable {
     func listChannels() async throws -> [Channel]
     func getBlock(channel: Int, bitrate: Int, info: Bool) async throws -> GetBlock
+    func nowPlaying(channel: Int) async throws -> NowPlayingEntry
     func info(songId: Int) async throws -> SongInfo
     func rate(songId: Int, rating: Int) async throws -> Rating
     func authState() async throws -> Auth
@@ -38,6 +39,10 @@ public struct LiveRpApiClient: RpApiClient {
             "bitrate": String(bitrate),
             "info": info ? "true" : "false",
         ])
+    }
+
+    public func nowPlaying(channel: Int) async throws -> NowPlayingEntry {
+        try await get(path: "api/now_playing", query: ["chan": String(channel)])
     }
 
     public func info(songId: Int) async throws -> SongInfo {

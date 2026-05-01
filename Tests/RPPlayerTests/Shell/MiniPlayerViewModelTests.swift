@@ -255,18 +255,17 @@ final class MiniPlayerViewModelTests: XCTestCase {
         XCTAssertEqual(openSettingsCalls, 1)
     }
 
-    func testCurrentStreamFormatReflectsCoordinator() async throws {
+    func testCurrentBitrateLabelReflectsBlockBitrate() async throws {
         auth.loggedIn = false
         await sut.start()
         var np = NowPlaying.fixture(songId: "1")
-        np.streamFormat = StreamFormat(codec: "flac", sampleRateHz: 44100, kbps: 850)
+        np.blockBitrate = "32k aac"
         await coordinator.setNowPlaying(np)
         try await Task.sleep(nanoseconds: 50_000_000)
-        XCTAssertEqual(sut.currentStreamFormat?.codec, "flac")
-        XCTAssertEqual(sut.currentStreamFormat?.sampleRateHz, 44100)
+        XCTAssertEqual(sut.currentBitrateLabel, "32K AAC")
     }
 
-    func testCurrentArtPersistsWhenOnlyStreamFormatChanges() async throws {
+    func testCurrentArtPersistsWhenOnlyBitrateChanges() async throws {
         let cache = StubAlbumArtCache()
         let stableImage = NSImage(size: NSSize(width: 1, height: 1))
         cache.imageByPath["covers/l/stable.jpg"] = stableImage
@@ -278,21 +277,21 @@ final class MiniPlayerViewModelTests: XCTestCase {
         await sut.start()
 
         var np = NowPlaying.fixture(cover: "covers/l/stable.jpg", songId: "1")
-        np.streamFormat = StreamFormat(codec: "flac", sampleRateHz: 44100, kbps: 850)
+        np.blockBitrate = "flac"
         await coordinator.setNowPlaying(np)
         try await Task.sleep(nanoseconds: 80_000_000)
         let firstArt = sut.currentArt
         XCTAssertNotNil(firstArt, "art should load on first emission")
 
-        np.streamFormat = StreamFormat(codec: "flac", sampleRateHz: 44100, kbps: 920)
+        np.blockBitrate = "320"
         await coordinator.setNowPlaying(np)
         try await Task.sleep(nanoseconds: 80_000_000)
 
-        XCTAssertNotNil(sut.currentArt, "art must persist across stream-format-only updates")
+        XCTAssertNotNil(sut.currentArt, "art must persist across bitrate-only updates")
         XCTAssertTrue(sut.currentArt === firstArt,
                       "should be the same NSImage instance — no nil-then-reload flicker")
         XCTAssertEqual(cache.requestedPaths.count, 1,
-                       "cache should be queried once, not re-queried on stream-format change")
+                       "cache should be queried once, not re-queried on bitrate change")
     }
 
     func testCurrentArtReloadsWhenCoverPathChanges() async throws {
