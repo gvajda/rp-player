@@ -16,31 +16,31 @@ enum MainMenuBuilder {
 
         submenu.addItem(plain(
             title: "About \(appName)",
-            action: Selector(("orderFrontStandardAboutPanel:"))
+            action: #selector(NSApplication.orderFrontStandardAboutPanel(_:))
         ))
         submenu.addItem(.separator())
 
         submenu.addItem(plain(
             title: "Hide \(appName)",
-            action: Selector(("hide:")),
+            action: #selector(NSApplication.hide(_:)),
             keyEquivalent: "h"
         ))
         let hideOthers = plain(
             title: "Hide Others",
-            action: Selector(("hideOtherApplications:")),
+            action: #selector(NSApplication.hideOtherApplications(_:)),
             keyEquivalent: "h"
         )
         hideOthers.keyEquivalentModifierMask = [.command, .option]
         submenu.addItem(hideOthers)
         submenu.addItem(plain(
             title: "Show All",
-            action: Selector(("unhideAllApplications:"))
+            action: #selector(NSApplication.unhideAllApplications(_:))
         ))
         submenu.addItem(.separator())
 
         submenu.addItem(plain(
             title: "Quit \(appName)",
-            action: Selector(("terminate:")),
+            action: #selector(NSApplication.terminate(_:)),
             keyEquivalent: "q"
         ))
 
@@ -67,12 +67,12 @@ enum MainMenuBuilder {
         submenu.addItem(redo)
         submenu.addItem(.separator())
 
-        submenu.addItem(plain(title: "Cut",   action: Selector(("cut:")),   keyEquivalent: "x"))
-        submenu.addItem(plain(title: "Copy",  action: Selector(("copy:")),  keyEquivalent: "c"))
-        submenu.addItem(plain(title: "Paste", action: Selector(("paste:")), keyEquivalent: "v"))
+        submenu.addItem(plain(title: "Cut",   action: #selector(NSText.cut(_:)),   keyEquivalent: "x"))
+        submenu.addItem(plain(title: "Copy",  action: #selector(NSText.copy(_:)),  keyEquivalent: "c"))
+        submenu.addItem(plain(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
         submenu.addItem(plain(
             title: "Select All",
-            action: Selector(("selectAll:")),
+            action: #selector(NSText.selectAll(_:)),
             keyEquivalent: "a"
         ))
 

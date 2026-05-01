@@ -157,7 +157,7 @@ final class MiniPlayerViewModel: ObservableObject {
             currentRating = value
         } catch RpApiError.invalidResponse(statusCode: 401, _) {
             // Stored cookie no longer accepted by RP — clear it and prompt re-login.
-            try? await auth.clearCookie()
+            await auth.clearCookie()
             isSignedIn = auth.isLoggedIn
             errorMessage = "Logged out — sign in again to rate."
         } catch {

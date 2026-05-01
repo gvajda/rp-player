@@ -82,7 +82,7 @@ extension LoginWindowController: WKHTTPCookieStoreObserver {
     nonisolated func cookiesDidChange(in cookieStore: WKHTTPCookieStore) {
         // Fetch cookies on the delivery thread (cookieStore is not Sendable — do not
         // capture it across actor boundaries). Pass the Sendable [HTTPCookie] to MainActor.
-        Task {
+        Task { @MainActor in
             let cookies: [HTTPCookie] = await withCheckedContinuation { cont in
                 cookieStore.getAllCookies { cont.resume(returning: $0) }
             }
