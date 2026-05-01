@@ -26,11 +26,39 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 | 9   | merged to main | ✅      | NotificationCoordinator + AlbumArtCache + album art in MiniPlayerView |
 | 10  | merged to main | ✅      | SettingsView + rating row + KeychainCookieProvider + login flow       |
 | 11  | merged to main | ✅      | AppContainer composition root + App/Edit main menu                    |
-| 12  | pending        | ⬜      | Distribution CI workflow                                              |
+| 12  | merged to main | ✅      | Smoke fixes + UI polish (rp.ico, Layout E, live bitrate, cue, hog mode) |
+| 13  | pending        | ⬜      | Distribution CI workflow                                              |
 
 PR 9 shipped scope: `LiveAlbumArtCache` actor (on-disk LRU at `ConfigPaths.albumArtCacheDirectory`, 20 files / 10 MB, SHA-256 keys, in-flight de-dup, validates `NSImage(data:)` before persisting), `LiveNotificationService` actor (wraps `UNUserNotificationCenter` behind `UNUserNotificationCenterProtocol`), `NotificationCoordinator` (`@MainActor final class` subscribing to `nowPlayingUpdates`, posts via service, respects `AppSettings.notificationsEnabled`, looks up channel title via API). `MiniPlayerView` displays cover art via `Image(nsImage:)` when available, falling back to the SF Symbol placeholder. Panel background switched to a SwiftUI `Color(nsColor: .windowBackgroundColor)` so Light/Dark appearance changes are honored. `PlaybackCoordinatorError: LocalizedError` so error banners read as prose. `LiveNotificationService` is bundle-gated in `AppContainer.live()` — `swift run` (no main bundle proxy) gets a `NoopNotificationService`; production `.app` bundles get the real one. Out of scope (deferred): rating row (PR 10), settings link/window (PR 10), `AppContainer` composition root (PR 11), main-menu/`Cmd-Q` (PR 11), `LSUIElement` Info.plist (PR 12).
 
 PR 10 shipped scope: SettingsView + SettingsWindowController + RatingRow + LoginWindowController integration + KeychainCookieProvider swap + ConfigStore→engine bridge for hog mode + output device. Round-1 smoke fixed sign-in propagation (closure not windowWillClose), folder paths (logs under Application Support, single "Show application data" button), pause→resume distinction, FLAC labels, segmented rating row. Round-2 fixed file-sink wiring (`AppLogger.fileBacked` factory targeting `ConfigPaths.logsDirectory`), hog-mode AO state machine (`LibmpvPlayerEngine` recomputes `audio-device` between `coreaudio_exclusive` and `coreaudio` based on hog flag, exposed via `currentAudioDeviceForTesting`), widened cookie filter (`LoginWindowController.rpCookieString` forwards every `radioparadise.com` cookie once the three auth cookies validate), and added `LiveRpApiClient.get` diagnostics (cookie-name list + 500-char body preview on non-2xx). Round-3 added shared-mode fallback (`LivePlaybackCoordinator` traps mpv's `Failed to initialize audio driver 'coreaudio_exclusive'` / `hardware format not supported`, calls `setHogMode(false)` once per `play()` and replays the current block) and 401 keychain auto-clear (`MiniPlayerViewModel.rate` catches `RpApiError.invalidResponse(statusCode: 401, _)` and surfaces "Logged out — sign in again to rate."). Round-4 UX added persisted hog fallback (`LivePlaybackCoordinator.init(onHogModeFallback:)`; `AppContainer.live()` writes `ConfigStore.hogModeEnabled = false` when fallback fires, so the Settings toggle reflects it), username display (`KeychainAuth.currentUsername` parses `C_username`; `SettingsView.accountSection` reads "Signed in as **<name>**"), and the new `StartupAuthProbe.run(api:auth:onCleared:)` which validates stored auth via `api/auth-state` on launch — clears keychain on anonymous response or 401, leaves cookie alone on transient network errors. Open follow-ups recorded in `docs/superpowers/plans/2026-04-30-pr10-settings-rating.md`: hog-mode-on-USB-DAC investigation deferred (other apps achieve bit-perfect on the same DAC; suspected mpv format-negotiation timing — see plan §"Remaining open follow-ups"), DESIGN.md §7 fallback toast, settings panel auth refresh after login window. Test count: 127 → 172 (+45).
+
+PR 12 shipped scope: stale-track-info fix (block expiration check on resume —
+`LivePlaybackCoordinator.resume()` re-issues `play(channelId:)` when
+`block.expiration > 0` and the cached block is past it, per DESIGN.md §7);
+`rp.ico` as menu-bar icon via SPM resource bundle (`Bundle.module`); live
+stream-format event (`PlayerEvent.streamFormatChanged(StreamFormat)` emitted
+from `LibmpvPlayerEngine` via `mpv_observe_property("audio-bitrate", ...)`,
+deduped on `(codec, sampleRateHz)` so FLAC's variable bitrate doesn't trigger
+re-emits); MiniPlayerView Layout E (318 pt album art top, channel picker +
+live bitrate + gear in one row, "RP Player" centered footer wordmark, 12 pt
+outer padding); Settings window title set to "RP Player Settings"; verbose
+logging toggle (`AppSettings.verboseLoggingEnabled` + Settings UI toggle that
+flips `AppLogger.minimumLevel` between `.info` and `.debug` live);
+cue-via-loadfile-start (`engine.play(url:startSeconds:)` issues
+`loadfile <url> replace start=<seconds>`, replacing the prior post-`fileLoaded`
+seek that mpv reported in `time-pos` before the audio buffer caught up);
+bitrate setting bridged to coordinator at runtime (settings binder calls
+`coordinator.setBitrate`); direct CoreAudio hog mode via new
+`HogModeController` actor (acquires `kAudioDevicePropertyHogMode` directly via
+`AudioObjectSetPropertyData` BEFORE mpv opens the device, bypasses mpv's
+`coreaudio_exclusive` AO entirely — works on the user's Qudelix-5K USB DAC
+where mpv's exclusive AO failed); dead-code cleanup (no more `audio-exclusive`
+property writes from the engine; `currentHogMode` state field removed).
+Outstanding items in `docs/notes/pr12-outstanding-2026-05-01.md`: bitrate
+runtime propagation bug (binder appears wired but doesn't take effect — needs
+runtime instrumentation), residual song/metadata offset (cue fix landed but
+desync still reported by user — needs fresh repro). Test count: 184 → 213 (+29).
 
 ---
 
@@ -38,7 +66,7 @@ PR 10 shipped scope: SettingsView + SettingsWindowController + RatingRow + Login
 
 - **Plan cadence:** just-in-time — write plan for next PR, get approval, execute, repeat.
 - **Execution:** `superpowers:subagent-driven-development` (fresh subagent per task, spec + quality review after each).
-- **Worktrees:** sibling-directory pattern — `/Users/gergely/git/rp-player-pr04`, etc.
+- **Branches:** feature branches off `main` (e.g. `claude/pr13-distribution`). Work happens on the branch directly in the main checkout — no separate worktree directory. Push to GitHub via `git push -u origin <branch>` if remote sync is desired.
 - **Merge strategy:** fast-forward only (`git merge --ff-only`) to main after all reviews pass.
 - **Test command:** `swift test`
 - **Build command:** `swift build`
@@ -82,6 +110,32 @@ PR 10 shipped scope: SettingsView + SettingsWindowController + RatingRow + Login
 - `NotificationCoordinator` is `@MainActor final class` (not an actor) because it bridges `nowPlayingUpdates` to AppKit / UserNotifications types that are main-thread anchored. The subscription `Task` is spawned in `start()`, mirroring `MiniPlayerViewModel`. The `for await` body checks `Task.isCancelled` before processing each emission so `stop()` reliably drops in-flight events. Configuration (notifications-enabled flag, channel title, on-disk file URL) is injected as `@Sendable` async closures so production wires them to live `JSONConfigStore` / `RpApiClient` / cache reads while tests substitute lightweight stubs.
 - The popover's panel background was migrated from a `cgColor` snapshot on `panel.contentView.layer` to a SwiftUI `Color(nsColor: .windowBackgroundColor)` background applied via `.background(...)` on the wrapped root view. Layer-side `cornerRadius = 10` and `masksToBounds = true` stay because `NSPanel`'s system shadow needs a non-clear hosting view to derive its shape. Light/Dark appearance toggles now re-render the popover without recomposing the layer.
 - `PlaybackCoordinatorError: LocalizedError` provides clean `errorDescription` strings for all five cases (`notPlaying`, `channelNotFound`, `blockHasNoSongs`, `engineError`, `underlying`). The view model surfaces `error.localizedDescription`, which now picks up these strings instead of Swift's default `engineError(message: "...")`-style print.
+- `HogModeController` (`Sources/RPPlayer/Audio/HogModeController.swift`) is
+  an `actor` that acquires/releases `kAudioDevicePropertyHogMode` via
+  `AudioObjectSetPropertyData` directly. mpv is configured with the plain
+  `coreaudio` AO and never sees `audio-exclusive=yes` — hog ownership lives
+  outside mpv. This bypasses mpv's `coreaudio_exclusive` AO format-negotiation
+  failures observed on Qudelix-5K and similar USB DACs. The controller is
+  composed in `AppContainer.live()`; the settings binder calls
+  `acquire(deviceUID:)` / `release()` based on the `(hogModeEnabled,
+  outputDeviceUID)` snapshot. Hog is released on `AppDelegate.applicationWillTerminate`
+  via `coordinatorShutdown` so the device returns to normal use.
+- `LibmpvPlayerEngine.play(url:startSeconds:)` issues
+  `loadfile <url> replace start=<seconds>` so mpv opens the AO at the cue
+  offset. The previous post-`fileLoaded` `engine.seek(to: cue)` caused mpv
+  to report `time-pos = cue` before the audio buffer for HTTP m4a/flac
+  streams caught up — UI showed the song at the cue offset while audio
+  played from frame 0. The default-arg `play(url:)` shim from a protocol
+  extension preserves back-compat for tests that don't pass a start time.
+- `AppLogger` is a `final class @unchecked Sendable` (was a `struct`) with
+  `setMinimumLevel(_:)` / `setVerbose(_:)` mutators behind an `NSLock`.
+  `AppContainer.live()` flips the threshold based on
+  `AppSettings.verboseLoggingEnabled` (and re-flips on every settings
+  change). When verbose is ON, the file sink captures every API request,
+  every coordinator decision (play / pause / resume / skip / prefetch /
+  swap / song-boundary cross), every engine state transition (file load,
+  format detection, AO open, hog write, audio-device write), and every
+  bootstrap step. Default is OFF for normal use.
 
 ---
 
@@ -107,6 +161,7 @@ PR 10 shipped scope: SettingsView + SettingsWindowController + RatingRow + Login
 - After PR 9: 127 tests
 - After PR 10: 172 tests
 - After PR 11: 184 tests
+- After PR 12: 213 tests
 
 ---
 
