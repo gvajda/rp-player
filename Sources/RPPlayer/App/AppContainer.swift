@@ -109,11 +109,12 @@ extension AppContainer {
         // propagate on every save. mpv applies these on next file-load, so
         // toggling mid-playback requires a stop/play to take effect.
         if let store {
-            Task { [engine] in
+            Task { [engine, coordinator] in
                 let stream = await store.changes
                 for await settings in stream {
                     try? await engine.setHogMode(settings.hogModeEnabled)
                     try? await engine.setOutputDevice(uid: settings.outputDeviceUID)
+                    await coordinator.setBitrate(settings.bitrate)
                 }
             }
             Task { [logger] in

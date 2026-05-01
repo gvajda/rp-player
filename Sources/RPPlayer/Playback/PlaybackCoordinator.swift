@@ -10,6 +10,7 @@ public protocol PlaybackCoordinator: Sendable {
     func stop() async throws
     func skipForward() async throws
     func changeChannel(to channelId: Int) async throws
+    func setBitrate(_ newBitrate: Int) async
     func shutdown() async
 }
 
@@ -17,7 +18,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     private let api: any RpApiClient
     private let engine: any PlayerEngine
     private let logger: any Logging
-    private let bitrate: Int
+    private var bitrate: Int
     private let onHogModeFallback: (@Sendable () async -> Void)?
 
     private var currentChannelId: Int?
@@ -177,6 +178,13 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         prefetchedBlock = nil
         try await stop()
         try await play(channelId: channelId)
+    }
+
+    public func setBitrate(_ newBitrate: Int) {
+        if bitrate != newBitrate {
+            logger.debug("coordinator setBitrate \(bitrate) -> \(newBitrate)")
+        }
+        bitrate = newBitrate
     }
 
     public func shutdown() async {

@@ -9,6 +9,7 @@ actor MockPlaybackCoordinator: PlaybackCoordinator {
         case stop
         case skipForward
         case changeChannel(to: Int)
+        case setBitrate(Int)
         case shutdown
     }
 
@@ -56,6 +57,9 @@ actor MockPlaybackCoordinator: PlaybackCoordinator {
     func skipForward() async throws { try recordOrThrow(.skipForward) }
     func changeChannel(to channelId: Int) async throws {
         try recordOrThrow(.changeChannel(to: channelId))
+    }
+    func setBitrate(_ newBitrate: Int) {
+        calls.append(.setBitrate(newBitrate))
     }
     func shutdown() async {
         calls.append(.shutdown)

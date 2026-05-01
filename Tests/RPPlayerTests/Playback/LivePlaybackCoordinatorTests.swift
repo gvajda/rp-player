@@ -570,3 +570,30 @@ extension LivePlaybackCoordinatorTests {
         XCTAssertEqual(last?.streamFormat?.sampleRateHz, 44100)
     }
 }
+
+extension LivePlaybackCoordinatorTests {
+    func testSetBitrateUpdatesNextGetBlockCall() async throws {
+        let api = MockRpApiClient()
+        let block1 = makeBlock(channel: "0", url: "https://example.com/A.flac",
+                               songs: [("a", 60_000), ("b", 60_000), ("c", 60_000), ("d", 60_000)])
+        let block2 = makeBlock(channel: "0", url: "https://example.com/B.flac",
+                               songs: [("a", 60_000), ("b", 60_000), ("c", 60_000), ("d", 60_000)])
+        await api.setBlockResponses([block1, block2])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(api: api, engine: engine, logger: silentLogger(), bitrate: 0)
+
+        try await coordinator.play(channelId: 0)
+        await coordinator.setBitrate(4)
+        try await coordinator.play(channelId: 0)
+
+        let calls = await api.calls
+        let blockCalls = calls.compactMap { call -> (Int, Int)? in
+            if case .getBlock(let channel, let bitrate, _) = call {
+                return (channel, bitrate)
+            }
+            return nil
+        }
+        XCTAssertEqual(blockCalls.map { [$0.0, $0.1] }, [[0, 0], [0, 4]],
+                       "bitrate change must take effect on next play. calls=\(blockCalls)")
+    }
+}
