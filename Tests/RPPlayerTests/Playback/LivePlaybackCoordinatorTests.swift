@@ -718,4 +718,39 @@ extension LivePlaybackCoordinatorTests {
         calls = await api.calls
         XCTAssertEqual(calls.count, 2, "skipForward past-last must adopt prefetched block, not re-fetch")
     }
+
+    func testSkipForwardPastLastSongCancelsInFlightPrefetchAndFetches() async throws {
+        let api = MockRpApiClient()
+        let block1 = makeBlock(
+            endEvent: "700",
+            prebuiltSongs: [makeSong(id: "1", duration: 11_000, elapsed: 0, event: "700")]
+        )
+        let block2 = makeBlock(songs: [("b1", 60_000), ("b2", 60_000)])
+        await api.setBlockResponses([block1, block2])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine,
+            logger: AppLogger(category: "test"),
+            bitrateProvider: { 4 }
+        )
+
+        try await coordinator.play(channelId: 0)
+        // Set delay so prefetch is slow — still in-flight when skipForward runs.
+        await api.setGetBlockDelay(nanos: 2_000_000_000)
+        // Fire position update to trigger prefetch.
+        await engine.fire(.positionUpdate(seconds: 2.0))
+        // Brief yield so prefetch task starts and enters Task.sleep inside getBlock.
+        try await Task.sleep(nanoseconds: 50_000_000)
+        // Remove delay so the synchronous skip fetch completes immediately.
+        await api.setGetBlockDelay(nanos: 0)
+        // Skip — must cancel the in-flight prefetch and do a synchronous fetch.
+        try await coordinator.skipForward()
+        // Give the cancelled prefetch task time to observe cancellation and record it.
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        let cancellations = await api.getBlockCancellations
+        XCTAssertEqual(cancellations, 1, "in-flight prefetch must be cancelled by skipForward past-last")
+        let np = await coordinator.nowPlaying
+        XCTAssertNotNil(np, "coordinator must have nowPlaying after skip")
+    }
 }

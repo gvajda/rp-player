@@ -11,7 +11,9 @@ actor MockRpApiClient: RpApiClient {
     }
 
     private(set) var calls: [Call] = []
+    private(set) var getBlockCancellations: Int = 0
 
+    var getBlockDelayNanos: UInt64 = 0
     var blockResponses: [GetBlock] = []
     var listChannelsResponse: [Channel] = []
     var listChannelsError: Error?
@@ -24,6 +26,10 @@ actor MockRpApiClient: RpApiClient {
 
     func setBlockResponses(_ responses: [GetBlock]) {
         self.blockResponses = responses
+    }
+
+    func setGetBlockDelay(nanos: UInt64) {
+        self.getBlockDelayNanos = nanos
     }
 
     func setInfoResponse(_ response: SongInfo) {
@@ -60,6 +66,14 @@ actor MockRpApiClient: RpApiClient {
 
     func getBlock(channel: Int, bitrate: Int, info: Bool, event: Int?) async throws -> GetBlock {
         calls.append(.getBlock(channel: channel, bitrate: bitrate, info: info, event: event))
+        if getBlockDelayNanos > 0 {
+            do {
+                try await Task.sleep(nanoseconds: getBlockDelayNanos)
+            } catch {
+                getBlockCancellations += 1
+                throw error
+            }
+        }
         guard !blockResponses.isEmpty else {
             throw RpApiError.network(URLError(.unknown))
         }
