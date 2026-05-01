@@ -41,17 +41,6 @@ public actor LibmpvPlayerEngine: PlayerEngine {
             }
         }
 
-        // Set audio-exclusive + audio-device BEFORE mpv_initialize so the standard
-        // coreaudio AO defers format negotiation to file load time and engages
-        // exclusive mode at the source's actual rate (matches IINA's approach).
-        if initialHogMode {
-            let status = mpv_set_option_string(h, "audio-exclusive", "yes")
-            if status < 0 {
-                let message = String(cString: mpv_error_string(status))
-                mpv_terminate_destroy(h)
-                throw PlayerEngineError.setOptionFailed(name: "audio-exclusive", code: Int(status), message: message)
-            }
-        }
         if let uid = initialDeviceUID, !uid.isEmpty {
             let status = mpv_set_option_string(h, "audio-device", "coreaudio/\(uid)")
             if status < 0 {
@@ -211,11 +200,10 @@ public actor LibmpvPlayerEngine: PlayerEngine {
     }
 
     public func setHogMode(_ enabled: Bool) async throws {
-        logger?.debug("engine setHogMode(\(enabled))")
         try requireHandle()
         currentHogMode = enabled
-        try setStringProperty("audio-exclusive", enabled ? "yes" : "no")
-        try applyAudioDevice()
+        // Informational only — HogModeController owns hog mode via direct CoreAudio calls.
+        logger?.debug("engine setHogMode(\(enabled)) — no-op (HogModeController owns hog mode)")
         deliver(.hogModeChanged(enabled: enabled))
     }
 
@@ -234,20 +222,13 @@ public actor LibmpvPlayerEngine: PlayerEngine {
         } else {
             value = "auto"
         }
-        logger?.debug("applyAudioDevice -> \(value), audio-exclusive=\(currentHogMode ? "yes" : "no")")
+        logger?.debug("applyAudioDevice -> \(value)")
         try setStringProperty("audio-device", value)
     }
 
     func currentAudioDeviceForTesting() -> String? {
         guard let h = handle else { return nil }
         guard let raw = mpv_get_property_string(h, "audio-device") else { return nil }
-        defer { mpv_free(raw) }
-        return String(cString: raw)
-    }
-
-    func currentAudioExclusiveForTesting() -> String? {
-        guard let h = handle else { return nil }
-        guard let raw = mpv_get_property_string(h, "audio-exclusive") else { return nil }
         defer { mpv_free(raw) }
         return String(cString: raw)
     }

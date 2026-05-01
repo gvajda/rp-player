@@ -92,6 +92,11 @@ extension AppContainer {
             engine = NoopPlayerEngine(error: error)
         }
 
+        let hogController = HogModeController()
+        if initial.hogModeEnabled, let uid = initial.outputDeviceUID, !uid.isEmpty {
+            Task { _ = await hogController.acquire(deviceUID: uid) }
+        }
+
         let coordinator = LivePlaybackCoordinator(
             api: api,
             engine: engine,
@@ -109,10 +114,15 @@ extension AppContainer {
         // propagate on every save. mpv applies these on next file-load, so
         // toggling mid-playback requires a stop/play to take effect.
         if let store {
-            Task { [engine, coordinator] in
+            Task { [engine, coordinator, hogController] in
                 let stream = await store.changes
                 for await settings in stream {
-                    try? await engine.setHogMode(settings.hogModeEnabled)
+                    if settings.hogModeEnabled, let uid = settings.outputDeviceUID, !uid.isEmpty {
+                        _ = await hogController.acquire(deviceUID: uid)
+                    } else {
+                        await hogController.release()
+                    }
+                    try? await engine.setHogMode(false)
                     try? await engine.setOutputDevice(uid: settings.outputDeviceUID)
                     await coordinator.setBitrate(settings.bitrate)
                 }
@@ -199,7 +209,7 @@ extension AppContainer {
             settingsViewModel: settingsViewModel,
             settingsWindowController: settingsWindowController,
             loginWindowController: loginWindowController,
-            coordinatorShutdown: { await coordinator.shutdown() },
+            coordinatorShutdown: { await coordinator.shutdown(); await hogController.release() },
             onLaunchTasks: onLaunchTasks
         )
     }

@@ -148,7 +148,7 @@ extension LibmpvPlayerEngineTests {
         XCTAssertEqual(captured, .outputDeviceChanged(uid: nil))
     }
 
-    func testHogOnSetsAudioExclusiveAndUsesCoreAudioAO() async throws {
+    func testHogOnUsesCoreAudioAO() async throws {
         let engine = try LibmpvPlayerEngine()
         defer { Task { await engine.shutdown() } }
 
@@ -156,12 +156,10 @@ extension LibmpvPlayerEngineTests {
         try await engine.setOutputDevice(uid: "TestDeviceUID")
 
         let device = await engine.currentAudioDeviceForTesting()
-        let exclusive = await engine.currentAudioExclusiveForTesting()
         XCTAssertEqual(device, "coreaudio/TestDeviceUID")
-        XCTAssertEqual(exclusive, "yes")
     }
 
-    func testHogOffSetsAudioExclusiveOffAndUsesCoreAudioAO() async throws {
+    func testHogOffUsesCoreAudioAO() async throws {
         let engine = try LibmpvPlayerEngine()
         defer { Task { await engine.shutdown() } }
 
@@ -169,33 +167,25 @@ extension LibmpvPlayerEngineTests {
         try await engine.setOutputDevice(uid: "TestDeviceUID")
 
         let device = await engine.currentAudioDeviceForTesting()
-        let exclusive = await engine.currentAudioExclusiveForTesting()
         XCTAssertEqual(device, "coreaudio/TestDeviceUID")
-        XCTAssertEqual(exclusive, "no")
     }
 
-    func testTogglingHogModeFlipsAudioExclusiveButKeepsSameAO() async throws {
+    func testTogglingHogModeKeepsSameAO() async throws {
         let engine = try LibmpvPlayerEngine()
         defer { Task { await engine.shutdown() } }
 
         try await engine.setHogMode(true)
         try await engine.setOutputDevice(uid: "TestDeviceUID")
         let d1 = await engine.currentAudioDeviceForTesting()
-        let e1 = await engine.currentAudioExclusiveForTesting()
         XCTAssertEqual(d1, "coreaudio/TestDeviceUID")
-        XCTAssertEqual(e1, "yes")
 
         try await engine.setHogMode(false)
         let d2 = await engine.currentAudioDeviceForTesting()
-        let e2 = await engine.currentAudioExclusiveForTesting()
         XCTAssertEqual(d2, "coreaudio/TestDeviceUID", "AO doesn't change when hog mode flips")
-        XCTAssertEqual(e2, "no")
 
         try await engine.setHogMode(true)
         let d3 = await engine.currentAudioDeviceForTesting()
-        let e3 = await engine.currentAudioExclusiveForTesting()
         XCTAssertEqual(d3, "coreaudio/TestDeviceUID")
-        XCTAssertEqual(e3, "yes")
     }
 
     func testNilUidSelectsAutoRegardlessOfHogMode() async throws {
@@ -217,11 +207,8 @@ extension LibmpvPlayerEngineTests {
         defer { Task { await engine.shutdown() } }
 
         let device = await engine.currentAudioDeviceForTesting()
-        let exclusive = await engine.currentAudioExclusiveForTesting()
         XCTAssertEqual(device, "coreaudio/TestDeviceUID",
                        "init should leave audio-device set to the standard coreaudio AO with the supplied UID")
-        XCTAssertEqual(exclusive, "yes",
-                       "init with hog mode should engage audio-exclusive=yes")
     }
 
     func testInitWithInitialDeviceAndHogModeOffSelectsSharedAO() async throws {
