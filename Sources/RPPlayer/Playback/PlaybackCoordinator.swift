@@ -326,6 +326,11 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             current = nil
             return
         }
+        if let chan = currentChannelId,
+           let oldEnd = Int(currentBlock?.endEvent ?? "") {
+            channelCursors[chan] = oldEnd
+            logger.debug("cursor[\(chan)] = \(oldEnd) (swap to prefetched)")
+        }
         prefetchedBlock = nil
         let songs = BlockSongs.orderedSongs(from: block)
         let swapStarts = BlockSongs.startsAtSeconds(songs: songs)
@@ -334,14 +339,16 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         orderedSongs = songs
         startsAt = swapStarts
         currentSongIndex = 0
-        currentPositionSeconds = 0
+        let startPos = block.cue > 0 ? Double(block.cue) / 1000.0 : 0
+        currentPositionSeconds = startPos
         guard let url = URL(string: block.url) else {
             logger.error("prefetched block had invalid url: \(block.url)")
             return
         }
-        logger.debug("swap engine.play url=\(url.absoluteString) startSeconds=nil (beginning)")
+        let startSeconds: Double? = startPos > 0 ? startPos : nil
+        logger.debug("swap engine.play url=\(url.absoluteString) startSeconds=\(startSeconds.map { "\($0)s" } ?? "nil")")
         do {
-            try await engine.play(url: url, startSeconds: nil)
+            try await engine.play(url: url, startSeconds: startSeconds)
         } catch {
             logger.error("failed to play prefetched block: \(error)")
             return

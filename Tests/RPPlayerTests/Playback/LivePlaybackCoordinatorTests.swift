@@ -626,6 +626,40 @@ extension LivePlaybackCoordinatorTests {
         XCTAssertEqual(lastEvent, 100)
     }
 
+    func testSwapToPrefetchedBlockUpdatesCursorToOldEndEvent() async throws {
+        let api = MockRpApiClient()
+        let block1 = makeBlock(
+            endEvent: "500",
+            prebuiltSongs: [makeSong(id: "1", duration: 11_000, elapsed: 0, event: "500")]
+        )
+        let block2 = makeBlock(
+            endEvent: "501",
+            prebuiltSongs: [makeSong(id: "2", duration: 60_000, elapsed: 0, event: "501")]
+        )
+        await api.setBlockResponses([block1, block2])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine,
+            logger: AppLogger(category: "test"),
+            bitrateProvider: { 4 }
+        )
+
+        try await coordinator.play(channelId: 0)
+        await engine.fire(.positionUpdate(seconds: 2.0))
+        try await Task.sleep(nanoseconds: 100_000_000)
+        await engine.fire(.fileEnded(reason: .eof))
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        await api.setBlockResponses([block1])
+        try await coordinator.play(channelId: 0)
+        let calls = await api.calls
+        let lastEvent: Int? = {
+            if case let .getBlock(_, _, _, event) = calls.last { return event }
+            return nil
+        }()
+        XCTAssertEqual(lastEvent, 500)
+    }
+
     func testSkipForwardInBlockUpdatesCursorBeforeAdvance() async throws {
         let api = MockRpApiClient()
         let song0 = makeSong(id: "1", duration: 60_000, elapsed: 0, event: "200")
