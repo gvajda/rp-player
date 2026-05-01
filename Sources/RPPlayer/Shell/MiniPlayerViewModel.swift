@@ -24,6 +24,7 @@ final class MiniPlayerViewModel: ObservableObject {
     private let persistChannelId: PersistChannelId
     private var subscriptionTask: Task<Void, Never>?
     private var inFlightChannelId: Int?
+    private var lastLoadedCoverPath: String?
 
     init(
         coordinator: any PlaybackCoordinator,
@@ -62,15 +63,23 @@ final class MiniPlayerViewModel: ObservableObject {
         subscriptionTask = Task { [weak self] in
             for await np in stream {
                 guard let self else { return }
-                await MainActor.run {
+                let coverChanged = await MainActor.run { () -> Bool in
                     self.nowPlaying = np
                     self.isPlaying = true
-                    self.currentArt = nil
                     self.isSignedIn = self.auth.isLoggedIn
                     self.currentRating = Self.parseRating(from: np.song.userRating)
                     self.currentStreamFormat = np.streamFormat
+                    let newCover = np.song.cover
+                    if newCover != self.lastLoadedCoverPath {
+                        self.lastLoadedCoverPath = newCover
+                        self.currentArt = nil
+                        return true
+                    }
+                    return false
                 }
-                await self.loadArt(for: np)
+                if coverChanged {
+                    await self.loadArt(for: np)
+                }
             }
         }
     }

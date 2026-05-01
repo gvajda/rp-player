@@ -265,4 +265,57 @@ final class MiniPlayerViewModelTests: XCTestCase {
         XCTAssertEqual(sut.currentStreamFormat?.codec, "flac")
         XCTAssertEqual(sut.currentStreamFormat?.sampleRateHz, 44100)
     }
+
+    func testCurrentArtPersistsWhenOnlyStreamFormatChanges() async throws {
+        let cache = StubAlbumArtCache()
+        let stableImage = NSImage(size: NSSize(width: 1, height: 1))
+        cache.imageByPath["covers/l/stable.jpg"] = stableImage
+        sut = MiniPlayerViewModel(
+            coordinator: coordinator, api: api, initialChannelId: 0,
+            albumArtCache: cache, auth: auth, openSettings: { }
+        )
+        auth.loggedIn = false
+        await sut.start()
+
+        var np = NowPlaying.fixture(cover: "covers/l/stable.jpg", songId: "1")
+        np.streamFormat = StreamFormat(codec: "flac", sampleRateHz: 44100, kbps: 850)
+        await coordinator.setNowPlaying(np)
+        try await Task.sleep(nanoseconds: 80_000_000)
+        let firstArt = sut.currentArt
+        XCTAssertNotNil(firstArt, "art should load on first emission")
+
+        np.streamFormat = StreamFormat(codec: "flac", sampleRateHz: 44100, kbps: 920)
+        await coordinator.setNowPlaying(np)
+        try await Task.sleep(nanoseconds: 80_000_000)
+
+        XCTAssertNotNil(sut.currentArt, "art must persist across stream-format-only updates")
+        XCTAssertTrue(sut.currentArt === firstArt,
+                      "should be the same NSImage instance — no nil-then-reload flicker")
+        XCTAssertEqual(cache.requestedPaths.count, 1,
+                       "cache should be queried once, not re-queried on stream-format change")
+    }
+
+    func testCurrentArtReloadsWhenCoverPathChanges() async throws {
+        let cache = StubAlbumArtCache()
+        let imageA = NSImage(size: NSSize(width: 1, height: 1))
+        let imageB = NSImage(size: NSSize(width: 2, height: 2))
+        cache.imageByPath["covers/l/a.jpg"] = imageA
+        cache.imageByPath["covers/l/b.jpg"] = imageB
+        sut = MiniPlayerViewModel(
+            coordinator: coordinator, api: api, initialChannelId: 0,
+            albumArtCache: cache, auth: auth, openSettings: { }
+        )
+        auth.loggedIn = false
+        await sut.start()
+
+        await coordinator.setNowPlaying(NowPlaying.fixture(cover: "covers/l/a.jpg", songId: "1"))
+        try await Task.sleep(nanoseconds: 80_000_000)
+        XCTAssertTrue(sut.currentArt === imageA)
+
+        await coordinator.setNowPlaying(NowPlaying.fixture(cover: "covers/l/b.jpg", songId: "2"))
+        try await Task.sleep(nanoseconds: 80_000_000)
+        XCTAssertTrue(sut.currentArt === imageB,
+                      "cover-path change must reload art")
+        XCTAssertEqual(cache.requestedPaths, ["covers/l/a.jpg", "covers/l/b.jpg"])
+    }
 }

@@ -164,9 +164,16 @@ public actor LibmpvPlayerEngine: PlayerEngine {
 
     private func handleAudioBitrateChange() {
         guard let format = readCurrentStreamFormat() else { return }
-        if lastEmittedStreamFormat == format { return }
+        if !Self.shouldEmit(format, lastEmitted: lastEmittedStreamFormat) { return }
         lastEmittedStreamFormat = format
         for c in continuations.values { c.yield(.streamFormatChanged(format)) }
+    }
+
+    // mpv reports instantaneous audio-bitrate which jitters per chunk on FLAC.
+    // Compare on (codec, sampleRateHz) only so kbps fluctuation does not re-emit.
+    static func shouldEmit(_ new: StreamFormat, lastEmitted: StreamFormat?) -> Bool {
+        guard let last = lastEmitted else { return true }
+        return last.codec != new.codec || last.sampleRateHz != new.sampleRateHz
     }
 
     public func play(url: URL) async throws {

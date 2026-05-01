@@ -260,4 +260,39 @@ extension LibmpvPlayerEngineTests {
         XCTAssertEqual(format.codec.lowercased(), "mp3")
         XCTAssertEqual(format.sampleRateHz, 44100)
     }
+
+    func testStreamFormatDedupIgnoresKbpsFluctuation() {
+        let prior = StreamFormat(codec: "flac", sampleRateHz: 44100, kbps: 850)
+        let withDifferentKbps = StreamFormat(codec: "flac", sampleRateHz: 44100, kbps: 920)
+        XCTAssertFalse(
+            LibmpvPlayerEngine.shouldEmit(withDifferentKbps, lastEmitted: prior),
+            "kbps-only differences must NOT trigger re-emit"
+        )
+    }
+
+    func testStreamFormatDedupEmitsOnSampleRateChange() {
+        let prior = StreamFormat(codec: "flac", sampleRateHz: 44100, kbps: 850)
+        let differentRate = StreamFormat(codec: "flac", sampleRateHz: 48000, kbps: 850)
+        XCTAssertTrue(
+            LibmpvPlayerEngine.shouldEmit(differentRate, lastEmitted: prior),
+            "sample-rate change must trigger re-emit"
+        )
+    }
+
+    func testStreamFormatDedupEmitsOnCodecChange() {
+        let prior = StreamFormat(codec: "flac", sampleRateHz: 44100, kbps: 850)
+        let differentCodec = StreamFormat(codec: "mp3", sampleRateHz: 44100, kbps: 320)
+        XCTAssertTrue(
+            LibmpvPlayerEngine.shouldEmit(differentCodec, lastEmitted: prior),
+            "codec change must trigger re-emit"
+        )
+    }
+
+    func testStreamFormatDedupEmitsOnFirstEver() {
+        let format = StreamFormat(codec: "flac", sampleRateHz: 44100, kbps: 850)
+        XCTAssertTrue(
+            LibmpvPlayerEngine.shouldEmit(format, lastEmitted: nil),
+            "first ever emission must fire"
+        )
+    }
 }
