@@ -13,7 +13,7 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 ## Current state
 
 - Last merged: **PR 12.5** (event-cursor block resume) + all PR 12 follow-ups (pull-based bitrate, libmpv hog vestige cleanup, bitrate-display fix, stream-format pipeline removal, elapsed-based offsets, settings bitrate picker corrected). 209 tests passing on `main`.
-- Next: **PR 13** — distribution CI workflow + `.app` bundling.
+- Next: **popover visual polish** branch in flight (then PR 13 — distribution CI workflow + `.app` bundling).
 
 ### PR 12 follow-ups (landed post-merge)
 
@@ -108,6 +108,7 @@ All open smoke bugs from `docs/notes/pr12-outstanding-2026-05-01.md` resolved. A
 - Prefetch uses `event=<currentBlock.endEvent>` (parsed from `String?`) so the prefetched block is the deterministic next block, not just whatever the live channel happens to be.
 - The earlier `now_playing`-based song-match path (`api.nowPlaying(channel:)` + `resolveStart(...)` + `NowPlayingEntry`) is gone. The cursor model makes it redundant: server tells us where the listener is by what we hand back.
 - `LivePlaybackCoordinator.resume()` checks `block.expiration` and re-issues `play(channelId:)` for a fresh block when expired (per DESIGN.md §7).
+- `LivePlaybackCoordinator` exposes `positionUpdates: AsyncStream<Double>` (block-position seconds, same reference frame as `NowPlaying.songStartSeconds` / `songEndSeconds`). Multi-subscriber: per-call continuation, seeded with the current `currentPositionSeconds`, yields on every `.positionUpdate` engine event, finished on `shutdown`. The mini-player view model subscribes once per `start()` and derives in-song elapsed/duration for the popover progress bar.
 
 ### Shell (AppKit + SwiftUI)
 
@@ -116,6 +117,10 @@ All open smoke bugs from `docs/notes/pr12-outstanding-2026-05-01.md` resolved. A
 - Activation policy is `.accessory` set at runtime (not `LSUIElement` in an Info.plist) because SPM executable targets do not ship an Info.plist. PR 13's `.app` bundle may move this into `LSUIElement`.
 - `PopoverController` is a non-`final` class only so tests can override `isShown`. The shell otherwise has no protocol abstractions — `AppContainer.init(...)` parameters are the test seam. `PopoverController(rootView:)` takes an `AnyView`; generic propagation buys nothing while complicating the call site.
 - Popover installs a global mouse-down monitor (outside-click dismissal) and a local key-down monitor (Esc, keycode 53) on `show(relativeTo:)`. The local monitor is process-wide — if a future text field outside the popover needs Esc, gate on `event.window === panel`.
+- The settings gear in `channelRow` is a SwiftUI `Menu` exposing `Settings…` and `Quit RP Player`. Quit calls `NSApp.terminate(nil)`; `AppDelegate.applicationWillTerminate` already handles the graceful coordinator shutdown.
+- Transport buttons (play/pause + skip) use `PressOpacityButtonStyle` instead of `.buttonStyle(.plain)`. Plain style flashed the system blue on press; the custom style dims to 0.55 opacity with no background.
+- `MiniPlayerView` body is `VStack(spacing: 0)` with the album art at full popover width (342×342, `scaledToFill+clipped`) and the inner stack carrying its own 12pt padding. The popover's existing 10pt corner radius + `masksToBounds` clips the top of the art so the popover appears as an extension of the artwork.
+- `RatingMenu` replaces the previous full-width `RatingRow`. Narrow dropdown sitting in the title row right-aligned; label is the rating digit or `—`; disabled when signed out.
 
 ### View models
 
@@ -189,6 +194,7 @@ All open smoke bugs from `docs/notes/pr12-outstanding-2026-05-01.md` resolved. A
 - After now_playing-based song match + elapsed-based offsets (added `RpApiClient.nowPlaying`, `NowPlayingEntry`, `resolveStart` in coordinator; `BlockSongs.startsAtSeconds` reads `elapsed` instead of summing durations; replaced cue-seeded tests with nowPlaying-match + cue-fallback tests; settings bitrate picker shows the 7-option API mapping): 201
 - After event-cursor block resume (channelCursors map, drop now_playing API path, deterministic next-block fetch via event=endEvent, prefetch-adoption + cancellation in skipForward past-last): 208
 - After promo block fix (PlayListSong.album optional; promo block decode test + fixture): 209
+- After popover visual polish (positionUpdates stream + RatingMenu + edge-to-edge art + Quit menu + press-opacity buttons; deletes RatingRow): 217
 
 ---
 
