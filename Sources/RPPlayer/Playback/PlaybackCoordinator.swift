@@ -143,6 +143,11 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             let target = startsAt[nextIndex] + 0.05
             let nextSong = orderedSongs[nextIndex]
             logger.debug("skipForward in-block: url=\(currentBlock?.url ?? "?") seek to \(target)s → song [\(nextIndex)] '\(nextSong.artist) – \(nextSong.title)'")
+            if let chan = currentChannelId,
+               let skippedEvent = Int(orderedSongs[currentSongIndex].event ?? "") {
+                channelCursors[chan] = skippedEvent
+                logger.debug("cursor[\(chan)] = \(skippedEvent) (skipForward in-block)")
+            }
             do {
                 try await engine.seek(to: target)
             } catch {

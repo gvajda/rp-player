@@ -570,4 +570,34 @@ extension LivePlaybackCoordinatorTests {
         }()
         XCTAssertEqual(lastEvent, 100)
     }
+
+    func testSkipForwardInBlockUpdatesCursorBeforeAdvance() async throws {
+        let api = MockRpApiClient()
+        let song0 = makeSong(id: "1", duration: 60_000, elapsed: 0, event: "200")
+        let song1 = makeSong(id: "2", duration: 60_000, elapsed: 60_000, event: "201")
+        let block = makeBlock(
+            cue: 0,
+            endEvent: "201",
+            prebuiltSongs: [song0, song1]
+        )
+        await api.setBlockResponses([block])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine,
+            logger: AppLogger(category: "test"),
+            bitrateProvider: { 4 }
+        )
+
+        try await coordinator.play(channelId: 0)
+        try await coordinator.skipForward()
+
+        await api.setBlockResponses([block])
+        try await coordinator.play(channelId: 0)
+        let calls = await api.calls
+        let lastEvent: Int? = {
+            if case let .getBlock(_, _, _, event) = calls.last { return event }
+            return nil
+        }()
+        XCTAssertEqual(lastEvent, 200)
+    }
 }
