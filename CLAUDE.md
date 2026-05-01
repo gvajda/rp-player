@@ -6,59 +6,42 @@
 
 ## What this project is
 
-macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Paradise streams in bit-perfect mode (CoreAudio hog mode via libmpv). Source of truth: `docs/DESIGN.md`.
+macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Paradise streams in bit-perfect mode (CoreAudio hog mode acquired directly via `kAudioDevicePropertyHogMode`; libmpv handles decode and shared-mode CoreAudio output). Source of truth: `docs/DESIGN.md`.
+
+---
+
+## Current state
+
+- Last merged: **PR 12** (smoke fixes + UI polish — rp.ico icon, Layout E, live bitrate, cue-via-loadfile-start, direct CoreAudio hog mode, verbose logging toggle). 213 tests passing on `main`.
+- Next: **PR 13** — distribution CI workflow + `.app` bundling.
+
+### Open bugs from PR 12 smoke
+
+Recorded in detail at `docs/notes/pr12-outstanding-2026-05-01.md`. Pick up before starting PR 13 unless the user defers.
+
+1. **Bitrate runtime propagation broken.** Settings change persists to disk but `LivePlaybackCoordinator` keeps using the old bitrate even after a channel change. Static analysis ruled out the obvious causes (multi-subscriber race on `store.changes`, immutable field, cached call site, channel-change path, API URL construction). Most likely cause is the `AppContainer.live()` settings binder Task not running at all OR a subtle ordering issue. **Recommended next step:** add `logger.debug` at the top of the binder body in `AppContainer.live()` and at the head of `LivePlaybackCoordinator.setBitrate(_:)`, run with verbose logging ON, change the bitrate picker, see what fires.
+2. **Song / metadata offset still desyncs.** Cue-via-`loadfile <url> replace start=<seconds>` fix landed in commit `0a9bf13` but the user still reports a metadata-vs-audio offset. Need fresh repro with verbose logs to determine whether mpv's `time-pos` after the load actually reflects the cue offset or something else.
 
 ---
 
 ## PR status
 
-| PR  | Branch         | Status | Contents                                                              |
-| --- | -------------- | ------ | --------------------------------------------------------------------- |
-| 1   | merged to main | ✅      | Scaffold, AppLogger, RotatingFileSink, AppSettings, ConfigStore       |
-| 2   | merged to main | ✅      | RpApiClient, ApiModels, CookieProvider, StubURLProtocol, fixtures     |
-| 3   | merged to main | ✅      | KeychainStore, KeychainCookieProvider, LoginWindowController          |
-| 4   | merged to main | ✅      | AudioDeviceCatalog                                                    |
-| 5a  | merged to main | ✅      | libmpv vendoring + RPSmoke CLI                                        |
-| 5b  | merged to main | ✅      | PlayerEngine (libmpv Swift actor)                                     |
-| 6   | merged to main | ✅      | PlaybackCoordinator                                                   |
-| 7   | merged to main | ✅      | AppKit shell (NSStatusItem + borderless NSPanel hosting placeholder)  |
-| 8   | merged to main | ✅      | MiniPlayerView (SwiftUI) + AppDelegate real-graph wiring              |
-| 9   | merged to main | ✅      | NotificationCoordinator + AlbumArtCache + album art in MiniPlayerView |
-| 10  | merged to main | ✅      | SettingsView + rating row + KeychainCookieProvider + login flow       |
-| 11  | merged to main | ✅      | AppContainer composition root + App/Edit main menu                    |
+| PR  | Branch         | Status | Contents                                                                |
+| --- | -------------- | ------ | ----------------------------------------------------------------------- |
+| 1   | merged to main | ✅      | Scaffold, AppLogger, RotatingFileSink, AppSettings, ConfigStore         |
+| 2   | merged to main | ✅      | RpApiClient, ApiModels, CookieProvider, StubURLProtocol, fixtures       |
+| 3   | merged to main | ✅      | KeychainStore, KeychainCookieProvider, LoginWindowController            |
+| 4   | merged to main | ✅      | AudioDeviceCatalog                                                      |
+| 5a  | merged to main | ✅      | libmpv vendoring + RPSmoke CLI                                          |
+| 5b  | merged to main | ✅      | PlayerEngine (libmpv Swift actor)                                       |
+| 6   | merged to main | ✅      | PlaybackCoordinator                                                     |
+| 7   | merged to main | ✅      | AppKit shell (NSStatusItem + borderless NSPanel hosting placeholder)    |
+| 8   | merged to main | ✅      | MiniPlayerView (SwiftUI) + AppDelegate real-graph wiring                |
+| 9   | merged to main | ✅      | NotificationCoordinator + AlbumArtCache + album art in MiniPlayerView   |
+| 10  | merged to main | ✅      | SettingsView + rating row + KeychainCookieProvider + login flow         |
+| 11  | merged to main | ✅      | AppContainer composition root + App/Edit main menu                      |
 | 12  | merged to main | ✅      | Smoke fixes + UI polish (rp.ico, Layout E, live bitrate, cue, hog mode) |
-| 13  | pending        | ⬜      | Distribution CI workflow                                              |
-
-PR 9 shipped scope: `LiveAlbumArtCache` actor (on-disk LRU at `ConfigPaths.albumArtCacheDirectory`, 20 files / 10 MB, SHA-256 keys, in-flight de-dup, validates `NSImage(data:)` before persisting), `LiveNotificationService` actor (wraps `UNUserNotificationCenter` behind `UNUserNotificationCenterProtocol`), `NotificationCoordinator` (`@MainActor final class` subscribing to `nowPlayingUpdates`, posts via service, respects `AppSettings.notificationsEnabled`, looks up channel title via API). `MiniPlayerView` displays cover art via `Image(nsImage:)` when available, falling back to the SF Symbol placeholder. Panel background switched to a SwiftUI `Color(nsColor: .windowBackgroundColor)` so Light/Dark appearance changes are honored. `PlaybackCoordinatorError: LocalizedError` so error banners read as prose. `LiveNotificationService` is bundle-gated in `AppContainer.live()` — `swift run` (no main bundle proxy) gets a `NoopNotificationService`; production `.app` bundles get the real one. Out of scope (deferred): rating row (PR 10), settings link/window (PR 10), `AppContainer` composition root (PR 11), main-menu/`Cmd-Q` (PR 11), `LSUIElement` Info.plist (PR 12).
-
-PR 10 shipped scope: SettingsView + SettingsWindowController + RatingRow + LoginWindowController integration + KeychainCookieProvider swap + ConfigStore→engine bridge for hog mode + output device. Round-1 smoke fixed sign-in propagation (closure not windowWillClose), folder paths (logs under Application Support, single "Show application data" button), pause→resume distinction, FLAC labels, segmented rating row. Round-2 fixed file-sink wiring (`AppLogger.fileBacked` factory targeting `ConfigPaths.logsDirectory`), hog-mode AO state machine (`LibmpvPlayerEngine` recomputes `audio-device` between `coreaudio_exclusive` and `coreaudio` based on hog flag, exposed via `currentAudioDeviceForTesting`), widened cookie filter (`LoginWindowController.rpCookieString` forwards every `radioparadise.com` cookie once the three auth cookies validate), and added `LiveRpApiClient.get` diagnostics (cookie-name list + 500-char body preview on non-2xx). Round-3 added shared-mode fallback (`LivePlaybackCoordinator` traps mpv's `Failed to initialize audio driver 'coreaudio_exclusive'` / `hardware format not supported`, calls `setHogMode(false)` once per `play()` and replays the current block) and 401 keychain auto-clear (`MiniPlayerViewModel.rate` catches `RpApiError.invalidResponse(statusCode: 401, _)` and surfaces "Logged out — sign in again to rate."). Round-4 UX added persisted hog fallback (`LivePlaybackCoordinator.init(onHogModeFallback:)`; `AppContainer.live()` writes `ConfigStore.hogModeEnabled = false` when fallback fires, so the Settings toggle reflects it), username display (`KeychainAuth.currentUsername` parses `C_username`; `SettingsView.accountSection` reads "Signed in as **<name>**"), and the new `StartupAuthProbe.run(api:auth:onCleared:)` which validates stored auth via `api/auth-state` on launch — clears keychain on anonymous response or 401, leaves cookie alone on transient network errors. Open follow-ups recorded in `docs/superpowers/plans/2026-04-30-pr10-settings-rating.md`: hog-mode-on-USB-DAC investigation deferred (other apps achieve bit-perfect on the same DAC; suspected mpv format-negotiation timing — see plan §"Remaining open follow-ups"), DESIGN.md §7 fallback toast, settings panel auth refresh after login window. Test count: 127 → 172 (+45).
-
-PR 12 shipped scope: stale-track-info fix (block expiration check on resume —
-`LivePlaybackCoordinator.resume()` re-issues `play(channelId:)` when
-`block.expiration > 0` and the cached block is past it, per DESIGN.md §7);
-`rp.ico` as menu-bar icon via SPM resource bundle (`Bundle.module`); live
-stream-format event (`PlayerEvent.streamFormatChanged(StreamFormat)` emitted
-from `LibmpvPlayerEngine` via `mpv_observe_property("audio-bitrate", ...)`,
-deduped on `(codec, sampleRateHz)` so FLAC's variable bitrate doesn't trigger
-re-emits); MiniPlayerView Layout E (318 pt album art top, channel picker +
-live bitrate + gear in one row, "RP Player" centered footer wordmark, 12 pt
-outer padding); Settings window title set to "RP Player Settings"; verbose
-logging toggle (`AppSettings.verboseLoggingEnabled` + Settings UI toggle that
-flips `AppLogger.minimumLevel` between `.info` and `.debug` live);
-cue-via-loadfile-start (`engine.play(url:startSeconds:)` issues
-`loadfile <url> replace start=<seconds>`, replacing the prior post-`fileLoaded`
-seek that mpv reported in `time-pos` before the audio buffer caught up);
-bitrate setting bridged to coordinator at runtime (settings binder calls
-`coordinator.setBitrate`); direct CoreAudio hog mode via new
-`HogModeController` actor (acquires `kAudioDevicePropertyHogMode` directly via
-`AudioObjectSetPropertyData` BEFORE mpv opens the device, bypasses mpv's
-`coreaudio_exclusive` AO entirely — works on the user's Qudelix-5K USB DAC
-where mpv's exclusive AO failed); dead-code cleanup (no more `audio-exclusive`
-property writes from the engine; `currentHogMode` state field removed).
-Outstanding items in `docs/notes/pr12-outstanding-2026-05-01.md`: bitrate
-runtime propagation bug (binder appears wired but doesn't take effect — needs
-runtime instrumentation), residual song/metadata offset (cue fix landed but
-desync still reported by user — needs fresh repro). Test count: 184 → 213 (+29).
+| 13  | pending        | ⬜      | Distribution CI workflow                                                |
 
 ---
 
@@ -73,72 +56,6 @@ desync still reported by user — needs fresh repro). Test count: 184 → 213 (+
 
 ---
 
-## Key technical decisions (non-obvious, not in code)
-
-- `kSecUseDataProtectionKeychain: true` causes `errSecMissingEntitlement (-34018)` in unsigned `swift test` processes on macOS 26 beta (Darwin 25.3.0). Do not add it until the app is codesigned.
-- `WKHTTPCookieStoreObserver` callbacks are not `@MainActor` — always call `getAllCookies(_:)` (completion-handler form, macOS 13 compat) on the delivery thread before hopping to `@MainActor`. Do not capture `WKHTTPCookieStore` across actor boundaries.
-- `ConfigStore.changes` is an actor-isolated `async` property (not `nonisolated`) — registration is synchronous within actor isolation to eliminate a race window.
-- `JSONDecoder.rpDecoder` is a shared `static let` (snake_case → camelCase). Use it for all RP API decodes.
-- Query items in `LiveRpApiClient` are sorted alphabetically — `StubURLProtocol` test URLs must match this order.
-- `GetBlock.chan` is `String` (live API returns `"0"`, not `Int`). `GetBlock.endEvent` is `String?` (same reason).
-- `SongInfo.songId` has a custom `init(from:)` that handles both `Int` and `String` JSON values.
-- libmpv is vendored in `Vendor/libmpv/` from `media-kit/libmpv-darwin-build` v0.6.3 (audio-default, universal). The public `client.h` is pinned to mpv v0.36.0 (commit `3996724d3fa1c51cc7998f3de2e22e2c99e6d270`). Reported API version: 2.1. Refreshing the dylibs requires updating both the binaries and `client.h` to a matching upstream tag, then bumping the assertion in `LibmpvLinkageTests`.
-- `RPSmoke` and `RPPlayerTests` link libmpv with two `@loader_path`-relative rpaths baked in (3-deep for executables, 6-deep for xctest bundles). No `DYLD_LIBRARY_PATH` is needed for `swift test` or `swift run RPSmoke`. Production `.app` packaging (PR 12) will install dylibs under `Contents/Frameworks/` and use a single `@loader_path/../Frameworks` rpath instead.
-- All vendored dylibs use `@rpath/<name>.dylib` install names so a single rpath into `Vendor/libmpv/lib/` resolves the entire transitive graph. Verify after refresh: `otool -D Vendor/libmpv/lib/*.dylib` — every line after the path must read `@rpath/<name>.dylib`. If a future upstream rebuild ships absolute or `@executable_path/...` install names, the rpath approach silently breaks; rewrite via `install_name_tool -id` before committing.
-- `LibmpvPlayerEngine` runs a single detached event-pump task that calls `mpv_wait_event` with a 0.5s timeout in a loop. The pump exits when `mpv_terminate_destroy` triggers `MPV_EVENT_SHUTDOWN` or when the actor cancels the task. Shutdown ordering is `mpv_wakeup → await pumpTask → mpv_terminate_destroy → emit synthetic .shutdown → finish continuations` because `mpv_terminate_destroy` does not reliably wake an in-flight `mpv_wait_event` on the same handle. mpv's client API is thread-safe except for `mpv_wait_event` (only one thread at a time) — the pump is the only caller.
-- `LibmpvPlayerEngine` cannot start its detached pump task from inside `init` because Swift 6.2 strict concurrency forbids capturing `self` (even `[weak self]`) into a `Task.detached` closure during a non-isolated init. Bootstrap pattern: `init` schedules `Task { await self.startPump() }` (an unstructured Task on the actor's executor), and `startPump()` then spawns the detached pump. The handle is wrapped in a private `HandleBox: @unchecked Sendable` to cross the detached-task boundary.
-- `LivePlaybackCoordinator` triggers the next-block prefetch when `currentSongIndex == orderedSongs.count - 1` AND `(totalDurationSeconds - currentPositionSeconds) < 10.0`. The 10-second window matches DESIGN.md §5.6 and gives the network round-trip plenty of margin before EOF. Only one prefetch per block (guarded by `prefetchedBlock == nil && prefetchTask == nil`).
-- `LivePlaybackCoordinator.play(channelId:)` issues the cue tune-in by waiting for `PlayerEvent.fileLoaded`, then calling `engine.seek(to: cueSeconds)`. The cue seek is bypassed for prefetch-driven block swaps and for skip-forward-past-last-song — both intentionally start the new block from offset 0.
-- `LivePlaybackCoordinator` lazy-subscribes to `PlayerEngine.events` from inside `play()` via `await ensureEventSubscription()`, NOT from `init`. This is deterministic: by the time `play()` issues the engine command, the actor has already registered an `events` continuation, so events fired by the engine cannot race ahead of the subscription. The init-time `Task { ... }` bootstrap pattern was rejected here because subscription order matters.
-- The shell uses `NSApp.setActivationPolicy(.accessory)` set at runtime (not `LSUIElement` in an Info.plist) because SPM executable targets do not ship an Info.plist. PR 12 introduces the real `.app` bundle and may move this into `LSUIElement`; until then the runtime call is the only way to suppress the Dock icon.
-- The PR 7 menu-bar popup is a borderless `NSPanel` (style `[.borderless, .nonactivatingPanel]`, level `.statusBar`), NOT an `NSPopover`. The plan originally specified `NSPopover`; smoke testing on macOS 26 (Darwin 25.3.0) showed the bubble arrow rendering on top of the status item icon and `.transient` dismissal failing for `.accessory`-policy apps until the panel was clicked. The borderless `NSPanel` gives full positioning control (panel top is aligned to `buttonWindow.frame.minY`, not the button frame, so the panel sits flush with the menu bar without a 2–3 px gap) and uses an `NSEvent.addGlobalMonitorForEvents` global click monitor for outside-click dismissal. Rounded corners are drawn on the content view's layer (`cornerRadius = 10`, `masksToBounds = true`) with the panel itself transparent (`isOpaque = false`, `backgroundColor = .clear`) so the rounded shape shows through and the system shadow follows it.
-- `PopoverController` is a non-`final` class (not a struct) only so tests can override `isShown`. The shell otherwise has no protocol abstractions — PR 11 confirmed the designated `AppContainer.init(...)` parameters are sufficient as the test seam; no protocol layer was added.
-- `swift test --parallel` currently fails on `KeychainStoreTests.testSaveOverwritesExisting` with `errSecDuplicateItem (-25299)` — multiple test processes race on the same keychain account. Pre-existing (visible since PR 3); not introduced by PR 7. Workaround: use serial `swift test`. Proper fix is to scope each test to a unique keychain account namespace; deferred until it actually blocks something.
-- `MiniPlayerViewModel` is `@MainActor final class: ObservableObject`, NOT `@Observable`. The view model spawns its coordinator-subscription `Task` from `start()` (called by `MiniPlayerView`'s `.task` modifier on first appear), not from `init` — same Swift-6.2 rule that constrains `LivePlaybackCoordinator`'s pump bootstrap. (Switching to `@Observable` is now possible after PR 9 bumped the deployment target to macOS 14; defer the migration until a real reason to touch this code surfaces.)
-- Deployment target was bumped to `.macOS(.v14)` in PR 9. `NSImage: Sendable` requires macOS 14, and `LiveAlbumArtCache.inFlight: [String: Task<NSImage?, Never>]` produces unrejectable Sendable warnings on `.v13`. The user runs macOS 26, so the higher floor is comfortable. macOS 13 support can be reinstated if needed by routing the cache through `Data` and re-decoding per consumer.
-- `MiniPlayerViewModel.selectChannel(_:)` guards rapid double-calls with an `inFlightChannelId` token: if a second `selectChannel` lands before the first awaited `coordinator.changeChannel(to:)` resolves, the late completion short-circuits and the second selection wins. Without this, optimistic-UI rollback on the first call would erase the user's pending choice. Tested via `testSelectChannelSecondCallSupersedesFirst`.
-- `AppDelegate.applicationWillTerminate` blocks the terminate path on `coordinator.shutdown()` via `DispatchGroup.wait(timeout: 2.0)` with the awaiting work spawned via `Task.detached`. The `Task.detached` is load-bearing: `applicationWillTerminate` runs on the main thread, and a non-detached `Task { @MainActor in await shutdown() }` would never start because main is parked in `group.wait`. The 2 s cap matches the libmpv pump shutdown budget.
-- `AppContainer` (in `Sources/RPPlayer/App/`) is the composition root. `AppContainer.init(...)` is the test seam — pass stub collaborators directly. `AppContainer.live() throws` does the production wiring (`JSONConfigStore`, `LibmpvPlayerEngine`, `KeychainCookieProvider`, etc.) and returns the assembled graph. `AppDelegate.init(containerFactory:)` defaults to `{ try .live() }`; tests override with stub-built containers. The `Noop*` fallback types live as `private` declarations at the bottom of `AppContainer.swift` because that's where `live()` consumes them.
-- `AppContainer.live()` swallows every recoverable construction error (libmpv init failure → `NoopPlayerEngine`, JSON config open failure → `NoopConfigStore`, album-art cache directory failure → `NoopAlbumArtCache`). The `throws` on `live()` is reserved for future non-recoverable cases. `AppDelegate.applicationDidFinishLaunching` calls `preconditionFailure` if `live()` throws — that's correct for the current zero-throwing reality.
-- `AppContainer.runOnLaunchTasks()` fans out via `withTaskGroup` so the two startup work items (notification authorization request + `StartupAuthProbe.run`) run concurrently. Sequential execution would block `StartupAuthProbe` behind `UNUserNotificationCenter`'s first-launch permission dialog on a bundled `.app`.
-- `PopoverController(rootView:)` takes an `AnyView`, not a generic `<RootView: View>`. The popover is the only construction site and the panel's `contentView: NSView?` already erases through AppKit, so generic propagation buys nothing while complicating the call site.
-- The popover installs both a global mouse-down monitor (outside-click dismissal) and a local key-down monitor (Esc) on `show(relativeTo:)`. Esc is the keycode 53 constant `PopoverController.escapeKeyCode`. The local monitor is process-wide — when PR 9 introduces a text field inside the popover or PR 10 ships `SettingsView` in a separate window, gate the monitor on `event.window === panel` (or install only while the popover is key) so Esc isn't hijacked.
-- `LivePlaybackCoordinator.getBlock(... info: true)` is required everywhere. With `info: false` the live API returns `song: null` and omits `image_base`, both required by the `GetBlock` model. The fixture-driven coordinator tests didn't catch this because `MockRpApiClient.getBlock` ignores `info` and returns synthetic `GetBlock` values. PR 8 surfaced and fixed the bug at all three callsites (initial play, channel change, prefetch).
-- `NoopPlayerEngine` (private struct in `AppContainer.swift`) is a `PlayerEngine` shim that throws a captured init error from every action method and yields an immediately-finished events stream. It keeps the menu-bar shell up so the user can see the error banner if `LibmpvPlayerEngine.init` throws (missing dylib, audio-device contention).
-- `LiveAlbumArtCache` keys files by SHA-256(coverPath) + ".jpg", not by `songId`. Multiple songs share an album, so song-keyed cache would re-download the same JPEG. Cap is 20 files / 10 MB; eviction runs on every successful write and removes oldest by `contentModificationDate`. In-flight de-dup via a `coverPath → Task<NSImage?, Never>` map prevents duplicate downloads when two callers race. Response bodies are validated with `NSImage(data:)` before persisting so a 200 with non-image bytes (HTML error page, partial body) does not poison the cache.
-- `LiveNotificationService.init(center:)` has NO default argument. The previous default `= UNUserNotificationCenter.current()` evaluated eagerly at the call site and `current()` throws an `NSInternalInconsistencyException` ("bundleProxyForCurrentProcess is nil") on macOS 26 inside unbundled processes (`swift run RPPlayer`). `AppContainer.live()` constructs `LiveNotificationService(center: UNUserNotificationCenter.current())` only when `Bundle.main.bundleIdentifier != nil`, otherwise it uses `NoopNotificationService`. PR 12 ships the `.app` bundle and the real path lights up.
-- `NotificationCoordinator` is `@MainActor final class` (not an actor) because it bridges `nowPlayingUpdates` to AppKit / UserNotifications types that are main-thread anchored. The subscription `Task` is spawned in `start()`, mirroring `MiniPlayerViewModel`. The `for await` body checks `Task.isCancelled` before processing each emission so `stop()` reliably drops in-flight events. Configuration (notifications-enabled flag, channel title, on-disk file URL) is injected as `@Sendable` async closures so production wires them to live `JSONConfigStore` / `RpApiClient` / cache reads while tests substitute lightweight stubs.
-- The popover's panel background was migrated from a `cgColor` snapshot on `panel.contentView.layer` to a SwiftUI `Color(nsColor: .windowBackgroundColor)` background applied via `.background(...)` on the wrapped root view. Layer-side `cornerRadius = 10` and `masksToBounds = true` stay because `NSPanel`'s system shadow needs a non-clear hosting view to derive its shape. Light/Dark appearance toggles now re-render the popover without recomposing the layer.
-- `PlaybackCoordinatorError: LocalizedError` provides clean `errorDescription` strings for all five cases (`notPlaying`, `channelNotFound`, `blockHasNoSongs`, `engineError`, `underlying`). The view model surfaces `error.localizedDescription`, which now picks up these strings instead of Swift's default `engineError(message: "...")`-style print.
-- `HogModeController` (`Sources/RPPlayer/Audio/HogModeController.swift`) is
-  an `actor` that acquires/releases `kAudioDevicePropertyHogMode` via
-  `AudioObjectSetPropertyData` directly. mpv is configured with the plain
-  `coreaudio` AO and never sees `audio-exclusive=yes` — hog ownership lives
-  outside mpv. This bypasses mpv's `coreaudio_exclusive` AO format-negotiation
-  failures observed on Qudelix-5K and similar USB DACs. The controller is
-  composed in `AppContainer.live()`; the settings binder calls
-  `acquire(deviceUID:)` / `release()` based on the `(hogModeEnabled,
-  outputDeviceUID)` snapshot. Hog is released on `AppDelegate.applicationWillTerminate`
-  via `coordinatorShutdown` so the device returns to normal use.
-- `LibmpvPlayerEngine.play(url:startSeconds:)` issues
-  `loadfile <url> replace start=<seconds>` so mpv opens the AO at the cue
-  offset. The previous post-`fileLoaded` `engine.seek(to: cue)` caused mpv
-  to report `time-pos = cue` before the audio buffer for HTTP m4a/flac
-  streams caught up — UI showed the song at the cue offset while audio
-  played from frame 0. The default-arg `play(url:)` shim from a protocol
-  extension preserves back-compat for tests that don't pass a start time.
-- `AppLogger` is a `final class @unchecked Sendable` (was a `struct`) with
-  `setMinimumLevel(_:)` / `setVerbose(_:)` mutators behind an `NSLock`.
-  `AppContainer.live()` flips the threshold based on
-  `AppSettings.verboseLoggingEnabled` (and re-flips on every settings
-  change). When verbose is ON, the file sink captures every API request,
-  every coordinator decision (play / pause / resume / skip / prefetch /
-  swap / song-boundary cross), every engine state transition (file load,
-  format detection, AO open, hog write, audio-device write), and every
-  bootstrap step. Default is OFF for normal use.
-
----
-
 ## Comment policy (strict)
 
 - No comments unless the WHY is non-obvious (hidden constraint, workaround, subtle invariant).
@@ -147,24 +64,117 @@ desync still reported by user — needs fresh repro). Test count: 184 → 213 (+
 
 ---
 
-## Test counts by PR
+## Key technical decisions (non-obvious, not in code)
 
-- After PR 1: 13 tests
-- After PR 2: 18 tests
-- After PR 3: 35 tests
-- After PR 4: 47 tests
-- After PR 5a: 48 tests
-- After PR 5b: 67 tests
-- After PR 6: 93 tests
-- After PR 7: 101 tests
-- After PR 8: 111 tests
-- After PR 9: 127 tests
-- After PR 10: 172 tests
-- After PR 11: 184 tests
-- After PR 12: 213 tests
+### Audio pipeline
+
+- **Hog mode is owned by `HogModeController`** (`Sources/RPPlayer/Audio/HogModeController.swift`), not mpv. The actor writes `getpid()` to `kAudioDevicePropertyHogMode` via `AudioObjectSetPropertyData` BEFORE mpv opens the device. mpv is configured with the plain `coreaudio` AO and `audio-exclusive` is never set. This bypasses mpv's `coreaudio_exclusive` AO format-negotiation failures observed on USB DACs (Qudelix-5K and similar). `AppContainer.live()`'s settings binder calls `acquire(deviceUID:)` / `release()` based on `(hogModeEnabled, outputDeviceUID)`. `release()` runs on app termination so the device returns to shared use.
+- **Cue handling: `loadfile <url> replace start=<seconds>`**, NOT a post-`fileLoaded` `engine.seek(to:)`. mpv reports `time-pos = cue` immediately on seek for HTTP streams while the audio buffer hasn't caught up — UI saw the cue position before audio reached it. Public engine API is `play(url:startSeconds:)`; a default-arg `play(url:)` shim preserves back-compat for tests that don't care about cue.
+- **`LivePlaybackCoordinator.handleEngineEvent` defensive hog fallback** still detects mpv-emitted `Failed to initialize audio driver` / `hardware format not supported` errors and disables hog mode + retries the current block. Rarely fires now that hog is acquired outside mpv, but stays as a safety net.
+
+### libmpv vendoring + linkage
+
+- libmpv is vendored in `Vendor/libmpv/` from `media-kit/libmpv-darwin-build` v0.6.3 (audio-default, universal). Public `client.h` pinned to mpv v0.36.0 (commit `3996724d3fa1c51cc7998f3de2e22e2c99e6d270`), reported API version 2.1. Refreshing the dylibs requires updating both binaries and `client.h` to a matching upstream tag, then bumping the assertion in `LibmpvLinkageTests`.
+- `RPSmoke` and `RPPlayerTests` link libmpv with two `@loader_path`-relative rpaths baked in (3-deep for executables, 6-deep for xctest bundles). No `DYLD_LIBRARY_PATH` is needed for `swift test` or `swift run RPSmoke`. PR 13's `.app` packaging will install dylibs under `Contents/Frameworks/` and use a single `@loader_path/../Frameworks` rpath.
+- All vendored dylibs use `@rpath/<name>.dylib` install names. Verify after refresh: `otool -D Vendor/libmpv/lib/*.dylib` — every line after the path must read `@rpath/<name>.dylib`. If a future upstream rebuild ships absolute or `@executable_path/...` install names, rewrite via `install_name_tool -id` before committing.
+
+### libmpv concurrency
+
+- `LibmpvPlayerEngine` runs a single detached event-pump task that calls `mpv_wait_event` with a 0.5s timeout in a loop. Pump exits when `mpv_terminate_destroy` triggers `MPV_EVENT_SHUTDOWN` or when the actor cancels the task. Shutdown ordering: `mpv_wakeup → await pumpTask → mpv_terminate_destroy → emit synthetic .shutdown → finish continuations` — `mpv_terminate_destroy` does not reliably wake an in-flight `mpv_wait_event` on the same handle. mpv's client API is thread-safe except for `mpv_wait_event` (only one thread at a time) — the pump is the only caller.
+- The pump task can NOT start from inside `init` because Swift 6.2 strict concurrency forbids capturing `self` (even `[weak self]`) into a `Task.detached` during a non-isolated init. Bootstrap pattern: `init` schedules `Task { await self.startPump() }` (an unstructured Task on the actor's executor); `startPump()` then spawns the detached pump. Handle is wrapped in a private `HandleBox: @unchecked Sendable` to cross the boundary.
+- `AppDelegate.applicationWillTerminate` blocks the terminate path on `coordinator.shutdown()` via `DispatchGroup.wait(timeout: 2.0)` with awaiting work spawned via `Task.detached`. The `Task.detached` is load-bearing: `applicationWillTerminate` runs on main, and a non-detached `Task { @MainActor in await shutdown() }` would never start because main is parked in `group.wait`. The 2 s cap matches the libmpv pump shutdown budget.
+
+### Composition root
+
+- `AppContainer` (`Sources/RPPlayer/App/`) is the composition root. `init(...)` is the test seam (pass stub collaborators directly); `static func live() throws` does production wiring (`JSONConfigStore`, `LibmpvPlayerEngine`, `KeychainCookieProvider`, `HogModeController`, etc.). `AppDelegate.init(containerFactory:)` defaults to `{ try .live() }`; tests override with stub-built containers. `Noop*` fallback types live as `private` declarations at the bottom of `AppContainer.swift`.
+- `AppContainer.live()` swallows every recoverable construction error (libmpv init failure → `NoopPlayerEngine`, JSON config open failure → `NoopConfigStore`, album-art cache directory failure → `NoopAlbumArtCache`). The `throws` is reserved for future non-recoverable cases. `AppDelegate.applicationDidFinishLaunching` calls `preconditionFailure` if `live()` throws.
+- `AppContainer.runOnLaunchTasks()` fans out via `withTaskGroup` so post-launch work items (notification authorization request + `StartupAuthProbe.run`) run concurrently. Sequential execution would block `StartupAuthProbe` behind `UNUserNotificationCenter`'s first-launch permission dialog on a bundled `.app`.
+
+### Coordinator playback
+
+- `LivePlaybackCoordinator` triggers next-block prefetch when `currentSongIndex == orderedSongs.count - 1` AND `(totalDurationSeconds - currentPositionSeconds) < 10.0`. The 10-second window matches DESIGN.md §5.6. One prefetch per block (guarded by `prefetchedBlock == nil && prefetchTask == nil`).
+- `LivePlaybackCoordinator` lazy-subscribes to `PlayerEngine.events` from inside `play()` via `await ensureEventSubscription()`, NOT from `init`. Deterministic: by the time `play()` issues the engine command, the actor has already registered an `events` continuation, so events fired by the engine cannot race ahead.
+- `LivePlaybackCoordinator.getBlock(... info: true)` is required everywhere. With `info: false` the live API returns `song: null` and omits `image_base`, both required by the `GetBlock` model.
+- `LivePlaybackCoordinator.resume()` checks `block.expiration` and re-issues `play(channelId:)` for a fresh block when expired (per DESIGN.md §7).
+
+### Shell (AppKit + SwiftUI)
+
+- The popup is a borderless `NSPanel` (style `[.borderless, .nonactivatingPanel]`, level `.statusBar`), NOT an `NSPopover`. `NSPopover`'s bubble arrow rendered on top of the status item icon and `.transient` dismissal failed for `.accessory`-policy apps on macOS 26. Borderless `NSPanel` gives full positioning control; outside-click dismissal via `NSEvent.addGlobalMonitorForEvents`. Rounded corners on the content view's layer (`cornerRadius = 10`, `masksToBounds = true`) with the panel transparent (`isOpaque = false`, `backgroundColor = .clear`) so the system shadow follows the rounded shape.
+- Panel background uses a SwiftUI `Color(nsColor: .windowBackgroundColor)` background applied via `.background(...)` on the wrapped root view. Light/Dark appearance toggles re-render without recomposing the layer.
+- Activation policy is `.accessory` set at runtime (not `LSUIElement` in an Info.plist) because SPM executable targets do not ship an Info.plist. PR 13's `.app` bundle may move this into `LSUIElement`.
+- `PopoverController` is a non-`final` class only so tests can override `isShown`. The shell otherwise has no protocol abstractions — `AppContainer.init(...)` parameters are the test seam. `PopoverController(rootView:)` takes an `AnyView`; generic propagation buys nothing while complicating the call site.
+- Popover installs a global mouse-down monitor (outside-click dismissal) and a local key-down monitor (Esc, keycode 53) on `show(relativeTo:)`. The local monitor is process-wide — if a future text field outside the popover needs Esc, gate on `event.window === panel`.
+
+### View models
+
+- `MiniPlayerViewModel` is `@MainActor final class: ObservableObject`, NOT `@Observable`. Spawns the coordinator-subscription `Task` from `start()` (called by `MiniPlayerView`'s `.task` modifier on first appear), not from `init` — same Swift-6.2 rule that constrains the engine pump bootstrap.
+- `MiniPlayerViewModel.selectChannel(_:)` guards rapid double-calls with an `inFlightChannelId` token: if a second `selectChannel` lands before the first awaited `coordinator.changeChannel(to:)` resolves, the late completion short-circuits and the second selection wins. Tested via `testSelectChannelSecondCallSupersedesFirst`.
+- `NotificationCoordinator` is `@MainActor final class` (not an actor) because it bridges `nowPlayingUpdates` to AppKit / UserNotifications types that are main-thread anchored. Configuration (notifications-enabled flag, channel title, on-disk file URL) is injected as `@Sendable` async closures.
+
+### API client
+
+- `JSONDecoder.rpDecoder` is a shared `static let` (snake_case → camelCase). Use it for all RP API decodes.
+- Query items in `LiveRpApiClient` are sorted alphabetically — `StubURLProtocol` test URLs must match this order.
+- `GetBlock.chan` is `String` (live API returns `"0"`, not `Int`). `GetBlock.endEvent` is `String?` (same reason).
+- `SongInfo.songId` has a custom `init(from:)` that handles both `Int` and `String` JSON values.
+
+### Auth + cookies
+
+- `WKHTTPCookieStoreObserver` callbacks are not `@MainActor` — always call `getAllCookies(_:)` (completion-handler form, macOS 13 compat) on the delivery thread before hopping to `@MainActor`. Do not capture `WKHTTPCookieStore` across actor boundaries.
+- `LoginWindowController.rpCookieString` joins **all** `radioparadise.com` cookies (not just the auth trio) once the three required auth cookies are present and non-anonymous. Earlier filtering to just `C_username` / `C_passwd` / `C_validated` broke `api/rate` because the server expects session cookies (PHPSESSID etc.) too.
+- `kSecUseDataProtectionKeychain: true` causes `errSecMissingEntitlement (-34018)` in unsigned `swift test` processes on macOS 26 beta (Darwin 25.3.0). Do not add it until the app is codesigned.
+- `swift test --parallel` fails on `KeychainStoreTests.testSaveOverwritesExisting` with `errSecDuplicateItem (-25299)` — multiple test processes race on the same keychain account. Pre-existing since PR 3. Workaround: serial `swift test`. Proper fix is to scope each test to a unique keychain account namespace.
+
+### Persistence
+
+- `ConfigStore.changes` is an actor-isolated `async` property (not `nonisolated`) — registration is synchronous within actor isolation to eliminate a race window. `JSONConfigStore` is multi-subscriber-safe: each call to `.changes` returns a fresh `AsyncStream` with a unique UUID continuation; `update` yields to all continuations.
+
+### Album art
+
+- `LiveAlbumArtCache` keys files by `SHA-256(coverPath) + ".jpg"`, not by `songId` (multiple songs share an album). Cap: 20 files / 10 MB. Eviction runs on every successful write, removes oldest by `contentModificationDate`. In-flight de-dup via a `coverPath → Task<NSImage?, Never>` map. Response bodies are validated with `NSImage(data:)` before persisting so a 200 with non-image bytes (HTML error page, partial body) does not poison the cache.
+- `MiniPlayerViewModel` only resets `currentArt` when the cover path actually changes. Defense in depth so spurious `NowPlaying` re-emissions (e.g., bitrate observer ticks within the same song) don't cause art to flicker.
+
+### Logging
+
+- `AppLogger` is a `final class @unchecked Sendable` with `setMinimumLevel(_:)` / `setVerbose(_:)` mutators behind an `NSLock`. `AppContainer.live()` flips the threshold based on `AppSettings.verboseLoggingEnabled` (re-flips on every settings change). Verbose ON: file sink captures every API request, every coordinator decision (play / pause / resume / skip / prefetch / swap / song-boundary cross), every engine state transition (file load, format detection, AO open, hog write, audio-device write), every bootstrap step. Default OFF.
+- File sink lives at `~/Library/Application Support/RP Player/Logs/RPPlayer.log` via `AppLogger.fileBacked(category:directory:minimumLevel:)`.
+
+### Errors
+
+- `PlaybackCoordinatorError: LocalizedError` provides clean `errorDescription` strings for all five cases (`notPlaying`, `channelNotFound`, `blockHasNoSongs`, `engineError`, `underlying`). View models surface `error.localizedDescription`.
+
+### Notifications
+
+- `LiveNotificationService.init(center:)` has NO default argument. Reason: the eager evaluation of `= UNUserNotificationCenter.current()` throws `NSInternalInconsistencyException` ("bundleProxyForCurrentProcess is nil") on macOS 26 inside unbundled processes (`swift run RPPlayer`). `AppContainer.live()` constructs `LiveNotificationService(center: UNUserNotificationCenter.current())` only when `Bundle.main.bundleIdentifier != nil`, otherwise uses `NoopNotificationService`. PR 13 ships the `.app` bundle and the real path lights up.
+
+### Deployment target
+
+- `.macOS(.v14)` floor. `NSImage: Sendable` requires macOS 14, and `LiveAlbumArtCache.inFlight: [String: Task<NSImage?, Never>]` produces unrejectable Sendable warnings on `.v13`.
 
 ---
 
-## Plan files
+## Test counts by PR
 
-All plans live in `docs/superpowers/plans/`. Written just-in-time before each PR's execution.
+- After PR 1: 13
+- After PR 2: 18
+- After PR 3: 35
+- After PR 4: 47
+- After PR 5a: 48
+- After PR 5b: 67
+- After PR 6: 93
+- After PR 7: 101
+- After PR 8: 111
+- After PR 9: 127
+- After PR 10: 172
+- After PR 11: 184
+- After PR 12: 213
+
+---
+
+## Where things live
+
+- **Plans:** `docs/superpowers/plans/` — written just-in-time before each PR's execution. Gitignored (local only).
+- **Specs:** `docs/superpowers/specs/` — design docs from the brainstorming phase. Gitignored (local only).
+- **Notes / known-issue handoffs:** `docs/notes/` — committed. Most recent: `docs/notes/pr12-outstanding-2026-05-01.md`.
+- **Design source of truth:** `docs/DESIGN.md` — the project-level architecture spec.
+- **Legacy reference:** `docs/legacy/` — the Windows app's C# code, kept for cross-checking RP API behavior (URLs, cookies, query shapes).
