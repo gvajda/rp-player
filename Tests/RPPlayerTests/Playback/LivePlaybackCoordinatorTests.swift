@@ -735,17 +735,13 @@ extension LivePlaybackCoordinatorTests {
         )
 
         try await coordinator.play(channelId: 0)
-        // Set delay so prefetch is slow — still in-flight when skipForward runs.
         await api.setGetBlockDelay(nanos: 2_000_000_000)
-        // Fire position update to trigger prefetch.
         await engine.fire(.positionUpdate(seconds: 2.0))
-        // Brief yield so prefetch task starts and enters Task.sleep inside getBlock.
+        // Yield so prefetch task enters Task.sleep before we cancel.
         try await Task.sleep(nanoseconds: 50_000_000)
-        // Remove delay so the synchronous skip fetch completes immediately.
         await api.setGetBlockDelay(nanos: 0)
-        // Skip — must cancel the in-flight prefetch and do a synchronous fetch.
         try await coordinator.skipForward()
-        // Give the cancelled prefetch task time to observe cancellation and record it.
+        // Yield so cancelled prefetch observes cancellation and records.
         try await Task.sleep(nanoseconds: 100_000_000)
 
         let cancellations = await api.getBlockCancellations
