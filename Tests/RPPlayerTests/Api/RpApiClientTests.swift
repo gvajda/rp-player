@@ -48,7 +48,7 @@ final class RpApiClientTests: XCTestCase {
         StubURLProtocol.register(url: components.url!, body: try loadFixture("get_block"))
 
         let client = makeClient()
-        let block = try await client.getBlock(channel: 0, bitrate: 4, info: true)
+        let block = try await client.getBlock(channel: 0, bitrate: 4, info: true, event: nil)
         XCTAssertFalse(block.url.isEmpty)
         XCTAssertGreaterThan(block.song.count, 0)
     }
@@ -92,6 +92,21 @@ final class RpApiClientTests: XCTestCase {
         let rating = try await client.rate(songId: 12345, rating: 7)
         XCTAssertEqual(rating.status, "success")
         XCTAssertEqual(rating.userRating, 7)
+    }
+
+    func testGetBlockWithEventAppendsEventQueryItemAlphabeticallySorted() async throws {
+        var components = URLComponents(url: baseURL.appendingPathComponent("api/get_block"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "bitrate", value: "4"),
+            URLQueryItem(name: "chan", value: "0"),
+            URLQueryItem(name: "event", value: "2868950"),
+            URLQueryItem(name: "info", value: "true"),
+        ]
+        StubURLProtocol.register(url: components.url!, body: try loadFixture("get_block"))
+
+        let client = makeClient()
+        let block = try await client.getBlock(channel: 0, bitrate: 4, info: true, event: 2868950)
+        XCTAssertFalse(block.url.isEmpty)
     }
 
     func testNon200StatusThrowsInvalidResponse() async throws {

@@ -4,7 +4,7 @@ import Foundation
 actor MockRpApiClient: RpApiClient {
     enum Call: Sendable, Equatable {
         case listChannels
-        case getBlock(channel: Int, bitrate: Int, info: Bool)
+        case getBlock(channel: Int, bitrate: Int, info: Bool, event: Int?)
         case nowPlaying(channel: Int)
         case info(songId: Int)
         case rate(songId: Int, rating: Int)
@@ -71,8 +71,8 @@ actor MockRpApiClient: RpApiClient {
         return listChannelsResponse
     }
 
-    func getBlock(channel: Int, bitrate: Int, info: Bool) async throws -> GetBlock {
-        calls.append(.getBlock(channel: channel, bitrate: bitrate, info: info))
+    func getBlock(channel: Int, bitrate: Int, info: Bool, event: Int?) async throws -> GetBlock {
+        calls.append(.getBlock(channel: channel, bitrate: bitrate, info: info, event: event))
         guard !blockResponses.isEmpty else {
             throw RpApiError.network(URLError(.unknown))
         }

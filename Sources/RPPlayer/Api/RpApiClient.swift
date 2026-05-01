@@ -2,7 +2,7 @@ import Foundation
 
 public protocol RpApiClient: Sendable {
     func listChannels() async throws -> [Channel]
-    func getBlock(channel: Int, bitrate: Int, info: Bool) async throws -> GetBlock
+    func getBlock(channel: Int, bitrate: Int, info: Bool, event: Int?) async throws -> GetBlock
     func nowPlaying(channel: Int) async throws -> NowPlayingEntry
     func info(songId: Int) async throws -> SongInfo
     func rate(songId: Int, rating: Int) async throws -> Rating
@@ -33,12 +33,16 @@ public struct LiveRpApiClient: RpApiClient {
         try await get(path: "api/list_chan", query: [:])
     }
 
-    public func getBlock(channel: Int, bitrate: Int, info: Bool) async throws -> GetBlock {
-        try await get(path: "api/get_block", query: [
+    public func getBlock(channel: Int, bitrate: Int, info: Bool, event: Int?) async throws -> GetBlock {
+        var query: [String: String] = [
             "chan": String(channel),
             "bitrate": String(bitrate),
             "info": info ? "true" : "false",
-        ])
+        ]
+        if let event {
+            query["event"] = String(event)
+        }
+        return try await get(path: "api/get_block", query: query)
     }
 
     public func nowPlaying(channel: Int) async throws -> NowPlayingEntry {
