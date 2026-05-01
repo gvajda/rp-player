@@ -9,6 +9,7 @@ final class SettingsViewModel: ObservableObject {
     @Published private(set) var softwareVolumeEnabled: Bool
     @Published private(set) var notificationsEnabled: Bool
     @Published private(set) var outputDeviceUID: String?
+    @Published private(set) var verboseLoggingEnabled: Bool
     @Published private(set) var devices: [AudioDevice] = []
     @Published private(set) var isSignedIn: Bool = false
     @Published private(set) var currentUsername: String?
@@ -42,6 +43,7 @@ final class SettingsViewModel: ObservableObject {
         self.softwareVolumeEnabled = snapshot.softwareVolumeEnabled
         self.notificationsEnabled = snapshot.notificationsEnabled
         self.outputDeviceUID = snapshot.outputDeviceUID
+        self.verboseLoggingEnabled = snapshot.verboseLoggingEnabled
     }
 
     func start() async {
@@ -58,6 +60,7 @@ final class SettingsViewModel: ObservableObject {
                     self.softwareVolumeEnabled = snapshot.softwareVolumeEnabled
                     self.notificationsEnabled = snapshot.notificationsEnabled
                     self.outputDeviceUID = snapshot.outputDeviceUID
+                    self.verboseLoggingEnabled = snapshot.verboseLoggingEnabled
                 }
             }
         }
@@ -97,6 +100,10 @@ final class SettingsViewModel: ObservableObject {
 
     func setOutputDeviceUID(_ value: String?) async {
         await update { $0.outputDeviceUID = value }
+    }
+
+    func setVerboseLoggingEnabled(_ value: Bool) async {
+        await update { $0.verboseLoggingEnabled = value }
     }
 
     func signOut() async {

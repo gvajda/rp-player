@@ -8,7 +8,7 @@ public protocol Logging: Sendable {
     func error(_ message: @autoclosure () -> String)
 }
 
-public struct AppLogger: Logging {
+public final class AppLogger: Logging, @unchecked Sendable {
     public enum Level: String, Codable, Sendable, Comparable {
         case debug, info, warn, error
 
@@ -29,7 +29,8 @@ public struct AppLogger: Logging {
     private let osLogger: os.Logger
     private let sink: RotatingFileSink?
     private let category: String
-    private let minimumLevel: Level
+    private let levelLock = NSLock()
+    private var minimumLevel: Level
 
     public init(category: String, sink: RotatingFileSink? = nil, minimumLevel: Level = .info) {
         self.osLogger = os.Logger(subsystem: Self.subsystem, category: category)
@@ -54,13 +55,29 @@ public struct AppLogger: Logging {
         return AppLogger(category: category, sink: sink, minimumLevel: minimumLevel)
     }
 
+    public func setMinimumLevel(_ level: Level) {
+        levelLock.lock()
+        defer { levelLock.unlock() }
+        minimumLevel = level
+    }
+
+    public func setVerbose(_ verbose: Bool) {
+        setMinimumLevel(verbose ? .debug : .info)
+    }
+
+    private func currentMinimumLevel() -> Level {
+        levelLock.lock()
+        defer { levelLock.unlock() }
+        return minimumLevel
+    }
+
     public func debug(_ message: @autoclosure () -> String) { emit(.debug, message) }
     public func info(_ message: @autoclosure () -> String)  { emit(.info,  message) }
     public func warn(_ message: @autoclosure () -> String)  { emit(.warn,  message) }
     public func error(_ message: @autoclosure () -> String) { emit(.error, message) }
 
     private func emit(_ level: Level, _ message: () -> String) {
-        guard level >= minimumLevel else { return }
+        guard level >= currentMinimumLevel() else { return }
         let text = message()
         switch level {
         case .debug: osLogger.debug("\(text, privacy: .public)")

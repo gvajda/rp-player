@@ -45,6 +45,17 @@ final class ConfigStoreTests: XCTestCase {
         XCTAssertEqual(result?.selectedChannelId, 7)
     }
 
+    func testDecodingMissingVerboseLoggingDefaultsToFalse() throws {
+        // On-disk JSON written before the field existed should still decode.
+        let json = """
+        {"selectedChannelId":0,"hogModeEnabled":true,"softwareVolumeEnabled":false,"notificationsEnabled":true,"bitrate":4,"logLevel":"info"}
+        """
+        let data = Data(json.utf8)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
+        XCTAssertFalse(decoded.verboseLoggingEnabled)
+        XCTAssertEqual(decoded.bitrate, 4)
+    }
+
     func testNoOpUpdateDoesNotEmit() async throws {
         let url = makeTempURL()
         let store = try JSONConfigStore(url: url)

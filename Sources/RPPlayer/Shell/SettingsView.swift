@@ -68,6 +68,12 @@ struct SettingsView: View {
     private var dataSection: some View {
         Section("Data") {
             Button("Show application data") { viewModel.openApplicationData() }
+            Toggle("Verbose logging", isOn: verboseLoggingBinding)
+            if viewModel.verboseLoggingEnabled {
+                Text("Logs every API call, decision, and state transition. Reset on app restart.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -108,6 +114,13 @@ struct SettingsView: View {
         Binding(
             get: { viewModel.bitrate },
             set: { newValue in Task { await viewModel.setBitrate(newValue) } }
+        )
+    }
+
+    private var verboseLoggingBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.verboseLoggingEnabled },
+            set: { newValue in Task { await viewModel.setVerboseLoggingEnabled(newValue) } }
         )
     }
 }

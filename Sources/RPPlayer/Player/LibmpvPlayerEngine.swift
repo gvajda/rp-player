@@ -9,10 +9,12 @@ public actor LibmpvPlayerEngine: PlayerEngine {
     private var currentHogMode = false
     private var currentDeviceUID: String?
     private var lastEmittedStreamFormat: StreamFormat?
+    private let logger: (any Logging)?
 
     public init(
         initialDeviceUID: String? = nil,
-        initialHogMode: Bool = false
+        initialHogMode: Bool = false,
+        logger: (any Logging)? = nil
     ) throws {
         guard let h = mpv_create() else {
             throw PlayerEngineError.createFailed
@@ -78,6 +80,8 @@ public actor LibmpvPlayerEngine: PlayerEngine {
         self.handle = h
         self.currentHogMode = initialHogMode
         self.currentDeviceUID = initialDeviceUID
+        self.logger = logger
+        logger?.debug("LibmpvPlayerEngine init done; initialDeviceUID=\(initialDeviceUID ?? "nil") initialHogMode=\(initialHogMode)")
         // Pump must be started after init returns: Swift 6 nonisolated init can't
         // capture self into a detached Task, but a follow-up actor method can.
         Task { await self.startPump() }
@@ -162,7 +166,9 @@ public actor LibmpvPlayerEngine: PlayerEngine {
     }
 
     private func handleAudioBitrateChange() {
-        guard let format = readCurrentStreamFormat() else { return }
+        let format = readCurrentStreamFormat()
+        logger?.debug("audio-bitrate observer fired; format=\(format?.codec ?? "nil") rate=\(format?.sampleRateHz ?? 0) kbps=\(format?.kbps ?? 0)")
+        guard let format else { return }
         if !Self.shouldEmit(format, lastEmitted: lastEmittedStreamFormat) { return }
         lastEmittedStreamFormat = format
         for c in continuations.values { c.yield(.streamFormatChanged(format)) }
@@ -201,6 +207,7 @@ public actor LibmpvPlayerEngine: PlayerEngine {
     }
 
     public func setHogMode(_ enabled: Bool) async throws {
+        logger?.debug("engine setHogMode(\(enabled))")
         try requireHandle()
         currentHogMode = enabled
         try setStringProperty("audio-exclusive", enabled ? "yes" : "no")
@@ -209,6 +216,7 @@ public actor LibmpvPlayerEngine: PlayerEngine {
     }
 
     public func setOutputDevice(uid: String?) async throws {
+        logger?.debug("engine setOutputDevice(uid: \(uid ?? "nil"))")
         try requireHandle()
         currentDeviceUID = uid
         try applyAudioDevice()
@@ -222,6 +230,7 @@ public actor LibmpvPlayerEngine: PlayerEngine {
         } else {
             value = "auto"
         }
+        logger?.debug("applyAudioDevice -> \(value), audio-exclusive=\(currentHogMode ? "yes" : "no")")
         try setStringProperty("audio-device", value)
     }
 

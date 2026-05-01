@@ -49,8 +49,11 @@ final class AppContainer {
 extension AppContainer {
     static func live() throws -> AppContainer {
         let logger = AppLogger.fileBacked(category: "shell", directory: ConfigPaths.logsDirectory)
+        logger.info("AppContainer.live() starting")
         let configURL = ConfigPaths.configFile
         let initial = Self.loadSettings(from: configURL)
+        logger.setVerbose(initial.verboseLoggingEnabled)
+        logger.info("loaded settings: hog=\(initial.hogModeEnabled) device=\(initial.outputDeviceUID ?? "nil") bitrate=\(initial.bitrate) verboseLogging=\(initial.verboseLoggingEnabled)")
         let store: JSONConfigStore?
         do {
             store = try JSONConfigStore(url: configURL)
@@ -79,7 +82,8 @@ extension AppContainer {
         do {
             engine = try LibmpvPlayerEngine(
                 initialDeviceUID: initial.outputDeviceUID,
-                initialHogMode: initial.hogModeEnabled
+                initialHogMode: initial.hogModeEnabled,
+                logger: logger
             )
         } catch {
             // Keep the menu-bar shell up so the user can see the error banner
@@ -110,6 +114,12 @@ extension AppContainer {
                 for await settings in stream {
                     try? await engine.setHogMode(settings.hogModeEnabled)
                     try? await engine.setOutputDevice(uid: settings.outputDeviceUID)
+                }
+            }
+            Task { [logger] in
+                let stream = await store.changes
+                for await settings in stream {
+                    logger.setVerbose(settings.verboseLoggingEnabled)
                 }
             }
         }
@@ -174,13 +184,14 @@ extension AppContainer {
         let onLaunchTasks: [@Sendable () async -> Void] = [
             { _ = try? await notificationService.requestAuthorization() },
             { @MainActor in
-                await StartupAuthProbe.run(api: api, auth: keychainAuth) {
+                await StartupAuthProbe.run(api: api, auth: keychainAuth, logger: logger) {
                     viewModel.refreshAuthState()
                     settingsViewModel.refreshAuthState()
                 }
             }
         ]
 
+        logger.info("AppContainer.live() ready")
         return AppContainer(
             viewModel: viewModel,
             notificationCoordinator: notificationCoordinator,

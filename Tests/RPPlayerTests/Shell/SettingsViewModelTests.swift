@@ -98,6 +98,16 @@ final class SettingsViewModelTests: XCTestCase {
         XCTAssertFalse(stored.hogModeEnabled)
     }
 
+    func testSetVerboseLoggingEnabledPersistsToConfigStore() async throws {
+        await sut.start()
+        XCTAssertFalse(sut.verboseLoggingEnabled)
+        await sut.setVerboseLoggingEnabled(true)
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let stored = await configStore.settings
+        XCTAssertTrue(stored.verboseLoggingEnabled)
+        XCTAssertTrue(sut.verboseLoggingEnabled)
+    }
+
     func testSetOutputDeviceUIDPersistsAndRoundTrips() async throws {
         await sut.start()
         await sut.setOutputDeviceUID("uid-2")

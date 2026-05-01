@@ -13,6 +13,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var bitrate: Int
     public var outputDeviceUID: String?
     public var logLevel: AppLogger.Level
+    public var verboseLoggingEnabled: Bool
 
     public init(
         selectedChannelId: Int = 0,
@@ -21,7 +22,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         notificationsEnabled: Bool = true,
         bitrate: Int = 4,
         outputDeviceUID: String? = nil,
-        logLevel: AppLogger.Level = .info
+        logLevel: AppLogger.Level = .info,
+        verboseLoggingEnabled: Bool = false
     ) {
         self.selectedChannelId = selectedChannelId
         self.hogModeEnabled = hogModeEnabled
@@ -30,6 +32,19 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.bitrate = bitrate
         self.outputDeviceUID = outputDeviceUID
         self.logLevel = logLevel
+        self.verboseLoggingEnabled = verboseLoggingEnabled
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.selectedChannelId = try c.decodeIfPresent(Int.self, forKey: .selectedChannelId) ?? 0
+        self.hogModeEnabled = try c.decodeIfPresent(Bool.self, forKey: .hogModeEnabled) ?? true
+        self.softwareVolumeEnabled = try c.decodeIfPresent(Bool.self, forKey: .softwareVolumeEnabled) ?? false
+        self.notificationsEnabled = try c.decodeIfPresent(Bool.self, forKey: .notificationsEnabled) ?? true
+        self.bitrate = try c.decodeIfPresent(Int.self, forKey: .bitrate) ?? 4
+        self.outputDeviceUID = try c.decodeIfPresent(String.self, forKey: .outputDeviceUID)
+        self.logLevel = try c.decodeIfPresent(AppLogger.Level.self, forKey: .logLevel) ?? .info
+        self.verboseLoggingEnabled = try c.decodeIfPresent(Bool.self, forKey: .verboseLoggingEnabled) ?? false
     }
 
     public static let `default` = AppSettings()

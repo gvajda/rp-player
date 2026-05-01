@@ -28,4 +28,33 @@ final class AppLoggerTests: XCTestCase {
         let logger = AppLogger.fileBacked(category: "shell", directory: badDir)
         logger.error("must not crash")
     }
+
+    func testSetMinimumLevelChangesEmissionThreshold() throws {
+        let dir = makeTempDir()
+        let logger = AppLogger.fileBacked(category: "shell", directory: dir, minimumLevel: .info)
+        logger.debug("before-flip")
+        logger.setMinimumLevel(.debug)
+        logger.debug("after-flip")
+
+        let logFile = dir.appendingPathComponent("RPPlayer.log")
+        let contents = try String(contentsOf: logFile, encoding: .utf8)
+        XCTAssertFalse(contents.contains("before-flip"))
+        XCTAssertTrue(contents.contains("after-flip"))
+    }
+
+    func testSetVerboseFlipsThresholdToDebugAndBack() throws {
+        let dir = makeTempDir()
+        let logger = AppLogger.fileBacked(category: "shell", directory: dir, minimumLevel: .info)
+        logger.debug("hidden")
+        logger.setVerbose(true)
+        logger.debug("visible-on")
+        logger.setVerbose(false)
+        logger.debug("hidden-again")
+
+        let logFile = dir.appendingPathComponent("RPPlayer.log")
+        let contents = try String(contentsOf: logFile, encoding: .utf8)
+        XCTAssertFalse(contents.contains("hidden"))
+        XCTAssertTrue(contents.contains("visible-on"))
+        XCTAssertFalse(contents.contains("hidden-again"))
+    }
 }
