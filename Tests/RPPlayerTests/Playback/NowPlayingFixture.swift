@@ -8,7 +8,9 @@ extension NowPlaying {
         album: String = "Album",
         cover: String? = nil,
         userRating: String? = nil,
-        songId: String = "1"
+        songId: String = "1",
+        songStartSeconds: Double = 0,
+        songEndSeconds: Double = 180
     ) -> NowPlaying {
         NowPlaying(
             channelId: 0,
@@ -23,8 +25,8 @@ extension NowPlaying {
             ),
             songIndexInBlock: 0,
             blockDurationSeconds: 720,
-            songStartSeconds: 0,
-            songEndSeconds: 180
+            songStartSeconds: songStartSeconds,
+            songEndSeconds: songEndSeconds
         )
     }
 }

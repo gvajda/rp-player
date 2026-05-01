@@ -13,6 +13,8 @@ final class MiniPlayerViewModel: ObservableObject {
     @Published private(set) var isSignedIn: Bool = false
     @Published private(set) var currentRating: Int?
     @Published private(set) var currentBitrateLabel: String?
+    @Published private(set) var songElapsedSeconds: Double = 0
+    @Published private(set) var songDurationSeconds: Double = 0
 
     typealias PersistChannelId = @Sendable (Int) async -> Void
 
@@ -23,8 +25,10 @@ final class MiniPlayerViewModel: ObservableObject {
     private let openSettingsAction: @MainActor () -> Void
     private let persistChannelId: PersistChannelId
     private var subscriptionTask: Task<Void, Never>?
+    private var positionSubscriptionTask: Task<Void, Never>?
     private var inFlightChannelId: Int?
     private var lastLoadedCoverPath: String?
+    private var lastSongStartSeconds: Double?
 
     init(
         coordinator: any PlaybackCoordinator,
@@ -47,6 +51,8 @@ final class MiniPlayerViewModel: ObservableObject {
     func start() async {
         subscriptionTask?.cancel()
         subscriptionTask = nil
+        positionSubscriptionTask?.cancel()
+        positionSubscriptionTask = nil
         do {
             self.channels = try await api.listChannels()
             self.errorMessage = nil
@@ -69,6 +75,14 @@ final class MiniPlayerViewModel: ObservableObject {
                     self.isSignedIn = self.auth.isLoggedIn
                     self.currentRating = Self.parseRating(from: np.song.userRating)
                     self.currentBitrateLabel = BlockBitrateLabel.display(np.blockBitrate)
+                    let newDuration = max(0, np.songEndSeconds - np.songStartSeconds)
+                    if np.songStartSeconds != self.lastSongStartSeconds {
+                        self.lastSongStartSeconds = np.songStartSeconds
+                        self.songElapsedSeconds = 0
+                        self.songDurationSeconds = newDuration
+                    } else {
+                        self.songDurationSeconds = newDuration
+                    }
                     let newCover = np.song.cover
                     if newCover != self.lastLoadedCoverPath {
                         self.lastLoadedCoverPath = newCover
@@ -82,11 +96,25 @@ final class MiniPlayerViewModel: ObservableObject {
                 }
             }
         }
+
+        let positionStream = await coordinator.positionUpdates
+        positionSubscriptionTask = Task { [weak self] in
+            for await pos in positionStream {
+                guard let self else { return }
+                await MainActor.run {
+                    guard let np = self.nowPlaying else { return }
+                    let duration = max(0, np.songEndSeconds - np.songStartSeconds)
+                    let elapsed = max(0, pos - np.songStartSeconds)
+                    self.songElapsedSeconds = min(elapsed, duration)
+                    self.songDurationSeconds = duration
+                }
+            }
+        }
     }
 
     func stop() async {
-        subscriptionTask?.cancel()
-        subscriptionTask = nil
+        subscriptionTask?.cancel(); subscriptionTask = nil
+        positionSubscriptionTask?.cancel(); positionSubscriptionTask = nil
     }
 
     func togglePlayPause() async {

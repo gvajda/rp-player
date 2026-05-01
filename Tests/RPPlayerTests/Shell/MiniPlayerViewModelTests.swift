@@ -317,4 +317,47 @@ final class MiniPlayerViewModelTests: XCTestCase {
                       "cover-path change must reload art")
         XCTAssertEqual(cache.requestedPaths, ["covers/l/a.jpg", "covers/l/b.jpg"])
     }
+
+    func testPositionUpdateDerivesElapsedAndDuration() async throws {
+        let np = NowPlaying.fixture(songStartSeconds: 100, songEndSeconds: 280)
+        await coordinator.setNowPlaying(np)
+        await sut.start()
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        await coordinator.firePosition(145)
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(sut.songElapsedSeconds, 45, accuracy: 0.001)
+        XCTAssertEqual(sut.songDurationSeconds, 180, accuracy: 0.001)
+    }
+
+    func testSongChangeResetsElapsed() async throws {
+        let np1 = NowPlaying.fixture(songId: "1", songStartSeconds: 100, songEndSeconds: 280)
+        await coordinator.setNowPlaying(np1)
+        await sut.start()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        await coordinator.firePosition(200)
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertGreaterThan(sut.songElapsedSeconds, 0)
+
+        let np2 = NowPlaying.fixture(songId: "2", songStartSeconds: 280, songEndSeconds: 520)
+        await coordinator.setNowPlaying(np2)
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(sut.songElapsedSeconds, 0, accuracy: 0.001)
+        XCTAssertEqual(sut.songDurationSeconds, 240, accuracy: 0.001)
+    }
+
+    func testElapsedClampedToDuration() async throws {
+        let np = NowPlaying.fixture(songStartSeconds: 100, songEndSeconds: 280)
+        await coordinator.setNowPlaying(np)
+        await sut.start()
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        await coordinator.firePosition(310)
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(sut.songElapsedSeconds, 180, accuracy: 0.001)
+        XCTAssertEqual(sut.songDurationSeconds, 180, accuracy: 0.001)
+    }
 }
