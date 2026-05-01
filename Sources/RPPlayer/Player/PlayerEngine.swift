@@ -3,7 +3,7 @@ import Foundation
 public protocol PlayerEngine: Sendable {
     var events: AsyncStream<PlayerEvent> { get async }
 
-    func play(url: URL) async throws
+    func play(url: URL, startSeconds: Double?) async throws
     func pause() async throws
     func resume() async throws
     func stop() async throws
@@ -11,6 +11,12 @@ public protocol PlayerEngine: Sendable {
     func setHogMode(_ enabled: Bool) async throws
     func setOutputDevice(uid: String?) async throws
     func shutdown() async
+}
+
+public extension PlayerEngine {
+    func play(url: URL) async throws {
+        try await play(url: url, startSeconds: nil)
+    }
 }
 
 public enum PlayerEvent: Sendable, Equatable {

@@ -230,7 +230,7 @@ private struct NoopAlbumArtCache: AlbumArtCache {
 private struct NoopPlayerEngine: PlayerEngine {
     let error: Error
     var events: AsyncStream<PlayerEvent> { AsyncStream { $0.finish() } }
-    func play(url: URL) async throws { throw error }
+    func play(url: URL, startSeconds: Double?) async throws { throw error }
     func pause() async throws { throw error }
     func resume() async throws { throw error }
     func stop() async throws { throw error }

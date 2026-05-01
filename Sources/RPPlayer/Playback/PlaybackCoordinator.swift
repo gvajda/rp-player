@@ -29,7 +29,6 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     private var current: NowPlaying?
     private var continuations: [UUID: AsyncStream<NowPlaying>.Continuation] = [:]
     private var eventTask: Task<Void, Never>?
-    private var pendingCueSeekSeconds: Double?
     private var prefetchedBlock: GetBlock?
     private var prefetchTask: Task<Void, Never>?
     private var isShutdown = false
@@ -78,14 +77,14 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         startsAt = BlockSongs.startsAtSeconds(songs: songs)
         currentSongIndex = 0
         currentPositionSeconds = 0
-        pendingCueSeekSeconds = block.cue > 0 ? Double(block.cue) / 1000.0 : nil
         hogModeFallbackTriggered = false
 
+        let startSeconds: Double? = block.cue > 0 ? Double(block.cue) / 1000.0 : nil
         guard let url = URL(string: block.url) else {
             throw PlaybackCoordinatorError.engineError(message: "invalid block url: \(block.url)")
         }
         do {
-            try await engine.play(url: url)
+            try await engine.play(url: url, startSeconds: startSeconds)
         } catch {
             throw PlaybackCoordinatorError.engineError(message: String(describing: error))
         }
@@ -160,12 +159,11 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             startsAt = BlockSongs.startsAtSeconds(songs: songs)
             currentSongIndex = 0
             currentPositionSeconds = 0
-            pendingCueSeekSeconds = nil
             guard let url = URL(string: block.url) else {
                 throw PlaybackCoordinatorError.engineError(message: "invalid block url: \(block.url)")
             }
             do {
-                try await engine.play(url: url)
+                try await engine.play(url: url, startSeconds: nil)
             } catch {
                 throw PlaybackCoordinatorError.engineError(message: String(describing: error))
             }
@@ -209,15 +207,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     private func handleEngineEvent(_ event: PlayerEvent) async {
         switch event {
         case .fileLoaded:
-            logger.debug("engine fileLoaded; pendingCueSeek=\(pendingCueSeekSeconds ?? -1)")
-            if let cueSeconds = pendingCueSeekSeconds {
-                pendingCueSeekSeconds = nil
-                do {
-                    try await engine.seek(to: cueSeconds)
-                } catch {
-                    logger.warn("post-load cue seek failed: \(error)")
-                }
-            }
+            logger.debug("engine fileLoaded")
         case .positionUpdate(let seconds):
             currentPositionSeconds = seconds
             guard !startsAt.isEmpty else { return }
@@ -241,7 +231,8 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
                 do {
                     try await engine.setHogMode(false)
                     if let block = currentBlock, let url = URL(string: block.url) {
-                        try await engine.play(url: url)
+                        let startSeconds: Double? = block.cue > 0 ? Double(block.cue) / 1000.0 : nil
+                        try await engine.play(url: url, startSeconds: startSeconds)
                     }
                 } catch {
                     logger.error("hog-mode fallback failed: \(error)")
@@ -334,13 +325,12 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         startsAt = BlockSongs.startsAtSeconds(songs: songs)
         currentSongIndex = 0
         currentPositionSeconds = 0
-        pendingCueSeekSeconds = nil
         guard let url = URL(string: block.url) else {
             logger.error("prefetched block had invalid url: \(block.url)")
             return
         }
         do {
-            try await engine.play(url: url)
+            try await engine.play(url: url, startSeconds: nil)
         } catch {
             logger.error("failed to play prefetched block: \(error)")
             return

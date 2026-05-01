@@ -3,7 +3,7 @@ import Foundation
 
 actor MockPlayerEngine: PlayerEngine {
     enum Call: Sendable, Equatable {
-        case play(url: URL)
+        case play(url: URL, startSeconds: Double?)
         case pause
         case resume
         case stop
@@ -45,7 +45,9 @@ actor MockPlayerEngine: PlayerEngine {
         calls.append(call)
     }
 
-    func play(url: URL) async throws    { try recordOrThrow(.play(url: url)) }
+    func play(url: URL, startSeconds: Double?) async throws {
+        try recordOrThrow(.play(url: url, startSeconds: startSeconds))
+    }
     func pause() async throws           { try recordOrThrow(.pause) }
     func resume() async throws          { try recordOrThrow(.resume) }
     func stop() async throws            { try recordOrThrow(.stop) }

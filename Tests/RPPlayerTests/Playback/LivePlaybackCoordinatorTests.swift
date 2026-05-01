@@ -41,10 +41,10 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         let apiCalls = await api.calls
         let engineCalls = await engine.recordedCalls()
         XCTAssertEqual(apiCalls, [.getBlock(channel: 0, bitrate: 4, info: true)])
-        XCTAssertEqual(engineCalls, [.play(url: URL(string: "https://example.com/0-0.flac")!)])
+        XCTAssertEqual(engineCalls, [.play(url: URL(string: "https://example.com/0-0.flac")!, startSeconds: nil)])
     }
 
-    func testPlaySeeksToCueOffsetAfterFileLoad() async throws {
+    func testPlayPassesCueAsStartSecondsToEngine() async throws {
         let api = MockRpApiClient()
         let block = makeBlock(cue: 90_000,
                               songs: [("s1", 60_000), ("s2", 120_000), ("s3", 90_000), ("s4", 100_000)])
@@ -54,12 +54,9 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
             api: api, engine: engine, logger: silentLogger(), bitrate: 4
         )
         try await coordinator.play(channelId: 0)
-        await engine.fire(.fileLoaded)
-        try await Task.sleep(nanoseconds: 50_000_000)
         let engineCalls = await engine.recordedCalls()
         XCTAssertEqual(engineCalls, [
-            .play(url: URL(string: "https://example.com/0-0.flac")!),
-            .seek(seconds: 90.0),
+            .play(url: URL(string: "https://example.com/0-0.flac")!, startSeconds: 90.0),
         ])
     }
 
@@ -186,7 +183,7 @@ extension LivePlaybackCoordinatorTests {
         let engineCalls = await engine.recordedCalls()
         XCTAssertEqual(apiCalls.count, 2)
         XCTAssertEqual(apiCalls.last, .getBlock(channel: 0, bitrate: 0, info: true))
-        XCTAssertEqual(engineCalls.last, .play(url: URL(string: "https://example.com/0-2.flac")!))
+        XCTAssertEqual(engineCalls.last, .play(url: URL(string: "https://example.com/0-2.flac")!, startSeconds: nil))
     }
 
     func testSkipForwardWithoutCurrentBlockThrows() async throws {
@@ -273,7 +270,7 @@ extension LivePlaybackCoordinatorTests {
         await engine.fire(.fileEnded(reason: .eof))
         try await Task.sleep(nanoseconds: 100_000_000)
         let engineCalls = await engine.recordedCalls()
-        XCTAssertEqual(engineCalls.last, .play(url: URL(string: "https://example.com/0-B.flac")!))
+        XCTAssertEqual(engineCalls.last, .play(url: URL(string: "https://example.com/0-B.flac")!, startSeconds: nil))
     }
 }
 
@@ -307,8 +304,8 @@ extension LivePlaybackCoordinatorTests {
         try await coordinator.changeChannel(to: 1)
         try await Task.sleep(nanoseconds: 100_000_000)
         let engineCalls = await engine.recordedCalls()
-        XCTAssertEqual(engineCalls.last, .play(url: URL(string: "https://example.com/chan1.flac")!))
-        let chan1PlayIndex = engineCalls.lastIndex(of: .play(url: URL(string: "https://example.com/chan1.flac")!))
+        XCTAssertEqual(engineCalls.last, .play(url: URL(string: "https://example.com/chan1.flac")!, startSeconds: nil))
+        let chan1PlayIndex = engineCalls.lastIndex(of: .play(url: URL(string: "https://example.com/chan1.flac")!, startSeconds: nil))
         XCTAssertEqual(chan1PlayIndex, engineCalls.count - 1, "chan1 play must be the final engine call")
     }
 }
@@ -381,7 +378,7 @@ extension LivePlaybackCoordinatorTests {
         try await Task.sleep(nanoseconds: 100_000_000)
         let engineCalls = await engine.recordedCalls()
         XCTAssertFalse(
-            engineCalls.contains(.play(url: URL(string: "https://example.com/A-prefetch.flac")!)),
+            engineCalls.contains(.play(url: URL(string: "https://example.com/A-prefetch.flac")!, startSeconds: nil)),
             "prefetched block from before stop() must not resurface after restart. calls=\(engineCalls)"
         )
     }
@@ -407,7 +404,7 @@ extension LivePlaybackCoordinatorTests {
             "expected setHogMode(false) on hog acquisition failure. calls=\(calls)"
         )
         let playCount = calls.filter {
-            if case .play(url: URL(string: "https://example.com/0-0.flac")!) = $0 { return true }
+            if case .play(url: URL(string: "https://example.com/0-0.flac")!, startSeconds: _) = $0 { return true }
             return false
         }.count
         XCTAssertEqual(playCount, 2, "expected initial play + retry. calls=\(calls)")
@@ -509,7 +506,7 @@ extension LivePlaybackCoordinatorTests {
 
         let engineCalls = await engine.recordedCalls()
         XCTAssertTrue(
-            engineCalls.contains(.play(url: URL(string: "https://example.com/FRESH.flac")!)),
+            engineCalls.contains(.play(url: URL(string: "https://example.com/FRESH.flac")!, startSeconds: nil)),
             "expected coordinator to fetch fresh block on resume after expiration. calls=\(engineCalls)"
         )
     }

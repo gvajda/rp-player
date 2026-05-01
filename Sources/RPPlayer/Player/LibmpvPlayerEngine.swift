@@ -167,7 +167,7 @@ public actor LibmpvPlayerEngine: PlayerEngine {
 
     private func handleAudioBitrateChange() {
         let format = readCurrentStreamFormat()
-        logger?.debug("audio-bitrate observer fired; format=\(format?.codec ?? "nil") rate=\(format?.sampleRateHz ?? 0) kbps=\(format?.kbps ?? 0)")
+        // logger?.debug("audio-bitrate observer fired; format=\(format?.codec ?? "nil") rate=\(format?.sampleRateHz ?? 0) kbps=\(format?.kbps ?? 0)")
         guard let format else { return }
         if !Self.shouldEmit(format, lastEmitted: lastEmittedStreamFormat) { return }
         lastEmittedStreamFormat = format
@@ -181,9 +181,13 @@ public actor LibmpvPlayerEngine: PlayerEngine {
         return last.codec != new.codec || last.sampleRateHz != new.sampleRateHz
     }
 
-    public func play(url: URL) async throws {
+    public func play(url: URL, startSeconds: Double?) async throws {
         try requireHandle()
-        try runCommand(["loadfile", url.absoluteString])
+        if let start = startSeconds, start > 0 {
+            try runCommand(["loadfile", url.absoluteString, "replace", "start=\(start)"])
+        } else {
+            try runCommand(["loadfile", url.absoluteString])
+        }
     }
 
     public func pause() async throws {
