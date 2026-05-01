@@ -1,31 +1,30 @@
+import AppKit
 import SwiftUI
 
 struct MiniPlayerView: View {
     @ObservedObject var viewModel: MiniPlayerViewModel
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 0) {
             if let message = viewModel.errorMessage {
                 Text(message)
                     .font(.caption)
                     .foregroundStyle(.red)
                     .multilineTextAlignment(.center)
                     .frame(width: 318)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 12)
             }
             albumArt
-            titleStack
-            channelRow
-            RatingRow(
-                currentRating: viewModel.currentRating,
-                isSignedIn: viewModel.isSignedIn
-            ) { value in
-                Task { await viewModel.rate(value) }
+            VStack(spacing: 12) {
+                titleRow
+                progressRow
+                channelRow
+                transport
+                footer
             }
-            .frame(width: 318)
-            transport
-            footer
+            .padding(12)
         }
-        .padding(12)
         .frame(width: 342)
         .task { await viewModel.start() }
     }
@@ -35,39 +34,68 @@ struct MiniPlayerView: View {
             if let art = viewModel.currentArt {
                 Image(nsImage: art)
                     .resizable()
-                    .scaledToFit()
+                    .scaledToFill()
+                    .frame(width: 342, height: 342)
+                    .clipped()
             } else {
                 Image(systemName: "music.note")
                     .resizable()
                     .scaledToFit()
                     .padding(80)
                     .foregroundStyle(.secondary)
+                    .frame(width: 342, height: 342)
                     .background(Color(nsColor: .controlBackgroundColor))
             }
         }
-        .frame(width: 318, height: 318)
-        .cornerRadius(6)
     }
 
-    private var titleStack: some View {
-        VStack(spacing: 2) {
-            Text(viewModel.nowPlaying?.song.title ?? "—")
-                .font(.headline)
-                .lineLimit(1)
-            Text(viewModel.nowPlaying?.song.artist ?? "")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-            if let song = viewModel.nowPlaying?.song,
-               let album = song.album,
-               !album.isEmpty {
-                Text(album)
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
+    private var titleRow: some View {
+        HStack(alignment: .center, spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(viewModel.nowPlaying?.song.title ?? "—")
+                    .font(.headline)
                     .lineLimit(1)
+                Text(viewModel.nowPlaying?.song.artist ?? "")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                if let song = viewModel.nowPlaying?.song,
+                   let album = song.album,
+                   !album.isEmpty {
+                    Text(album)
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            RatingMenu(
+                currentRating: viewModel.currentRating,
+                isSignedIn: viewModel.isSignedIn
+            ) { value in
+                Task { await viewModel.rate(value) }
             }
         }
-        .frame(maxWidth: .infinity)
+        .frame(width: 318)
+    }
+
+    private var progressRow: some View {
+        VStack(spacing: 2) {
+            ProgressView(
+                value: viewModel.songElapsedSeconds,
+                total: max(viewModel.songDurationSeconds, 0.001)
+            )
+            .progressViewStyle(.linear)
+            HStack {
+                Text(formatTime(viewModel.songElapsedSeconds))
+                Spacer()
+                Text(formatTime(viewModel.songDurationSeconds))
+            }
+            .font(.caption2.monospacedDigit())
+            .foregroundStyle(.secondary)
+        }
+        .frame(width: 318)
     }
 
     private var channelRow: some View {
@@ -83,15 +111,19 @@ struct MiniPlayerView: View {
                     .lineLimit(1)
             }
 
-            Button {
-                viewModel.openSettings()
+            Menu {
+                Button("Settings…") { viewModel.openSettings() }
+                Divider()
+                Button("Quit RP Player") { NSApp.terminate(nil) }
             } label: {
                 Image(systemName: "gearshape")
                     .font(.system(size: 14, weight: .regular))
             }
-            .buttonStyle(.borderless)
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
             .frame(width: 22, height: 22)
-            .accessibilityLabel("Settings")
+            .accessibilityLabel("Settings and Quit")
         }
         .frame(width: 318)
     }
@@ -122,7 +154,7 @@ struct MiniPlayerView: View {
                     .font(.system(size: 44))
                     .foregroundStyle(.tint)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PressOpacityButtonStyle())
             .accessibilityLabel(viewModel.isPlaying ? "Pause" : "Play")
 
             Button {
@@ -131,7 +163,7 @@ struct MiniPlayerView: View {
                 Image(systemName: "forward.end.fill")
                     .font(.system(size: 22))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PressOpacityButtonStyle())
             .frame(width: 38, height: 38)
             .disabled(!viewModel.isPlaying)
             .accessibilityLabel("Skip Forward")
@@ -144,5 +176,11 @@ struct MiniPlayerView: View {
             .foregroundStyle(.tertiary)
             .frame(maxWidth: .infinity)
             .padding(.top, 4)
+    }
+
+    private func formatTime(_ seconds: Double) -> String {
+        guard seconds.isFinite, seconds >= 0 else { return "0:00" }
+        let s = Int(seconds.rounded(.down))
+        return String(format: "%d:%02d", s / 60, s % 60)
     }
 }
