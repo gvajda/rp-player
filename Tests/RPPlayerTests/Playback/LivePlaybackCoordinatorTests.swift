@@ -792,3 +792,77 @@ extension LivePlaybackCoordinatorTests {
         XCTAssertEqual(events, [nil, nil, 800])
     }
 }
+
+extension LivePlaybackCoordinatorTests {
+    func testPositionUpdatesYieldsToSubscribers() async throws {
+        let api = MockRpApiClient()
+        let block = makeBlock(songs: [("s1", 60_000), ("s2", 120_000)])
+        await api.setBlockResponses([block])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 0 }
+        )
+
+        let stream = await coordinator.positionUpdates
+        let collector = Task { () -> [Double] in
+            var seen: [Double] = []
+            for await pos in stream {
+                seen.append(pos)
+                if seen.count == 3 { return seen }
+            }
+            return seen
+        }
+
+        try await coordinator.play(channelId: 0)
+        await engine.fire(.positionUpdate(seconds: 12.5))
+        await engine.fire(.positionUpdate(seconds: 25.0))
+        let result = await collector.value
+        // First element is the seeded current position (0 at startup),
+        // followed by the two engine emissions.
+        XCTAssertEqual(result, [0.0, 12.5, 25.0])
+    }
+
+    func testPositionUpdatesSeedsLatestPositionToNewSubscriber() async throws {
+        let api = MockRpApiClient()
+        let block = makeBlock(songs: [("s1", 60_000), ("s2", 120_000)])
+        await api.setBlockResponses([block])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 0 }
+        )
+
+        try await coordinator.play(channelId: 0)
+        await engine.fire(.positionUpdate(seconds: 17.5))
+        // Give the actor a tick to process the event before the new subscriber
+        // calls .positionUpdates.
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        let stream = await coordinator.positionUpdates
+        let firstYield = await Task { () -> Double? in
+            for await pos in stream { return pos }
+            return nil
+        }.value
+
+        XCTAssertEqual(firstYield, 17.5)
+    }
+
+    func testPositionUpdatesFinishOnShutdown() async throws {
+        let api = MockRpApiClient()
+        let block = makeBlock(songs: [("s1", 60_000)])
+        await api.setBlockResponses([block])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 0 }
+        )
+
+        let stream = await coordinator.positionUpdates
+        try await coordinator.play(channelId: 0)
+        await coordinator.shutdown()
+
+        var count = 0
+        for await _ in stream { count += 1 }
+        // Stream finished cleanly. count is 1 (the seed) or 0 depending on
+        // ordering, but the for-await must terminate.
+        XCTAssertLessThanOrEqual(count, 5)
+    }
+}
