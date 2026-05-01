@@ -5,7 +5,6 @@ actor MockRpApiClient: RpApiClient {
     enum Call: Sendable, Equatable {
         case listChannels
         case getBlock(channel: Int, bitrate: Int, info: Bool, event: Int?)
-        case nowPlaying(channel: Int)
         case info(songId: Int)
         case rate(songId: Int, rating: Int)
         case authState
@@ -14,8 +13,6 @@ actor MockRpApiClient: RpApiClient {
     private(set) var calls: [Call] = []
 
     var blockResponses: [GetBlock] = []
-    var nowPlayingResponse: NowPlayingEntry?
-    var nowPlayingError: Error?
     var listChannelsResponse: [Channel] = []
     var listChannelsError: Error?
     var infoResponse: SongInfo?
@@ -27,16 +24,6 @@ actor MockRpApiClient: RpApiClient {
 
     func setBlockResponses(_ responses: [GetBlock]) {
         self.blockResponses = responses
-    }
-
-    func setNowPlayingResponse(_ entry: NowPlayingEntry) {
-        self.nowPlayingResponse = entry
-        self.nowPlayingError = nil
-    }
-
-    func setNowPlayingError(_ error: Error) {
-        self.nowPlayingError = error
-        self.nowPlayingResponse = nil
     }
 
     func setInfoResponse(_ response: SongInfo) {
@@ -77,13 +64,6 @@ actor MockRpApiClient: RpApiClient {
             throw RpApiError.network(URLError(.unknown))
         }
         return blockResponses.removeFirst()
-    }
-
-    func nowPlaying(channel: Int) async throws -> NowPlayingEntry {
-        calls.append(.nowPlaying(channel: channel))
-        if let error = nowPlayingError { throw error }
-        if let entry = nowPlayingResponse { return entry }
-        throw RpApiError.network(URLError(.unknown))
     }
 
     func info(songId: Int) async throws -> SongInfo {

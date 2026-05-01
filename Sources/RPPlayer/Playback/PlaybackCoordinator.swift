@@ -63,24 +63,15 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         await ensureEventSubscription()
         let bitrate = await bitrateProvider()
         logger.debug("play resolved bitrate=\(bitrate)")
-        async let blockFetch = api.getBlock(channel: channelId, bitrate: bitrate, info: true, event: nil)
-        async let nowPlayingFetch = api.nowPlaying(channel: channelId)
-        let block = try await blockFetch
-        let nowPlayingEntry = try? await nowPlayingFetch
+        let block = try await api.getBlock(channel: channelId, bitrate: bitrate, info: true, event: nil)
         let songs = BlockSongs.orderedSongs(from: block)
         guard !songs.isEmpty else { throw PlaybackCoordinatorError.blockHasNoSongs }
 
         let starts = BlockSongs.startsAtSeconds(songs: songs)
         logger.debug("play block (expiration=\(block.expiration)):\n\(describeBlock(url: block.url, songs: songs, starts: starts))")
 
-        if let entry = nowPlayingEntry {
-            logger.debug("play nowPlaying API: artist='\(entry.artist)' title='\(entry.title)'")
-        } else {
-            logger.debug("play nowPlaying API: failed or unavailable — will start from beginning")
-        }
-
         let cueFallback = block.cue > 0 ? Double(block.cue) / 1000.0 : nil
-        let (startIndex, startPos) = resolveStart(songs: songs, starts: starts, entry: nowPlayingEntry, cue: cueFallback)
+        let (startIndex, startPos) = resolveStart(songs: songs, starts: starts, cue: cueFallback)
         currentChannelId = channelId
         currentBlock = block
         orderedSongs = songs
@@ -271,22 +262,10 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         return "url=\(url)\n" + lines.joined(separator: "\n")
     }
 
-    private func resolveStart(songs: [PlayListSong], starts: [Double], entry: NowPlayingEntry?, cue: Double?) -> (index: Int, seconds: Double) {
-        if let entry {
-            for (i, song) in songs.enumerated() {
-                if song.artist.caseInsensitiveCompare(entry.artist) == .orderedSame,
-                   song.title.caseInsensitiveCompare(entry.title) == .orderedSame {
-                    logger.debug("nowPlaying match: '\(entry.artist)' / '\(entry.title)' → song \(i) at \(starts[i])s")
-                    return (i, starts[i])
-                }
-            }
-            logger.debug("nowPlaying no match for '\(entry.artist)' / '\(entry.title)'")
-        } else {
-            logger.debug("nowPlaying API unavailable")
-        }
+    private func resolveStart(songs: [PlayListSong], starts: [Double], cue: Double?) -> (index: Int, seconds: Double) {
         if let cue, !starts.isEmpty {
             let idx = BlockSongs.indexOfSong(at: cue, in: starts)
-            logger.debug("cue fallback: \(cue)s → song \(idx), seeking to exact cue position")
+            logger.debug("cue: \(cue)s → song \(idx), seeking to exact cue position")
             return (idx, cue)
         }
         let firstStart = starts.first ?? 0

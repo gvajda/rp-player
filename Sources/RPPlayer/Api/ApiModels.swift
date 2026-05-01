@@ -50,15 +50,6 @@ public struct GetBlock: Codable, Sendable, Equatable {
     public let filename: [String: String]?
 }
 
-public struct NowPlayingEntry: Codable, Sendable, Equatable {
-    public let artist: String
-    public let title: String
-    public let album: String?
-    public let year: String?
-    public let cover: String?
-    public let time: Int?
-}
-
 public struct SongInfo: Codable, Sendable, Equatable {
     public let songId: Int
     public let artist: String

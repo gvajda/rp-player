@@ -44,28 +44,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         let apiCalls = await api.calls
         let engineCalls = await engine.recordedCalls()
         XCTAssertTrue(apiCalls.contains(.getBlock(channel: 0, bitrate: 4, info: true, event: nil)))
-        XCTAssertTrue(apiCalls.contains(.nowPlaying(channel: 0)))
         XCTAssertEqual(engineCalls, [.play(url: URL(string: "https://example.com/0-0.flac")!, startSeconds: nil)])
-    }
-
-    func testPlaySeeksToStartOfSongMatchedByNowPlaying() async throws {
-        // Block: s1(60s), s2(120s), s3(90s), s4(100s) → starts [0, 60, 180, 270]
-        // now_playing says s3 is on air → engine must seek to 180s (start of s3).
-        let api = MockRpApiClient()
-        let block = makeBlock(songs: [("s1", 60_000), ("s2", 120_000), ("s3", 90_000), ("s4", 100_000)])
-        await api.setBlockResponses([block])
-        await api.setNowPlayingResponse(NowPlayingEntry(
-            artist: "Artist-s3", title: "Title-s3", album: nil, year: nil, cover: nil, time: nil
-        ))
-        let engine = MockPlayerEngine()
-        let coordinator = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
-        )
-        try await coordinator.play(channelId: 0)
-        let engineCalls = await engine.recordedCalls()
-        XCTAssertEqual(engineCalls, [
-            .play(url: URL(string: "https://example.com/0-0.flac")!, startSeconds: 180.0),
-        ])
     }
 
     func testPlayPropagatesBlockBitrateIntoNowPlaying() async throws {
@@ -82,60 +61,6 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         try await coordinator.play(channelId: 0)
         let np = await coordinator.nowPlaying
         XCTAssertEqual(np?.blockBitrate, "flac")
-    }
-
-    func testPlaySeedsNowPlayingFromNowPlayingMatch() async throws {
-        // now_playing says s4 is on air → initial nowPlaying must reflect song index 3
-        // immediately, not index 0.
-        let api = MockRpApiClient()
-        let block = makeBlock(songs: [("s1", 60_000), ("s2", 60_000), ("s3", 60_000), ("s4", 60_000)])
-        await api.setBlockResponses([block])
-        await api.setNowPlayingResponse(NowPlayingEntry(
-            artist: "Artist-s4", title: "Title-s4", album: nil, year: nil, cover: nil, time: nil
-        ))
-        let engine = MockPlayerEngine()
-        let coordinator = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
-        )
-        try await coordinator.play(channelId: 0)
-        let np = await coordinator.nowPlaying
-        XCTAssertEqual(np?.songIndexInBlock, 3)
-        XCTAssertEqual(np?.song.title, "Title-s4")
-    }
-
-    func testPlayUsesCueFallbackWhenNowPlayingHasNoMatch() async throws {
-        // Block: 4×60s songs, elapsed [0, 60k, 120k, 180k]. cue=180_000ms → song 3 at 180s.
-        let api = MockRpApiClient()
-        let block = makeBlock(cue: 180_000, songs: [("s1", 60_000), ("s2", 60_000), ("s3", 60_000), ("s4", 60_000)])
-        await api.setBlockResponses([block])
-        await api.setNowPlayingResponse(NowPlayingEntry(
-            artist: "Unknown Artist", title: "Unknown Title", album: nil, year: nil, cover: nil, time: nil
-        ))
-        let engine = MockPlayerEngine()
-        let coordinator = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
-        )
-        try await coordinator.play(channelId: 0)
-        let engineCalls = await engine.recordedCalls()
-        XCTAssertEqual(engineCalls, [.play(url: URL(string: "https://example.com/0-0.flac")!, startSeconds: 180.0)])
-        let np = await coordinator.nowPlaying
-        XCTAssertEqual(np?.songIndexInBlock, 3)
-    }
-
-    func testPlayStartsFromFirstListedSongWhenBothNowPlayingAndCueMissing() async throws {
-        let api = MockRpApiClient()
-        // cue=0 and no nowPlaying → start from first listed song (elapsed=0 → startSeconds nil)
-        let block = makeBlock(songs: [("s1", 60_000), ("s2", 60_000)])
-        await api.setBlockResponses([block])
-        let engine = MockPlayerEngine()
-        let coordinator = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
-        )
-        try await coordinator.play(channelId: 0)
-        let engineCalls = await engine.recordedCalls()
-        XCTAssertEqual(engineCalls, [.play(url: URL(string: "https://example.com/0-0.flac")!, startSeconds: nil)])
-        let np = await coordinator.nowPlaying
-        XCTAssertEqual(np?.songIndexInBlock, 0)
     }
 
     func testPlayThrowsWhenBlockHasNoSongs() async throws {
@@ -259,7 +184,7 @@ extension LivePlaybackCoordinatorTests {
         try await coordinator.skipForward()
         let apiCalls = await api.calls
         let engineCalls = await engine.recordedCalls()
-        XCTAssertEqual(apiCalls.count, 3)
+        XCTAssertEqual(apiCalls.count, 2)
         XCTAssertEqual(apiCalls.last, .getBlock(channel: 0, bitrate: 0, info: true, event: nil))
         XCTAssertEqual(engineCalls.last, .play(url: URL(string: "https://example.com/0-2.flac")!, startSeconds: nil))
     }
@@ -299,7 +224,7 @@ extension LivePlaybackCoordinatorTests {
         await engine.fire(.positionUpdate(seconds: 232.0))
         try await Task.sleep(nanoseconds: 100_000_000)
         let apiCalls = await api.calls
-        XCTAssertEqual(apiCalls.count, 3, "second getBlock call should have been triggered as prefetch")
+        XCTAssertEqual(apiCalls.count, 2, "second getBlock call should have been triggered as prefetch")
     }
 
     func testPrefetchOnlyHappensOncePerBlock() async throws {
@@ -324,7 +249,7 @@ extension LivePlaybackCoordinatorTests {
         await engine.fire(.positionUpdate(seconds: 238.0))
         try await Task.sleep(nanoseconds: 50_000_000)
         let apiCalls = await api.calls
-        XCTAssertEqual(apiCalls.count, 3, "prefetch should happen at most once per block")
+        XCTAssertEqual(apiCalls.count, 2, "prefetch should happen at most once per block")
     }
 
     func testEndOfFileSwapsToPrefetchedBlock() async throws {
