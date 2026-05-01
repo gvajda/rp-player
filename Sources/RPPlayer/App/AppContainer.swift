@@ -82,7 +82,6 @@ extension AppContainer {
         do {
             engine = try LibmpvPlayerEngine(
                 initialDeviceUID: initial.outputDeviceUID,
-                initialHogMode: initial.hogModeEnabled,
                 logger: logger
             )
         } catch {
@@ -122,7 +121,6 @@ extension AppContainer {
                     } else {
                         await hogController.release()
                     }
-                    try? await engine.setHogMode(false)
                     try? await engine.setOutputDevice(uid: settings.outputDeviceUID)
                     await coordinator.setBitrate(settings.bitrate)
                 }

@@ -6,14 +6,12 @@ public actor LibmpvPlayerEngine: PlayerEngine {
     private var continuations: [UUID: AsyncStream<PlayerEvent>.Continuation] = [:]
     private var pumpTask: Task<Void, Never>?
     private var isShutdown = false
-    private var currentHogMode = false
     private var currentDeviceUID: String?
     private var lastEmittedStreamFormat: StreamFormat?
     private let logger: (any Logging)?
 
     public init(
         initialDeviceUID: String? = nil,
-        initialHogMode: Bool = false,
         logger: (any Logging)? = nil
     ) throws {
         guard let h = mpv_create() else {
@@ -67,10 +65,9 @@ public actor LibmpvPlayerEngine: PlayerEngine {
         _ = mpv_request_log_messages(h, "error")
 
         self.handle = h
-        self.currentHogMode = initialHogMode
         self.currentDeviceUID = initialDeviceUID
         self.logger = logger
-        logger?.debug("LibmpvPlayerEngine init done; initialDeviceUID=\(initialDeviceUID ?? "nil") initialHogMode=\(initialHogMode)")
+        logger?.debug("LibmpvPlayerEngine init done; initialDeviceUID=\(initialDeviceUID ?? "nil")")
         // Pump must be started after init returns: Swift 6 nonisolated init can't
         // capture self into a detached Task, but a follow-up actor method can.
         Task { await self.startPump() }
@@ -201,9 +198,9 @@ public actor LibmpvPlayerEngine: PlayerEngine {
 
     public func setHogMode(_ enabled: Bool) async throws {
         try requireHandle()
-        currentHogMode = enabled
-        // Informational only — HogModeController owns hog mode via direct CoreAudio calls.
-        logger?.debug("engine setHogMode(\(enabled)) — no-op (HogModeController owns hog mode)")
+        // HogModeController owns hog mode via direct CoreAudio calls; this method
+        // only emits the event so subscribers stay in sync.
+        logger?.debug("engine setHogMode(\(enabled)) — emit-only (HogModeController owns hog mode)")
         deliver(.hogModeChanged(enabled: enabled))
     }
 
