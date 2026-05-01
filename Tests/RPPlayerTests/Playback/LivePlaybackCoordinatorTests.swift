@@ -858,11 +858,11 @@ extension LivePlaybackCoordinatorTests {
         let stream = await coordinator.positionUpdates
         try await coordinator.play(channelId: 0)
         await coordinator.shutdown()
+        for await _ in stream {}
 
-        var count = 0
-        for await _ in stream { count += 1 }
-        // Stream finished cleanly. count is 1 (the seed) or 0 depending on
-        // ordering, but the for-await must terminate.
-        XCTAssertLessThanOrEqual(count, 5)
+        let postShutdownStream = await coordinator.positionUpdates
+        var postShutdownCount = 0
+        for await _ in postShutdownStream { postShutdownCount += 1 }
+        XCTAssertEqual(postShutdownCount, 0)
     }
 }
