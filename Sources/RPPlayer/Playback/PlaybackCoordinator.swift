@@ -28,6 +28,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     private var currentPositionSeconds: Double = 0
     private var current: NowPlaying?
     private var continuations: [UUID: AsyncStream<NowPlaying>.Continuation] = [:]
+    private var positionContinuations: [UUID: AsyncStream<Double>.Continuation] = [:]
     private var eventTask: Task<Void, Never>?
     private var prefetchedBlock: GetBlock?
     private var prefetchTask: Task<Void, Never>?
@@ -56,6 +57,18 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             if let current = self.current { continuation.yield(current) }
             continuation.onTermination = { [weak self] _ in
                 Task { [weak self] in await self?.unregister(id: id) }
+            }
+        }
+    }
+
+    public var positionUpdates: AsyncStream<Double> {
+        let id = UUID()
+        return AsyncStream { continuation in
+            if self.isShutdown { continuation.finish(); return }
+            self.positionContinuations[id] = continuation
+            continuation.yield(self.currentPositionSeconds)
+            continuation.onTermination = { [weak self] _ in
+                Task { [weak self] in await self?.unregisterPosition(id: id) }
             }
         }
     }
@@ -217,6 +230,8 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         try? await engine.stop()
         for c in continuations.values { c.finish() }
         continuations.removeAll()
+        for c in positionContinuations.values { c.finish() }
+        positionContinuations.removeAll()
     }
 
     // Idempotent. Awaited from inside actor isolation, so by the time it returns
@@ -239,6 +254,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             logger.debug("engine fileLoaded")
         case .positionUpdate(let seconds):
             currentPositionSeconds = seconds
+            for c in positionContinuations.values { c.yield(seconds) }
             guard !startsAt.isEmpty else { return }
             let newIndex = BlockSongs.indexOfSong(at: seconds, in: startsAt)
             if newIndex != currentSongIndex {
@@ -291,6 +307,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     }
 
     private func unregister(id: UUID) { continuations.removeValue(forKey: id) }
+    private func unregisterPosition(id: UUID) { positionContinuations.removeValue(forKey: id) }
 
     private func maybeStartPrefetch() {
         guard let channelId = currentChannelId,
