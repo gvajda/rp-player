@@ -689,4 +689,33 @@ extension LivePlaybackCoordinatorTests {
         }()
         XCTAssertEqual(lastEvent, 200)
     }
+
+    func testSkipForwardPastLastSongAdoptsPrefetchedBlockWhenAvailable() async throws {
+        let api = MockRpApiClient()
+        let block1 = makeBlock(
+            endEvent: "600",
+            prebuiltSongs: [makeSong(id: "1", duration: 11_000, elapsed: 0, event: "600")]
+        )
+        let block2 = makeBlock(songs: [("b1", 60_000), ("b2", 60_000)])
+        await api.setBlockResponses([block1, block2])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine,
+            logger: AppLogger(category: "test"),
+            bitrateProvider: { 4 }
+        )
+
+        try await coordinator.play(channelId: 0)
+        // Drive into prefetch window.
+        await engine.fire(.positionUpdate(seconds: 2.0))
+        try await Task.sleep(nanoseconds: 200_000_000)
+        // Confirm prefetch fired (2 calls so far).
+        var calls = await api.calls
+        XCTAssertEqual(calls.count, 2)
+
+        // Now skip past last. Should NOT issue a 3rd fetch.
+        try await coordinator.skipForward()
+        calls = await api.calls
+        XCTAssertEqual(calls.count, 2, "skipForward past-last must adopt prefetched block, not re-fetch")
+    }
 }

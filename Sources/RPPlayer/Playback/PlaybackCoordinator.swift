@@ -162,6 +162,11 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
                 channelCursors[chan] = endEvent
                 logger.debug("cursor[\(chan)] = \(endEvent) (skipForward past-last)")
             }
+            if prefetchedBlock != nil {
+                logger.debug("skipForward past-last: adopting prefetched block")
+                await swapToPrefetchedBlockIfAvailable()
+                return
+            }
             let bitrate = await bitrateProvider()
             logger.debug("skipForward past last song, fetching next block channel=\(channelId) bitrate=\(bitrate) event=\(endEvent.map(String.init) ?? "nil")")
             let block = try await api.getBlock(channel: channelId, bitrate: bitrate, info: true, event: endEvent)
