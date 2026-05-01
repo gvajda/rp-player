@@ -246,10 +246,12 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     }
 
     private static func isHogModeAcquisitionFailure(_ message: String) -> Bool {
-        // mpv emits one MPV_EVENT_LOG_MESSAGE per line; both substrings appear
-        // when coreaudio_exclusive can't lock the device at the source format.
+        // mpv emits one MPV_EVENT_LOG_MESSAGE per line; any AO init failure or
+        // hardware-format mismatch in exclusive mode trips the fallback.
         message.contains("Failed to initialize audio driver 'coreaudio_exclusive'")
+            || message.contains("Failed to initialize audio driver 'coreaudio'")
             || message.contains("hardware format not supported")
+            || message.contains("Could not open/initialize audio device")
     }
 
     private func emitNowPlaying(forSongIndex idx: Int) {
