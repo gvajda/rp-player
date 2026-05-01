@@ -30,6 +30,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     private var eventTask: Task<Void, Never>?
     private var prefetchedBlock: GetBlock?
     private var prefetchTask: Task<Void, Never>?
+    private var channelCursors: [Int: Int] = [:]
     private var isShutdown = false
 
     public init(
@@ -62,21 +63,21 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         logger.debug("play(channelId: \(channelId))")
         await ensureEventSubscription()
         let bitrate = await bitrateProvider()
-        logger.debug("play resolved bitrate=\(bitrate)")
-        let block = try await api.getBlock(channel: channelId, bitrate: bitrate, info: true, event: nil)
+        let cursor = channelCursors[channelId]
+        logger.debug("play resolved bitrate=\(bitrate) cursor=\(cursor.map(String.init) ?? "nil")")
+        let block = try await api.getBlock(channel: channelId, bitrate: bitrate, info: true, event: cursor)
         let songs = BlockSongs.orderedSongs(from: block)
         guard !songs.isEmpty else { throw PlaybackCoordinatorError.blockHasNoSongs }
 
         let starts = BlockSongs.startsAtSeconds(songs: songs)
         logger.debug("play block (expiration=\(block.expiration)):\n\(describeBlock(url: block.url, songs: songs, starts: starts))")
 
-        let cueFallback = block.cue > 0 ? Double(block.cue) / 1000.0 : nil
-        let (startIndex, startPos) = resolveStart(songs: songs, starts: starts, cue: cueFallback)
+        let startPos = block.cue > 0 ? Double(block.cue) / 1000.0 : 0
         currentChannelId = channelId
         currentBlock = block
         orderedSongs = songs
         startsAt = starts
-        currentSongIndex = startIndex
+        currentSongIndex = 0
         currentPositionSeconds = startPos
 
         let startSeconds: Double? = startPos > 0 ? startPos : nil
@@ -89,7 +90,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         } catch {
             throw PlaybackCoordinatorError.engineError(message: String(describing: error))
         }
-        emitNowPlaying(forSongIndex: currentSongIndex)
+        emitNowPlaying(forSongIndex: 0)
     }
 
     public func pause() async throws {
@@ -260,17 +261,6 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             String(format: "  [%d] %7.1fs  %@ – %@ (%.1fs)", i, starts[i], song.artist, song.title, Double(song.duration) / 1000.0)
         }
         return "url=\(url)\n" + lines.joined(separator: "\n")
-    }
-
-    private func resolveStart(songs: [PlayListSong], starts: [Double], cue: Double?) -> (index: Int, seconds: Double) {
-        if let cue, !starts.isEmpty {
-            let idx = BlockSongs.indexOfSong(at: cue, in: starts)
-            logger.debug("cue: \(cue)s → song \(idx), seeking to exact cue position")
-            return (idx, cue)
-        }
-        let firstStart = starts.first ?? 0
-        logger.debug("defaulting to first listed song at \(firstStart)s")
-        return (0, firstStart)
     }
 
     private func unregister(id: UUID) { continuations.removeValue(forKey: id) }

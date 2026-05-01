@@ -2,10 +2,10 @@ import XCTest
 @testable import RPPlayer
 
 final class LivePlaybackCoordinatorTests: XCTestCase {
-    fileprivate func makeSong(id: String, duration: Int, elapsed: Int) -> PlayListSong {
+    fileprivate func makeSong(id: String, duration: Int, elapsed: Int, event: String? = nil) -> PlayListSong {
         PlayListSong(
             songId: id, artist: "Artist-\(id)", title: "Title-\(id)", album: "Al", duration: duration,
-            event: nil, schedTime: nil, chan: nil, year: nil, asin: nil,
+            event: event, schedTime: nil, chan: nil, year: nil, asin: nil,
             rating: nil, userRating: nil, cover: nil, elapsed: elapsed, slideshow: nil
         )
     }
@@ -14,6 +14,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
                                 cue: Int = 0,
                                 expiration: Int = 0,
                                 bitrate: String? = nil,
+                                endEvent: String? = nil,
                                 songs: [(String, Int)]) -> GetBlock {
         var dict: [String: PlayListSong] = [:]
         var elapsed = 0
@@ -24,7 +25,24 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         return GetBlock(
             url: url, chan: channel, bitrate: bitrate, cue: cue, expiration: expiration,
             length: nil, imageBase: "img/", song: dict,
-            channel: nil, event: nil, endEvent: nil, type: nil, ext: nil, filename: nil
+            channel: nil, event: nil, endEvent: endEvent, type: nil, ext: nil, filename: nil
+        )
+    }
+
+    fileprivate func makeBlock(channel: String = "0", url: String = "https://example.com/0-0.flac",
+                                cue: Int = 0,
+                                expiration: Int = 0,
+                                bitrate: String? = nil,
+                                endEvent: String? = nil,
+                                prebuiltSongs: [PlayListSong]) -> GetBlock {
+        var dict: [String: PlayListSong] = [:]
+        for (idx, song) in prebuiltSongs.enumerated() {
+            dict[String(idx)] = song
+        }
+        return GetBlock(
+            url: url, chan: channel, bitrate: bitrate, cue: cue, expiration: expiration,
+            length: nil, imageBase: "img/", song: dict,
+            channel: nil, event: nil, endEvent: endEvent, type: nil, ext: nil, filename: nil
         )
     }
 
@@ -467,5 +485,58 @@ extension LivePlaybackCoordinatorTests {
         }
         XCTAssertEqual(blockCalls.map { [$0.0, $0.1] }, [[0, 0], [0, 4]],
                        "bitrate change must take effect on next play. calls=\(blockCalls)")
+    }
+}
+
+extension LivePlaybackCoordinatorTests {
+    func testPlayWithoutCursorCallsGetBlockWithoutEventParam() async throws {
+        let api = MockRpApiClient()
+        await api.setBlockResponses([makeBlock(songs: [("s1", 60_000)])])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine,
+            logger: AppLogger(category: "test"),
+            bitrateProvider: { 4 }
+        )
+
+        try await coordinator.play(channelId: 0)
+
+        let calls = await api.calls
+        XCTAssertEqual(calls.last, .getBlock(channel: 0, bitrate: 4, info: true, event: nil))
+    }
+
+    func testPlayWithCursorCallsGetBlockWithEventParam() async throws {
+        let api = MockRpApiClient()
+        let song0 = makeSong(id: "1", duration: 60_000, elapsed: 0, event: "100")
+        let song1 = makeSong(id: "2", duration: 60_000, elapsed: 60_000, event: "101")
+        let block1 = makeBlock(
+            cue: 0,
+            endEvent: "101",
+            prebuiltSongs: [song0, song1]
+        )
+        let block2 = makeBlock(songs: [("s3", 60_000)])
+        await api.setBlockResponses([block1, block2])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine,
+            logger: AppLogger(category: "test"),
+            bitrateProvider: { 4 }
+        )
+
+        try await coordinator.play(channelId: 0)
+        // Drive position past song1's start (60s) — boundary cross writes cursor = song0.event = "100" → Int 100.
+        await engine.fire(.positionUpdate(seconds: 60.5))
+        try await Task.sleep(nanoseconds: 50_000_000)
+        // Replay channel 0 — should pass event=100.
+        try await coordinator.play(channelId: 0)
+
+        let calls = await api.calls
+        let eventParams = calls.compactMap { call -> Int?? in
+            if case let .getBlock(_, _, _, event) = call { return .some(event) }
+            return nil
+        }
+        XCTAssertEqual(eventParams.count, 2)
+        XCTAssertNil(eventParams[0], "first play must have event=nil")
+        XCTAssertEqual(eventParams[1], 100, "second play must pass cursor event=100")
     }
 }
