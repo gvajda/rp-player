@@ -130,6 +130,7 @@ All open smoke bugs from `docs/notes/pr12-outstanding-2026-05-01.md` resolved. A
 - `GetBlock.chan` is `String` (live API returns `"0"`, not `Int`). `GetBlock.endEvent` is `String?` (same reason). `PlayListSong.event` is `String?` for the same reason.
 - `RpApiClient.getBlock(channel:bitrate:info:event:)` takes an optional `event: Int?`; non-nil appends `event=<id>` to the query (sorted alphabetically with the other items: `bitrate`, `chan`, `event`, `info`). The cursor model in the coordinator drives this argument.
 - `SongInfo.songId` has a custom `init(from:)` that handles both `Int` and `String` JSON values.
+- **Promo block edge case (`type: "P"`).** RP serves DJ-talk segments between music blocks. The promo block has `type: "P"`, `block_id: "0"`, single song with `song_id: "0"`, `artist: "Commercial-free"`, `title: "Listener-supported"`, short duration (~5s), `event == end_event`, and **no `album` field on the song dict** (also no `year`, `user_rating`, `rating`). `PlayListSong.album` is therefore `String?`. Symptom of regression: `keyNotFound(CodingKeys(stringValue: "album", ...))` decode error on `api/get_block`. Fixture: `Tests/RPPlayerTests/Fixtures/Api/get_block_promo.json`. Other RP block types observed: `"M"` = music. If a future log shows a similar `keyNotFound` for a different field, check whether the request was for an unusual block type and add the missing field to the optional set.
 
 ### Auth + cookies
 
