@@ -157,11 +157,14 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             currentPositionSeconds = target
             emitNowPlaying(forSongIndex: nextIndex)
         } else {
-            // Past the last song — fetch a fresh block from the same channel
-            // and play from offset 0 (user's intent is "next block", not tune-in).
+            let endEvent: Int? = Int(currentBlock?.endEvent ?? "")
+            if let endEvent, let chan = currentChannelId {
+                channelCursors[chan] = endEvent
+                logger.debug("cursor[\(chan)] = \(endEvent) (skipForward past-last)")
+            }
             let bitrate = await bitrateProvider()
-            logger.debug("skipForward past last song, fetching next block channel=\(channelId) bitrate=\(bitrate)")
-            let block = try await api.getBlock(channel: channelId, bitrate: bitrate, info: true, event: nil)
+            logger.debug("skipForward past last song, fetching next block channel=\(channelId) bitrate=\(bitrate) event=\(endEvent.map(String.init) ?? "nil")")
+            let block = try await api.getBlock(channel: channelId, bitrate: bitrate, info: true, event: endEvent)
             let songs = BlockSongs.orderedSongs(from: block)
             guard !songs.isEmpty else { throw PlaybackCoordinatorError.blockHasNoSongs }
             let newStarts = BlockSongs.startsAtSeconds(songs: songs)
@@ -170,13 +173,15 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             orderedSongs = songs
             startsAt = newStarts
             currentSongIndex = 0
-            currentPositionSeconds = 0
+            let startPos = block.cue > 0 ? Double(block.cue) / 1000.0 : 0
+            currentPositionSeconds = startPos
             guard let url = URL(string: block.url) else {
                 throw PlaybackCoordinatorError.engineError(message: "invalid block url: \(block.url)")
             }
-            logger.debug("skipForward engine.play url=\(url.absoluteString) startSeconds=nil (beginning)")
+            let startSeconds: Double? = startPos > 0 ? startPos : nil
+            logger.debug("skipForward engine.play url=\(url.absoluteString) startSeconds=\(startSeconds.map { "\($0)s" } ?? "nil")")
             do {
-                try await engine.play(url: url, startSeconds: nil)
+                try await engine.play(url: url, startSeconds: startSeconds)
             } catch {
                 throw PlaybackCoordinatorError.engineError(message: String(describing: error))
             }
