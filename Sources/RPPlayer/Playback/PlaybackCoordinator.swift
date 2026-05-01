@@ -291,12 +291,16 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         let remaining = totalSeconds - currentPositionSeconds
         guard remaining < 10.0 else { return }
 
+        let endEvent: Int? = Int(currentBlock?.endEvent ?? "")
+        if endEvent == nil {
+            logger.error("prefetch: endEvent missing or non-numeric — falling back to event=nil")
+        }
         let api = self.api
         let provider = self.bitrateProvider
-        logger.debug("prefetch start, channel=\(channelId)")
+        logger.debug("prefetch start, channel=\(channelId) event=\(endEvent.map(String.init) ?? "nil")")
         prefetchTask = Task { [weak self] in
             let bitrate = await provider()
-            let result = try? await api.getBlock(channel: channelId, bitrate: bitrate, info: true, event: nil)
+            let result = try? await api.getBlock(channel: channelId, bitrate: bitrate, info: true, event: endEvent)
             await self?.absorbPrefetchResult(result)
         }
     }

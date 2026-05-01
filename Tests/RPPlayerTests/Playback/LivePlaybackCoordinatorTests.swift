@@ -320,6 +320,34 @@ extension LivePlaybackCoordinatorTests {
         let engineCalls = await engine.recordedCalls()
         XCTAssertEqual(engineCalls.last, .play(url: URL(string: "https://example.com/0-B.flac")!, startSeconds: nil))
     }
+
+    func testPrefetchUsesEndEventAsEventParam() async throws {
+        let api = MockRpApiClient()
+        let block1 = makeBlock(
+            endEvent: "400",
+            prebuiltSongs: [makeSong(id: "1", duration: 11_000, elapsed: 0, event: "400")]
+        )
+        let block2 = makeBlock(songs: [("s2", 60_000)])
+        await api.setBlockResponses([block1, block2])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine,
+            logger: AppLogger(category: "test"),
+            bitrateProvider: { 4 }
+        )
+
+        try await coordinator.play(channelId: 0)
+        await engine.fire(.positionUpdate(seconds: 2.0))
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        let calls = await api.calls
+        let prefetchEvent: Int?? = {
+            guard calls.count >= 2 else { return nil }
+            if case let .getBlock(_, _, _, event) = calls[1] { return event }
+            return nil
+        }()
+        XCTAssertEqual(prefetchEvent ?? nil, 400)
+    }
 }
 
 extension LivePlaybackCoordinatorTests {
