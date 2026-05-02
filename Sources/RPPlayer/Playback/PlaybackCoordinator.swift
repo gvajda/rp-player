@@ -77,9 +77,11 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         logger.debug("play(channelId: \(channelId))")
         await ensureEventSubscription()
         let bitrate = await bitrateProvider()
-        let cursor = channelCursors[channelId]
-        logger.debug("play resolved bitrate=\(bitrate) cursor=\(cursor.map(String.init) ?? "nil")")
-        let block = try await api.getBlock(channel: channelId, bitrate: bitrate, info: true, event: cursor)
+        logger.debug("play resolved bitrate=\(bitrate)")
+        let block = try await api.play(
+            channel: channelId, bitrate: bitrate, event: 0, action: .start,
+            audioType: nil, episodeId: nil, sliceNum: nil
+        )
         let songs = BlockSongs.orderedSongs(from: block)
         guard !songs.isEmpty else { throw PlaybackCoordinatorError.blockHasNoSongs }
 
