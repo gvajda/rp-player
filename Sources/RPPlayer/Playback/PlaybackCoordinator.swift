@@ -183,6 +183,8 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         startsAt = []
         currentSongIndex = 0
         currentPositionSeconds = 0
+        pausedAt = nil
+        pausePositionMs = 0
         current = nil
         do { try await engine.stop() } catch { throw PlaybackCoordinatorError.engineError(message: String(describing: error)) }
     }
