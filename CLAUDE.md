@@ -169,6 +169,10 @@ All open smoke bugs from `docs/notes/pr12-outstanding-2026-05-01.md` resolved. A
 
 - `LiveNotificationService.init(center:)` has NO default argument. Reason: the eager evaluation of `= UNUserNotificationCenter.current()` throws `NSInternalInconsistencyException` ("bundleProxyForCurrentProcess is nil") on macOS 26 inside unbundled processes (`swift run RPPlayer`). `AppContainer.live()` constructs `LiveNotificationService(center: UNUserNotificationCenter.current())` only when `Bundle.main.bundleIdentifier != nil`, otherwise uses `NoopNotificationService`. PR 13 ships the `.app` bundle and the real path lights up.
 - **Notification authorization requires a stable code-signing identity.** Ad-hoc signing (`codesign --sign -`) registers the bundle with `usernoted` under a non-stable identity; `requestAuthorization` returns `UNErrorDomain Code=1 "Notifications are not allowed for this application"` with no user prompt. Fix: sign with any real identity (Apple Development, Developer ID Application, or self-signed cert named `RP Player Dev`). `scripts/make-app.sh` auto-detects whichever is available and falls back to ad-hoc with a warning. Hardened runtime (`--options runtime`) is required at the same time; library validation must be disabled via `scripts/entitlements.plist` so the ad-hoc-signed vendored libmpv dylibs still load. After changing identity, reset cached state with `tccutil reset All com.gvajda.rpplayer; killall NotificationCenter usernoted` then relaunch — the first launch enables the toggle in System Settings → Notifications, but the in-app prompt only fires on subsequent launches.
+- **Notification request id format:** `"<UUID>|<songId>"`. `LiveNotificationService.extractSongId(from:)` parses the suffix; the UUID prefix prevents `usernoted` from collapsing duplicate notifications when the same song replays.
+- **`SongRegistry`** (in-memory, 100-song bounded ring buffer keyed by songId) caches every notified `PlayListSong` so notification clicks can recover full metadata without an API round-trip when the app is still running. `NotificationCoordinator.handle` records before notifying.
+- **`NotificationClickRouter`** is the `UNUserNotificationCenterDelegate`. On click it: (a) extracts the songId from the request identifier; (b) if it matches `coordinator.nowPlaying`, opens the main popover; (c) else looks up the song in `SongRegistry`; (d) if missing (post-restart, distant past), fetches via `api/info` and converts to `PlayListSong` via `PlayListSong.init(from: SongInfo)`; (e) on API failure, falls back to opening the main popover. Held strongly on `AppDelegate` because `UN.delegate` is `weak`.
+- **`PastSongPopoverController`** mirrors `PopoverController` (borderless `NSPanel` + 10pt corner radius) but rebuilds its hosted `NSHostingView<PastSongView>` per `present(viewModel:relativeTo:)`. Mutual exclusion with the main popover — `pastSongPresenter` calls `statusItemController.closeIfShown()` before showing.
 
 ### Deployment target
 
@@ -200,6 +204,7 @@ All open smoke bugs from `docs/notes/pr12-outstanding-2026-05-01.md` resolved. A
 - After promo block fix (PlayListSong.album optional; promo block decode test + fixture): 209
 - After popover visual polish (positionUpdates stream + RatingMenu + edge-to-edge art + Quit menu + press-opacity buttons; deletes RatingRow): 217
 - After popover polish round 2 (Appearance setting + outline play button + ★/☆ rating label + centered picker w/ bitrate@ + inline RP Player; drops verbose-logging caption + footer): 222
+- After notification click → past-song popover (SongRegistry + identifier suffix + NotificationClickRouter + PastSongView + PastSongPopoverController + PlayListSong(from: SongInfo)): 245
 
 ---
 
