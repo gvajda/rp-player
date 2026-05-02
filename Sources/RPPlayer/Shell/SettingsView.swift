@@ -7,6 +7,7 @@ struct SettingsView: View {
         Form {
             audioSection
             notificationsSection
+            appearanceSection
             accountSection
             dataSection
         }
@@ -43,6 +44,17 @@ struct SettingsView: View {
         }
     }
 
+    private var appearanceSection: some View {
+        Section("Appearance") {
+            Picker("Appearance", selection: appearanceBinding) {
+                Text("System").tag(AppearanceMode.system)
+                Text("Light").tag(AppearanceMode.light)
+                Text("Dark").tag(AppearanceMode.dark)
+            }
+            .pickerStyle(.menu)
+        }
+    }
+
     private var accountSection: some View {
         Section("Account") {
             HStack {
@@ -71,11 +83,6 @@ struct SettingsView: View {
         Section("Data") {
             Button("Show application data") { viewModel.openApplicationData() }
             Toggle("Verbose logging", isOn: verboseLoggingBinding)
-            if viewModel.verboseLoggingEnabled {
-                Text("Logs every API call, decision, and state transition. Reset on app restart.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
         }
     }
 
@@ -109,6 +116,13 @@ struct SettingsView: View {
         Binding(
             get: { viewModel.notificationsEnabled },
             set: { newValue in Task { await viewModel.setNotificationsEnabled(newValue) } }
+        )
+    }
+
+    private var appearanceBinding: Binding<AppearanceMode> {
+        Binding(
+            get: { viewModel.appearance },
+            set: { newValue in Task { await viewModel.setAppearance(newValue) } }
         )
     }
 
