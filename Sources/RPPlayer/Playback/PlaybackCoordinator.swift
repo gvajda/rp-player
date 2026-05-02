@@ -19,6 +19,9 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     private let engine: any PlayerEngine
     private let logger: any Logging
     private let bitrateProvider: @Sendable () async -> Int
+    private let clock: @Sendable () -> Date
+    private var pausedAt: Date? = nil
+    private var pausePositionMs: Int = 0
 
     private var currentChannelId: Int?
     private var currentBlock: GetBlock?
@@ -38,12 +41,14 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         api: any RpApiClient,
         engine: any PlayerEngine,
         logger: any Logging,
-        bitrateProvider: @escaping @Sendable () async -> Int
+        bitrateProvider: @escaping @Sendable () async -> Int,
+        clock: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.api = api
         self.engine = engine
         self.logger = logger
         self.bitrateProvider = bitrateProvider
+        self.clock = clock
     }
 
     public var nowPlaying: NowPlaying? { current }
@@ -289,6 +294,25 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         )
         current = np
         for c in continuations.values { c.yield(np) }
+    }
+
+    private func fireSongStartTelemetry(song: PlayListSong, channelId: Int, ppm: Int? = nil) {
+        guard song.type != "P" else { return }
+        guard currentSongIndex < startsAt.count else { return }
+        let resolvedPpm = ppm ?? max(1, Int((currentPositionSeconds - startsAt[currentSongIndex]) * 1000))
+        let ts = Int(clock().timeIntervalSince1970)
+        let songId = song.songId
+        let event = song.event ?? ""
+        let audioType = song.type ?? "M"
+        let sliceNum = song.sliceNum
+        let api = self.api
+        Task.detached {
+            try? await api.updateHistory(
+                songId: songId, chan: channelId, event: event, audioType: audioType,
+                sliceNum: sliceNum, playPositionMillis: resolvedPpm, playtimeSecs: ts,
+                pauseFlag: false
+            )
+        }
     }
 
     private func describeBlock(url: String, songs: [PlayListSong], starts: [Double]) -> String {
