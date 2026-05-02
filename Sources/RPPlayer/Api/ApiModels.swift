@@ -102,7 +102,6 @@ public struct GetBlock: Codable, Sendable, Equatable {
     public let endEvent: String?
     public let type: String?
     public let ext: String?
-    public let filename: [String: String]?
 }
 
 public struct SongInfo: Codable, Sendable, Equatable {

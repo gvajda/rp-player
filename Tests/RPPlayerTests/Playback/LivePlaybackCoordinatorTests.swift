@@ -26,7 +26,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         return GetBlock(
             url: url, chan: channel, bitrate: bitrate, cue: cue, expiration: expiration,
             length: nil, imageBase: "img/", song: dict,
-            channel: nil, event: nil, endEvent: endEvent, type: nil, ext: nil, filename: nil
+            channel: nil, event: nil, endEvent: endEvent, type: nil, ext: nil
         )
     }
 
@@ -43,7 +43,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         return GetBlock(
             url: url, chan: channel, bitrate: bitrate, cue: cue, expiration: expiration,
             length: nil, imageBase: "img/", song: dict,
-            channel: nil, event: nil, endEvent: endEvent, type: nil, ext: nil, filename: nil
+            channel: nil, event: nil, endEvent: endEvent, type: nil, ext: nil
         )
     }
 

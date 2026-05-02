@@ -22,7 +22,7 @@ final class BlockSongsTests: XCTestCase {
             url: "https://example.com/x.flac",
             chan: "0", bitrate: nil, cue: cue, expiration: 0,
             length: nil, imageBase: "img/", song: dict,
-            channel: nil, event: nil, endEvent: nil, type: nil, ext: nil, filename: nil
+            channel: nil, event: nil, endEvent: nil, type: nil, ext: nil
         )
     }
 
@@ -35,7 +35,7 @@ final class BlockSongsTests: XCTestCase {
                 "0": song(id: "a", duration: 30000, elapsed: 0),
                 "1": song(id: "b", duration: 20000, elapsed: 30000),
             ],
-            channel: nil, event: nil, endEvent: nil, type: nil, ext: nil, filename: nil
+            channel: nil, event: nil, endEvent: nil, type: nil, ext: nil
         )
         let ordered = BlockSongs.orderedSongs(from: b)
         XCTAssertEqual(ordered.map(\.songId), ["a", "b", "c"])
