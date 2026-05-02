@@ -248,9 +248,9 @@ private final class NoopConfigStore: ConfigStore {
     func update(_ mutate: @Sendable (inout AppSettings) -> Void) async throws {}
 }
 
-private struct NoopNotificationService: NotificationService {
+private final class NoopNotificationService: NotificationService {
     func requestAuthorization() async throws -> Bool { false }
-    func notify(title: String, subtitle: String, attachmentURL: URL?) async throws {}
+    func notify(title: String, subtitle: String, attachmentURL: URL?, identifierSuffix: String?) async throws {}
 }
 
 private struct NoopAlbumArtCache: AlbumArtCache {

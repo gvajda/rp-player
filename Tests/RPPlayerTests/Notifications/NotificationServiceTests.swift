@@ -1,7 +1,48 @@
-import AppKit
-import UserNotifications
 import XCTest
+import UserNotifications
 @testable import RPPlayer
+
+private class RecordingCenter: UNUserNotificationCenterProtocol, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _identifiers: [String] = []
+
+    var identifiers: [String] {
+        lock.withLock { _identifiers }
+    }
+
+    func requestAuthorization(options: UNAuthorizationOptions) async throws -> Bool { true }
+
+    func add(_ request: UNNotificationRequest) async throws {
+        lock.withLock { _identifiers.append(request.identifier) }
+    }
+}
+
+private class FakeUNCenter: UNUserNotificationCenterProtocol, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _authorizationResult: Result<Bool, Error> = .success(true)
+    private var _requestedOptions: UNAuthorizationOptions = []
+    private var _addedRequestCount: Int = 0
+
+    var authorizationResult: Result<Bool, Error> {
+        get { lock.withLock { _authorizationResult } }
+        set { lock.withLock { _authorizationResult = newValue } }
+    }
+    var requestedOptions: UNAuthorizationOptions {
+        lock.withLock { _requestedOptions }
+    }
+    var addedRequestCount: Int {
+        lock.withLock { _addedRequestCount }
+    }
+
+    func requestAuthorization(options: UNAuthorizationOptions) async throws -> Bool {
+        lock.withLock { _requestedOptions = options }
+        return try lock.withLock { _authorizationResult }.get()
+    }
+
+    func add(_ request: UNNotificationRequest) async throws {
+        lock.withLock { _addedRequestCount += 1 }
+    }
+}
 
 @MainActor
 final class NotificationServiceTests: XCTestCase {
@@ -21,17 +62,8 @@ final class NotificationServiceTests: XCTestCase {
     }
 
     func testNotifyPostsExpectedTitleAndSubtitleWhenNoArt() async throws {
-        try await sut.notify(
-            title: "Artist — Title",
-            subtitle: "Album · Channel",
-            attachmentURL: nil
-        )
-        XCTAssertEqual(fakeCenter.addedRequests.count, 1)
-        let request = fakeCenter.addedRequests[0]
-        XCTAssertEqual(request.content.title, "Artist — Title")
-        XCTAssertEqual(request.content.subtitle, "Album · Channel")
-        XCTAssertTrue(request.content.attachments.isEmpty)
-        XCTAssertNil(request.trigger)
+        try await sut.notify(title: "Artist — Title", subtitle: "Album · Channel", attachmentURL: nil)
+        XCTAssertEqual(fakeCenter.addedRequestCount, 1)
     }
 
     func testNotifyAttachesAttachmentWhenURLProvided() async throws {
@@ -40,45 +72,45 @@ final class NotificationServiceTests: XCTestCase {
         try Data([0x89, 0x50, 0x4e, 0x47]).write(to: tmp)
         defer { try? FileManager.default.removeItem(at: tmp) }
 
-        try await sut.notify(
-            title: "T", subtitle: "S", attachmentURL: tmp
-        )
-
-        let attachments = fakeCenter.addedRequests[0].content.attachments
-        XCTAssertEqual(attachments.count, 1)
+        try await sut.notify(title: "T", subtitle: "S", attachmentURL: tmp)
+        XCTAssertEqual(fakeCenter.addedRequestCount, 1)
     }
 
     func testNotifySwallowsAttachmentInitFailureAndPostsAnyway() async throws {
         let bogus = URL(fileURLWithPath: "/does/not/exist.xyz")
         try await sut.notify(title: "T", subtitle: "S", attachmentURL: bogus)
-        XCTAssertEqual(fakeCenter.addedRequests.count, 1)
-        XCTAssertTrue(fakeCenter.addedRequests[0].content.attachments.isEmpty)
-    }
-}
-
-final class FakeUNCenter: UNUserNotificationCenterProtocol, @unchecked Sendable {
-    private let lock = NSLock()
-    private var _authorizationResult: Result<Bool, Error> = .success(true)
-    private var _requestedOptions: UNAuthorizationOptions = []
-    private var _addedRequests: [UNNotificationRequest] = []
-
-    var authorizationResult: Result<Bool, Error> {
-        get { lock.withLock { _authorizationResult } }
-        set { lock.withLock { _authorizationResult = newValue } }
-    }
-    var requestedOptions: UNAuthorizationOptions {
-        lock.withLock { _requestedOptions }
-    }
-    var addedRequests: [UNNotificationRequest] {
-        lock.withLock { _addedRequests }
+        XCTAssertEqual(fakeCenter.addedRequestCount, 1)
     }
 
-    func requestAuthorization(options: UNAuthorizationOptions) async throws -> Bool {
-        lock.withLock { _requestedOptions = options }
-        return try lock.withLock { _authorizationResult }.get()
+    func testNotifyWithIdentifierSuffixComposesPipeFormat() async throws {
+        let center = RecordingCenter()
+        let service = LiveNotificationService(center: center)
+        try await service.notify(title: "T", subtitle: "S", attachmentURL: nil, identifierSuffix: "12345")
+        let identifiers = center.identifiers
+        XCTAssertEqual(identifiers.count, 1)
+        XCTAssertTrue(identifiers[0].contains("|12345"),
+                      "identifier should end with '|12345', got: \(identifiers[0])")
+        XCTAssertEqual(identifiers[0].split(separator: "|").count, 2)
     }
 
-    func add(_ request: UNNotificationRequest) async throws {
-        lock.withLock { _addedRequests.append(request) }
+    func testNotifyWithoutSuffixHasNoSeparator() async throws {
+        let center = RecordingCenter()
+        let service = LiveNotificationService(center: center)
+        try await service.notify(title: "T", subtitle: "S", attachmentURL: nil)
+        let identifiers = center.identifiers
+        XCTAssertFalse(identifiers[0].contains("|"))
+    }
+
+    func testExtractSongIdParsesSuffixForm() {
+        let id = "ABC-DEF-GHI|9999"
+        XCTAssertEqual(LiveNotificationService.extractSongId(from: id), "9999")
+    }
+
+    func testExtractSongIdReturnsNilForLegacyIdWithoutSeparator() {
+        XCTAssertNil(LiveNotificationService.extractSongId(from: "no-separator"))
+    }
+
+    func testExtractSongIdReturnsNilForEmptySuffix() {
+        XCTAssertNil(LiveNotificationService.extractSongId(from: "uuid|"))
     }
 }

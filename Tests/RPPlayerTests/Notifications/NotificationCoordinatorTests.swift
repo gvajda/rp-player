@@ -78,12 +78,13 @@ actor MockNotificationService: NotificationService {
         let title: String
         let subtitle: String
         let attachmentURL: URL?
+        let identifierSuffix: String?
     }
     var notifyCalls: [NotifyCall] = []
     var authorizationResult: Bool = true
 
     func requestAuthorization() async throws -> Bool { authorizationResult }
-    func notify(title: String, subtitle: String, attachmentURL: URL?) async throws {
-        notifyCalls.append(NotifyCall(title: title, subtitle: subtitle, attachmentURL: attachmentURL))
+    func notify(title: String, subtitle: String, attachmentURL: URL?, identifierSuffix: String?) async throws {
+        notifyCalls.append(NotifyCall(title: title, subtitle: subtitle, attachmentURL: attachmentURL, identifierSuffix: identifierSuffix))
     }
 }
