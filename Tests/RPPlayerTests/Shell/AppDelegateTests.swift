@@ -29,6 +29,7 @@ final class AppDelegateTests: XCTestCase {
                 coordinator: coordinator,
                 cache: cache,
                 service: service,
+                registry: SongRegistry(),
                 notificationsEnabled: { false },
                 channelTitle: { _ in nil },
                 cachedFileURL: { _ in nil }
@@ -97,6 +98,7 @@ final class AppDelegateTests: XCTestCase {
             )
             let notificationCoordinator = NotificationCoordinator(
                 coordinator: coordinator, cache: cache, service: service,
+                registry: SongRegistry(),
                 notificationsEnabled: { false }, channelTitle: { _ in nil }, cachedFileURL: { _ in nil }
             )
             let settingsViewModel = SettingsViewModel(

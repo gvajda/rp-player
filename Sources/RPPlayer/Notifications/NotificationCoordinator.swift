@@ -10,6 +10,7 @@ public final class NotificationCoordinator {
     private let coordinator: any PlaybackCoordinator
     private let cache: any AlbumArtCache
     private let service: any NotificationService
+    private let registry: SongRegistry
     private let notificationsEnabled: NotificationsEnabledProvider
     private let channelTitle: ChannelTitleProvider
     private let cachedFileURL: CachedFileURLProvider
@@ -19,6 +20,7 @@ public final class NotificationCoordinator {
         coordinator: any PlaybackCoordinator,
         cache: any AlbumArtCache,
         service: any NotificationService,
+        registry: SongRegistry,
         notificationsEnabled: @escaping NotificationsEnabledProvider,
         channelTitle: @escaping ChannelTitleProvider,
         cachedFileURL: @escaping CachedFileURLProvider
@@ -26,6 +28,7 @@ public final class NotificationCoordinator {
         self.coordinator = coordinator
         self.cache = cache
         self.service = service
+        self.registry = registry
         self.notificationsEnabled = notificationsEnabled
         self.channelTitle = channelTitle
         self.cachedFileURL = cachedFileURL
@@ -35,7 +38,6 @@ public final class NotificationCoordinator {
         subscriptionTask?.cancel()
         let stream = await coordinator.nowPlayingUpdates
         subscriptionTask = Task { [weak self] in
-            // AsyncStream iteration does not auto-check Task cancellation; stop() needs explicit observation.
             for await np in stream {
                 if Task.isCancelled { return }
                 guard let self else { return }
@@ -50,6 +52,7 @@ public final class NotificationCoordinator {
     }
 
     private func handle(_ np: NowPlaying) async {
+        await registry.record(np.song)
         guard await notificationsEnabled() else { return }
         let title = "\(np.song.artist) — \(np.song.title)"
         let subtitlePrefix = np.song.album ?? ""
@@ -70,7 +73,12 @@ public final class NotificationCoordinator {
         }
 
         do {
-            try await service.notify(title: title, subtitle: subtitle, attachmentURL: attachmentURL)
+            try await service.notify(
+                title: title,
+                subtitle: subtitle,
+                attachmentURL: attachmentURL,
+                identifierSuffix: np.song.songId
+            )
         } catch {
             // The notification daemon refuses unbundled processes; tolerate.
         }

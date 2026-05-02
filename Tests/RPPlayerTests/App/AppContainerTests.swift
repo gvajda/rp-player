@@ -56,6 +56,7 @@ final class AppContainerTests: XCTestCase {
         )
         let notificationCoordinator = NotificationCoordinator(
             coordinator: coordinator, cache: cache, service: service,
+            registry: SongRegistry(),
             notificationsEnabled: { false },
             channelTitle: { _ in nil },
             cachedFileURL: { _ in nil }

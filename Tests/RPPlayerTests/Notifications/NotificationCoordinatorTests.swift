@@ -17,6 +17,7 @@ final class NotificationCoordinatorTests: XCTestCase {
             coordinator: coordinator,
             cache: cache,
             service: service,
+            registry: SongRegistry(),
             notificationsEnabled: { true },
             channelTitle: { _ in "The Main Mix" },
             cachedFileURL: { coverPath in
@@ -44,6 +45,7 @@ final class NotificationCoordinatorTests: XCTestCase {
             coordinator: coordinator,
             cache: cache,
             service: service,
+            registry: SongRegistry(),
             notificationsEnabled: { false },
             channelTitle: { _ in "Main" },
             cachedFileURL: { _ in nil }

@@ -157,10 +157,12 @@ extension AppContainer {
                 : NoopNotificationService()
         logger.info("notification service: \(bundleId != nil ? "Live" : "Noop")")
 
+        let songRegistry = SongRegistry(capacity: 100)
         let notificationCoordinator = NotificationCoordinator(
             coordinator: coordinator,
             cache: cache,
             service: notificationService,
+            registry: songRegistry,
             notificationsEnabled: { [store] in
                 guard let store else { return false }
                 return await store.settings.notificationsEnabled
