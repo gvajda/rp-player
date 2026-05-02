@@ -833,6 +833,82 @@ extension LivePlaybackCoordinatorTests {
         XCTAssertEqual(historyCalls.last?.songId, "99")
         XCTAssertEqual(historyCalls.last?.chan, 1)
     }
+
+    func testInBlockSkipFiresUpdateHistory() async throws {
+        let api = MockRpApiClient()
+        let block = makeBlock(
+            prebuiltSongs: [
+                PlayListSong(songId: "s1", artist: "A", title: "T1", album: "Al",
+                             duration: 60_000, event: "ev1", schedTime: nil,
+                             chan: nil, year: nil, asin: nil, rating: nil,
+                             userRating: nil, cover: nil, elapsed: 0, slideshow: nil,
+                             type: "M", sliceNum: "1"),
+                PlayListSong(songId: "s2", artist: "A", title: "T2", album: "Al",
+                             duration: 60_000, event: "ev2", schedTime: nil,
+                             chan: nil, year: nil, asin: nil, rating: nil,
+                             userRating: nil, cover: nil, elapsed: 60_000, slideshow: nil,
+                             type: "M", sliceNum: "2"),
+            ]
+        )
+        await api.setBlockResponses([block])
+        let coord = LivePlaybackCoordinator(
+            api: api, engine: MockPlayerEngine(), logger: silentLogger(), bitrateProvider: { 0 }
+        )
+        try await coord.play(channelId: 0)
+        try await Task.sleep(nanoseconds: 50_000_000)
+        try await coord.skipForward()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let historyCalls = await api.updateHistoryCalls
+        XCTAssertEqual(historyCalls.count, 2)  // bootstrap + skip
+        XCTAssertEqual(historyCalls.last?.songId, "s2")
+        XCTAssertEqual(historyCalls.last?.playPositionMillis, 1)  // hardcoded 1 for skip
+    }
+
+    func testPromoSongDoesNotFireUpdateHistory() async throws {
+        let api = MockRpApiClient()
+        let block = makeBlock(
+            prebuiltSongs: [
+                PlayListSong(songId: "0", artist: "Commercial-free", title: "Listener-supported",
+                             album: nil, duration: 5_000, event: "ev1", schedTime: nil,
+                             chan: nil, year: nil, asin: nil, rating: nil,
+                             userRating: nil, cover: nil, elapsed: 0, slideshow: nil,
+                             type: "P", sliceNum: nil),
+            ]
+        )
+        await api.setBlockResponses([block])
+        let coord = LivePlaybackCoordinator(
+            api: api, engine: MockPlayerEngine(), logger: silentLogger(), bitrateProvider: { 0 }
+        )
+        try await coord.play(channelId: 0)
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let historyCalls = await api.updateHistoryCalls
+        XCTAssertEqual(historyCalls.count, 0)  // promo skipped
+    }
+
+    func testFavoritesChannelSendsNullSliceNum() async throws {
+        let api = MockRpApiClient()
+        let block = makeBlock(
+            channel: "99",
+            prebuiltSongs: [
+                PlayListSong(songId: "42839", artist: "A", title: "T", album: "Al",
+                             duration: 300_000, event: "1777746918882", schedTime: nil,
+                             chan: nil, year: nil, asin: nil, rating: nil,
+                             userRating: nil, cover: nil, elapsed: 0, slideshow: nil,
+                             type: "M", sliceNum: nil),
+            ]
+        )
+        await api.setBlockResponses([block])
+        let coord = LivePlaybackCoordinator(
+            api: api, engine: MockPlayerEngine(), logger: silentLogger(), bitrateProvider: { 0 }
+        )
+        try await coord.play(channelId: 99)
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let historyCalls = await api.updateHistoryCalls
+        XCTAssertEqual(historyCalls.count, 1)
+        XCTAssertNil(historyCalls.first?.sliceNum)  // nil in args; LiveRpApiClient writes "null" to URL
+        XCTAssertEqual(historyCalls.first?.event, "1777746918882")
+        XCTAssertEqual(historyCalls.first?.chan, 99)
+    }
 }
 
 extension LivePlaybackCoordinatorTests {

@@ -172,6 +172,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             currentSongIndex = nextIndex
             currentPositionSeconds = target
             emitNowPlaying(forSongIndex: nextIndex)
+            fireSongStartTelemetry(song: nextSong, channelId: channelId, ppm: 1)
         } else {
             let lastSong = orderedSongs.last
             let lastEvent: Int = Int(lastSong?.event ?? "") ?? Int(currentBlock?.endEvent ?? "") ?? 0
