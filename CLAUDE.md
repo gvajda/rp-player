@@ -120,7 +120,10 @@ All open smoke bugs from `docs/notes/pr12-outstanding-2026-05-01.md` resolved. A
 - The settings gear in `channelRow` is a SwiftUI `Menu` exposing `Settings…` and `Quit RP Player`. Quit calls `NSApp.terminate(nil)`; `AppDelegate.applicationWillTerminate` already handles the graceful coordinator shutdown.
 - Transport buttons (play/pause + skip) use `PressOpacityButtonStyle` instead of `.buttonStyle(.plain)`. Plain style flashed the system blue on press; the custom style dims to 0.55 opacity with no background. The gear `Menu` itself uses `.menuStyle(.borderlessButton)` and does not need the custom style.
 - `MiniPlayerView` body is `VStack(spacing: 0)` with the album art at full popover width (342×342, `scaledToFill+clipped`) and the inner stack carrying its own 12pt padding. The popover's existing 10pt corner radius + `masksToBounds` clips the top of the art so the popover appears as an extension of the artwork.
-- `RatingMenu` replaces the previous full-width `RatingRow`. Narrow dropdown sitting in the title row right-aligned; label is the rating digit or `—`; disabled when signed out.
+- `RatingMenu` replaces the previous full-width `RatingRow`. Narrow dropdown sitting in the title row right-aligned; label is `★ <n>` when rated, `☆` when unrated; disabled when signed out.
+- Channel row layout uses a `ZStack` so `channelPicker` is geometrically centered. Outer `HStack` holds the leading bitrate group (`<bitrate> @`) and the trailing `RP Player` text + gear group. The previous bottom "RP Player" footer line is gone — the channel-row layout absorbs it.
+- Play button uses the SF Symbol outline variants (`play.circle` / `pause.circle`); skip stays filled (`forward.end.fill`). Both transport buttons keep `PressOpacityButtonStyle`.
+- `AppSettings.appearance: AppearanceMode` (`.system` / `.light` / `.dark`, default `.system`). `AppContainer.live()` runs a dedicated `@MainActor` settings binder Task that translates each value to `NSApp.appearance` (`nil`, `.aqua`, `.darkAqua` respectively). Persisted JSON without the `appearance` key decodes as `.system` for backwards compatibility.
 
 ### View models
 
@@ -195,6 +198,7 @@ All open smoke bugs from `docs/notes/pr12-outstanding-2026-05-01.md` resolved. A
 - After event-cursor block resume (channelCursors map, drop now_playing API path, deterministic next-block fetch via event=endEvent, prefetch-adoption + cancellation in skipForward past-last): 208
 - After promo block fix (PlayListSong.album optional; promo block decode test + fixture): 209
 - After popover visual polish (positionUpdates stream + RatingMenu + edge-to-edge art + Quit menu + press-opacity buttons; deletes RatingRow): 217
+- After popover polish round 2 (Appearance setting + outline play button + ★/☆ rating label + centered picker w/ bitrate@ + inline RP Player; drops verbose-logging caption + footer): 222
 
 ---
 
