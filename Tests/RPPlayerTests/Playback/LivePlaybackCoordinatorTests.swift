@@ -377,12 +377,45 @@ extension LivePlaybackCoordinatorTests {
         try await Task.sleep(nanoseconds: 100_000_000)
 
         let calls = await api.calls
-        let prefetchEvent: Int?? = {
+        let prefetchEvent: Int? = {
             guard calls.count >= 2 else { return nil }
-            if case let .getBlock(_, _, _, event) = calls[1] { return event }
+            if case let .play(_, _, event, _, _, _, _) = calls[1] { return event }
             return nil
         }()
-        XCTAssertEqual(prefetchEvent ?? nil, 400)
+        XCTAssertEqual(prefetchEvent, 400)
+    }
+
+    func testPrefetchUsesPlayActionWithLastSongMetadata() async throws {
+        let api = MockRpApiClient()
+        let lastSong = PlayListSong(
+            songId: "1", artist: "A", title: "T", album: "Al", duration: 5_000,
+            event: "100", schedTime: nil, chan: "0", year: nil, asin: nil,
+            rating: nil, userRating: nil, cover: nil, elapsed: 0, slideshow: nil,
+            type: "M", sliceNum: "5"
+        )
+        let firstBlock = makeBlock(cue: 0, endEvent: "100", prebuiltSongs: [lastSong])
+        let secondBlock = makeBlock(songs: [("s2", 60_000)])
+        await api.setBlockResponses([firstBlock, secondBlock])
+        let engine = MockPlayerEngine()
+        let coord = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 3 }
+        )
+        try await coord.play(channelId: 0)
+
+        await engine.fire(.positionUpdate(seconds: 1.0))
+        for _ in 0..<50 { await Task.yield() }
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        let calls = await api.calls
+        XCTAssertEqual(calls.count, 2)
+        guard case let .play(_, _, event, action, audioType, episodeId, sliceNum) = calls[1] else {
+            return XCTFail("expected prefetch call to be .play, got \(calls[1])")
+        }
+        XCTAssertEqual(event, 100)
+        XCTAssertEqual(action, .play)
+        XCTAssertEqual(audioType, "M")
+        XCTAssertEqual(episodeId, 0)
+        XCTAssertEqual(sliceNum, "5")
     }
 }
 
