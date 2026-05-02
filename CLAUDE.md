@@ -15,18 +15,6 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 - Last merged: **PR 13** — `api/play` migration (replaces `api/get_block`; supports favorites `chan=99`; per-install `rp3_<uuid>` `player_id` generated on first launch; `GetBlock.filename` dropped). 251 tests passing on `main`.
 - Upcoming: **PR 14** — telemetry endpoints (`update_history`, `update_pause`) so cross-session resume is fully server-driven. **PR 15** — distribution CI workflow + `.app` bundling.
 
-### PR 12 follow-ups (landed post-merge)
-
-All open smoke bugs from `docs/notes/pr12-outstanding-2026-05-01.md` resolved. (Note: item 3 below describes the `channelCursors` model that PR 13's `api/play` migration later replaced — kept here for historical context.)
-
-1. **Bitrate runtime propagation.** Root cause not pinpointed by static analysis (binder Task may not have fired at all, or raced with channel change). Structural fix: `LivePlaybackCoordinator` now takes `bitrateProvider: @Sendable () async -> Int` instead of stored `bitrate: Int` + `setBitrate`. Every `play` / `skipForward` / prefetch reads bitrate via `await bitrateProvider()`. `AppContainer.live()` wires the provider to `store.settings.bitrate`, so the freshest persisted value is read on the next call regardless of binder timing. `setBitrate` is removed from the protocol and binder.
-2. **Song / metadata offset.** Two stacked root causes:
-   - **Block audio file does not start at song "0".** RP serves a single audio file per block whose first listed song begins partway through (4–5 minutes in is typical). Each `song.elapsed` field is the song's absolute ms offset from the **file** start (not from song "0"). Old `BlockSongs.startsAtSeconds` accumulated durations from 0, which is wrong whenever the song dict is partial or pre-song content exists. Fix: `startsAtSeconds` now reads `song.elapsed / 1000` directly; `totalDurationSeconds` returns `last.elapsed + last.duration` (absolute file end, not sum-of-durations). `block.cue` is in the same reference frame (current playback position in ms from file start).
-   - **Initial song selection** was later superseded by the event-cursor model (see item 3 below), which makes song-start resolution server-side and deterministic.
-3. **Event-cursor block resume.** Replaced the `api/now_playing`-based song-match approach with a per-channel cursor that tracks the last finished event id. `LivePlaybackCoordinator` keeps `channelCursors: [Int: Int]`; `play(channelId:)` passes the cursor as the `event` query param to `RpApiClient.getBlock(...event:)` so the server returns the block starting after the last known song. All four cursor-write points (in-block auto-advance, in-block skipForward, skipForward-past-last-song, prefetch swap) keep the map current. `api/now_playing`, `NowPlayingEntry`, and `resolveStart` are fully removed. Covered by `testPlayWithCursorCallsGetBlockWithEventParam`, `testInBlockAutoAdvanceUpdatesCursorToFinishedSongEvent`, `testSkipForwardPastLastSongUsesEndEventAsCursorAndFetchParam`, `testSwapToPrefetchedBlockUpdatesCursorToOldEndEvent`, `testSkipForwardPastLastSongAdoptsPrefetchedBlockWhenAvailable`, `testSkipForwardPastLastSongCancelsInFlightPrefetchAndFetches`, `testChannelSwitchPreservesCursors`.
-
----
-
 ## PR status
 
 | PR   | Branch                         | Status | Contents                                                                    |
