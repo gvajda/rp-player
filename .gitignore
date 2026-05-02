@@ -20,3 +20,5 @@ DerivedData/
 docs/superpowers/
 
 .temp/
+
+build/
