@@ -149,4 +149,16 @@ final class SettingsViewModelTests: XCTestCase {
         sut.openApplicationData()
         XCTAssertEqual(calls, 1)
     }
+
+    func testAppearanceDefaultsToSystem() {
+        XCTAssertEqual(sut.appearance, .system)
+    }
+
+    func testSetAppearancePersists() async throws {
+        await sut.start()
+        await sut.setAppearance(.dark)
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(configStore.settings.appearance, .dark)
+        XCTAssertEqual(sut.appearance, .dark)
+    }
 }

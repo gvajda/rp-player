@@ -10,6 +10,7 @@ final class SettingsViewModel: ObservableObject {
     @Published private(set) var notificationsEnabled: Bool
     @Published private(set) var outputDeviceUID: String?
     @Published private(set) var verboseLoggingEnabled: Bool
+    @Published private(set) var appearance: AppearanceMode
     @Published private(set) var devices: [AudioDevice] = []
     @Published private(set) var isSignedIn: Bool = false
     @Published private(set) var currentUsername: String?
@@ -44,6 +45,7 @@ final class SettingsViewModel: ObservableObject {
         self.notificationsEnabled = snapshot.notificationsEnabled
         self.outputDeviceUID = snapshot.outputDeviceUID
         self.verboseLoggingEnabled = snapshot.verboseLoggingEnabled
+        self.appearance = snapshot.appearance
     }
 
     func start() async {
@@ -61,6 +63,7 @@ final class SettingsViewModel: ObservableObject {
                     self.notificationsEnabled = snapshot.notificationsEnabled
                     self.outputDeviceUID = snapshot.outputDeviceUID
                     self.verboseLoggingEnabled = snapshot.verboseLoggingEnabled
+                    self.appearance = snapshot.appearance
                 }
             }
         }
@@ -104,6 +107,10 @@ final class SettingsViewModel: ObservableObject {
 
     func setVerboseLoggingEnabled(_ value: Bool) async {
         await update { $0.verboseLoggingEnabled = value }
+    }
+
+    func setAppearance(_ value: AppearanceMode) async {
+        await update { $0.appearance = value }
     }
 
     func signOut() async {
