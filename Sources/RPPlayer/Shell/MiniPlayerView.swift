@@ -98,42 +98,45 @@ struct MiniPlayerView: View {
     }
 
     private var channelRow: some View {
-        ZStack {
-            HStack(spacing: 8) {
-                HStack(spacing: 4) {
-                    if let label = viewModel.currentBitrateLabel {
-                        Text(label)
-                            .font(.caption2)
-                            .monospacedDigit()
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                        Text("@")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                }
+        HStack(spacing: 8) {
+            HStack(spacing: 4) {
                 Spacer()
-                HStack(spacing: 6) {
-                    Text("RP Player")
+                if let label = viewModel.currentBitrateLabel {
+                    Text(label)
                         .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                    Menu {
-                        Button("Settings…") { viewModel.openSettings() }
-                        Divider()
-                        Button("Quit RP Player") { NSApp.terminate(nil) }
-                    } label: {
-                        Image(systemName: "gearshape")
-                            .font(.system(size: 14, weight: .regular))
-                    }
-                    .menuStyle(.borderlessButton)
-                    .menuIndicator(.hidden)
-                    .fixedSize()
-                    .frame(width: 22, height: 22)
-                    .accessibilityLabel("Settings and Quit")
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    Text("@")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
                 }
             }
+            .frame(maxWidth: .infinity)
+
             channelPicker
                 .fixedSize()
+
+            HStack(spacing: 6) {
+                Text("RP Player")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                Menu {
+                    Button("Settings…") { viewModel.openSettings() }
+                    Divider()
+                    Button("Quit RP Player") { NSApp.terminate(nil) }
+                } label: {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 14, weight: .regular))
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .frame(width: 22, height: 22)
+                .accessibilityLabel("Settings and Quit")
+                Spacer()
+            }
+            .frame(maxWidth: .infinity)
         }
         .frame(width: 318)
     }
@@ -162,7 +165,6 @@ struct MiniPlayerView: View {
             } label: {
                 Image(systemName: viewModel.isPlaying ? "pause.circle" : "play.circle")
                     .font(.system(size: 44))
-                    .foregroundStyle(.tint)
             }
             .buttonStyle(PressOpacityButtonStyle())
             .accessibilityLabel(viewModel.isPlaying ? "Pause" : "Play")
