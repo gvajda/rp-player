@@ -38,6 +38,7 @@ public final class NotificationCoordinator {
         subscriptionTask?.cancel()
         let stream = await coordinator.nowPlayingUpdates
         subscriptionTask = Task { [weak self] in
+            // AsyncStream iteration does not auto-check Task cancellation; stop() needs explicit observation.
             for await np in stream {
                 if Task.isCancelled { return }
                 guard let self else { return }

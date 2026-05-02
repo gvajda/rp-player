@@ -65,6 +65,25 @@ final class NotificationCoordinatorTests: XCTestCase {
         let calls = await service.notifyCalls
         XCTAssertTrue(calls.isEmpty)
     }
+
+    func testRecordsSongInRegistryEvenWhenNotificationsDisabled() async throws {
+        let registry = SongRegistry()
+        let sut = NotificationCoordinator(
+            coordinator: coordinator,
+            cache: cache,
+            service: service,
+            registry: registry,
+            notificationsEnabled: { false },
+            channelTitle: { _ in nil },
+            cachedFileURL: { _ in nil }
+        )
+        await sut.start()
+        await coordinator.setNowPlaying(.fixture(songId: "777"))
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let recorded = await registry.lookup(songId: "777")
+        XCTAssertNotNil(recorded, "registry should contain the song even when notifications are disabled")
+        await sut.stop()
+    }
 }
 
 actor MockAlbumArtCache: AlbumArtCache {

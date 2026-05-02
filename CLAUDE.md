@@ -172,7 +172,7 @@ All open smoke bugs from `docs/notes/pr12-outstanding-2026-05-01.md` resolved. A
 - **Notification request id format:** `"<UUID>|<songId>"`. `LiveNotificationService.extractSongId(from:)` parses the suffix; the UUID prefix prevents `usernoted` from collapsing duplicate notifications when the same song replays.
 - **`SongRegistry`** (in-memory, 100-song bounded ring buffer keyed by songId) caches every notified `PlayListSong` so notification clicks can recover full metadata without an API round-trip when the app is still running. `NotificationCoordinator.handle` records before notifying.
 - **`NotificationClickRouter`** is the `UNUserNotificationCenterDelegate`. On click it: (a) extracts the songId from the request identifier; (b) if it matches `coordinator.nowPlaying`, opens the main popover; (c) else looks up the song in `SongRegistry`; (d) if missing (post-restart, distant past), fetches via `api/info` and converts to `PlayListSong` via `PlayListSong.init(from: SongInfo)`; (e) on API failure, falls back to opening the main popover. Held strongly on `AppDelegate` because `UN.delegate` is `weak`.
-- **`PastSongPopoverController`** mirrors `PopoverController` (borderless `NSPanel` + 10pt corner radius) but rebuilds its hosted `NSHostingView<PastSongView>` per `present(viewModel:relativeTo:)`. Mutual exclusion with the main popover — `pastSongPresenter` calls `statusItemController.closeIfShown()` before showing.
+- **`PastSongPopoverController`** mirrors `PopoverController` (borderless `NSPanel` + 10pt corner radius) but rebuilds its hosted `NSHostingView<PastSongView>` per `present(viewModel:relativeTo:)`. Mutual exclusion with the main popover is bidirectional — `pastSongPresenter` calls `statusItemController.closeIfShown()` before showing the past popover, and `mainPresenter` calls `pastSongPopoverController.close()` before toggling the main popover.
 
 ### Deployment target
 
@@ -204,7 +204,7 @@ All open smoke bugs from `docs/notes/pr12-outstanding-2026-05-01.md` resolved. A
 - After promo block fix (PlayListSong.album optional; promo block decode test + fixture): 209
 - After popover visual polish (positionUpdates stream + RatingMenu + edge-to-edge art + Quit menu + press-opacity buttons; deletes RatingRow): 217
 - After popover polish round 2 (Appearance setting + outline play button + ★/☆ rating label + centered picker w/ bitrate@ + inline RP Player; drops verbose-logging caption + footer): 222
-- After notification click → past-song popover (SongRegistry + identifier suffix + NotificationClickRouter + PastSongView + PastSongPopoverController + PlayListSong(from: SongInfo)): 245
+- After notification click → past-song popover (SongRegistry + identifier suffix + NotificationClickRouter + PastSongView + PastSongPopoverController + PlayListSong(from: SongInfo); review fixes: bidirectional mutual exclusion + restored cancellation comment + registry-record test): 246
 
 ---
 
