@@ -134,9 +134,8 @@ struct MiniPlayerView: View {
                 .fixedSize()
                 .frame(width: 22, height: 22)
                 .accessibilityLabel("Settings and Quit")
-                Spacer()
             }
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .frame(width: 318)
     }
