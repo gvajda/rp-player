@@ -12,8 +12,7 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 
 ## Current state
 
-- Last merged: **notification click → past-song popover** (SongRegistry + identifier suffix + NotificationClickRouter + PastSongView + PastSongPopoverController). 246 tests passing on `main`.
-- In progress: **PR 13** — `api/play` migration (replaces `api/get_block`; supports favorites `chan=99`). On branch `claude/pr13-api-play-migration`.
+- Last merged: **PR 13** — `api/play` migration (replaces `api/get_block`; supports favorites `chan=99`; per-install `rp3_<uuid>` `player_id` generated on first launch; `GetBlock.filename` dropped). 251 tests passing on `main`.
 - Upcoming: **PR 14** — telemetry endpoints (`update_history`, `update_pause`) so cross-session resume is fully server-driven. **PR 15** — distribution CI workflow + `.app` bundling.
 
 ### PR 12 follow-ups (landed post-merge)
@@ -30,25 +29,25 @@ All open smoke bugs from `docs/notes/pr12-outstanding-2026-05-01.md` resolved. (
 
 ## PR status
 
-| PR   | Branch                          | Status | Contents                                                                    |
-| ---- | ------------------------------- | ------ | --------------------------------------------------------------------------- |
-| 1    | merged to main                  | ✅      | Scaffold, AppLogger, RotatingFileSink, AppSettings, ConfigStore             |
-| 2    | merged to main                  | ✅      | RpApiClient, ApiModels, CookieProvider, StubURLProtocol, fixtures           |
-| 3    | merged to main                  | ✅      | KeychainStore, KeychainCookieProvider, LoginWindowController                |
-| 4    | merged to main                  | ✅      | AudioDeviceCatalog                                                          |
-| 5a   | merged to main                  | ✅      | libmpv vendoring + RPSmoke CLI                                              |
-| 5b   | merged to main                  | ✅      | PlayerEngine (libmpv Swift actor)                                           |
-| 6    | merged to main                  | ✅      | PlaybackCoordinator                                                         |
-| 7    | merged to main                  | ✅      | AppKit shell (NSStatusItem + borderless NSPanel hosting placeholder)        |
-| 8    | merged to main                  | ✅      | MiniPlayerView (SwiftUI) + AppDelegate real-graph wiring                    |
-| 9    | merged to main                  | ✅      | NotificationCoordinator + AlbumArtCache + album art in MiniPlayerView       |
-| 10   | merged to main                  | ✅      | SettingsView + rating row + KeychainCookieProvider + login flow             |
-| 11   | merged to main                  | ✅      | AppContainer composition root + App/Edit main menu                          |
-| 12   | merged to main                  | ✅      | Smoke fixes + UI polish (rp.ico, Layout E, live bitrate, cue, hog mode)     |
-| 12.5 | merged to main                  | ✅      | Event-cursor block resume (drops now_playing API; per-channel cursor)       |
-| 13   | claude/pr13-api-play-migration  | 🚧      | api/play migration (replaces get_block; supports favorites chan=99)         |
-| 14   | pending                         | ⬜      | Telemetry endpoints (update_history, update_pause) for cross-session resume |
-| 15   | pending                         | ⬜      | Distribution CI workflow + `.app` bundling                                  |
+| PR   | Branch                         | Status | Contents                                                                    |
+| ---- | ------------------------------ | ------ | --------------------------------------------------------------------------- |
+| 1    | merged to main                 | ✅      | Scaffold, AppLogger, RotatingFileSink, AppSettings, ConfigStore             |
+| 2    | merged to main                 | ✅      | RpApiClient, ApiModels, CookieProvider, StubURLProtocol, fixtures           |
+| 3    | merged to main                 | ✅      | KeychainStore, KeychainCookieProvider, LoginWindowController                |
+| 4    | merged to main                 | ✅      | AudioDeviceCatalog                                                          |
+| 5a   | merged to main                 | ✅      | libmpv vendoring + RPSmoke CLI                                              |
+| 5b   | merged to main                 | ✅      | PlayerEngine (libmpv Swift actor)                                           |
+| 6    | merged to main                 | ✅      | PlaybackCoordinator                                                         |
+| 7    | merged to main                 | ✅      | AppKit shell (NSStatusItem + borderless NSPanel hosting placeholder)        |
+| 8    | merged to main                 | ✅      | MiniPlayerView (SwiftUI) + AppDelegate real-graph wiring                    |
+| 9    | merged to main                 | ✅      | NotificationCoordinator + AlbumArtCache + album art in MiniPlayerView       |
+| 10   | merged to main                 | ✅      | SettingsView + rating row + KeychainCookieProvider + login flow             |
+| 11   | merged to main                 | ✅      | AppContainer composition root + App/Edit main menu                          |
+| 12   | merged to main                 | ✅      | Smoke fixes + UI polish (rp.ico, Layout E, live bitrate, cue, hog mode)     |
+| 12.5 | merged to main                 | ✅      | Event-cursor block resume (drops now_playing API; per-channel cursor)       |
+| 13   | merged to main                 | ✅      | api/play migration (replaces get_block; supports favorites chan=99)         |
+| 14   | pending                        | ⬜      | Telemetry endpoints (update_history, update_pause) for cross-session resume |
+| 15   | pending                        | ⬜      | Distribution CI workflow + `.app` bundling                                  |
 
 ---
 
@@ -84,7 +83,7 @@ All open smoke bugs from `docs/notes/pr12-outstanding-2026-05-01.md` resolved. (
 ### libmpv vendoring + linkage
 
 - libmpv is vendored in `Vendor/libmpv/` from `media-kit/libmpv-darwin-build` v0.6.3 (audio-default, universal). Public `client.h` pinned to mpv v0.36.0 (commit `3996724d3fa1c51cc7998f3de2e22e2c99e6d270`), reported API version 2.1. Refreshing the dylibs requires updating both binaries and `client.h` to a matching upstream tag, then bumping the assertion in `LibmpvLinkageTests`.
-- `RPSmoke` and `RPPlayerTests` link libmpv with two `@loader_path`-relative rpaths baked in (3-deep for executables, 6-deep for xctest bundles). No `DYLD_LIBRARY_PATH` is needed for `swift test` or `swift run RPSmoke`. PR 13's `.app` packaging will install dylibs under `Contents/Frameworks/` and use a single `@loader_path/../Frameworks` rpath.
+- `RPSmoke` and `RPPlayerTests` link libmpv with two `@loader_path`-relative rpaths baked in (3-deep for executables, 6-deep for xctest bundles). No `DYLD_LIBRARY_PATH` is needed for `swift test` or `swift run RPSmoke`. PR 15's `.app` packaging will install dylibs under `Contents/Frameworks/` and use a single `@loader_path/../Frameworks` rpath.
 - All vendored dylibs use `@rpath/<name>.dylib` install names. Verify after refresh: `otool -D Vendor/libmpv/lib/*.dylib` — every line after the path must read `@rpath/<name>.dylib`. If a future upstream rebuild ships absolute or `@executable_path/...` install names, rewrite via `install_name_tool -id` before committing.
 
 ### libmpv concurrency
@@ -105,11 +104,11 @@ All open smoke bugs from `docs/notes/pr12-outstanding-2026-05-01.md` resolved. (
 - **Bitrate is pull, not push.** `LivePlaybackCoordinator` takes `bitrateProvider: @Sendable () async -> Int` at init and calls `await bitrateProvider()` at the top of `play(channelId:)`, on the next-block branch of `skipForward()`, and inside the prefetch Task. There is no `setBitrate` and no settings-binder hop for bitrate. `AppContainer.live()` wires the provider to `store.settings.bitrate`. This eliminates a class of races where a Settings change had to traverse `store.changes → AppContainer binder Task → coordinator.setBitrate` before the user's next channel change, which previously left the coordinator using the old bitrate when the binder hadn't completed in time.
 - `LivePlaybackCoordinator` lazy-subscribes to `PlayerEngine.events` from inside `play()` via `await ensureEventSubscription()`, NOT from `init`. Deterministic: by the time `play()` issues the engine command, the actor has already registered an `events` continuation, so events fired by the engine cannot race ahead.
 - `LivePlaybackCoordinator` always passes `info: true` to `api.play(...)`. With `info: false` the live API returns `song: null` and omits `image_base`, both required by the `GetBlock` model.
-- **Universal block-fetch endpoint is `api/play`.** All channels (including favorites `chan=99`) use it. Same response shape as the legacy `api/get_block`: a multi-song `GetBlock` for music channels, a single-song `GetBlock` for favorites. Browser-derived discovery (HAR captures from the RP web player). The previous `api/get_block` endpoint and its tests are gone.
-- **Backend tracks cursors per `(player_id, chan)`.** Bootstrap from any channel switch is `api/play?event=0&action=start&chan=N&bitrate=X&info=true&elapsed=1&source=24` — the server returns the block where the listener last left off (per its records). The client-side `channelCursors: [Int: Int]` map is removed; the coordinator no longer maintains per-channel cursors.
-- **Within-session advance/skip uses `api/play?event=<lastEvent>&action=play&audio_type=<M|P>&episode_id=0&slice_num=<n|null>&chan=N&bitrate=X&info=true&elapsed=1&source=24`.** `lastEvent`, `audio_type`, and `slice_num` come from the song that just finished (`orderedSongs.last`). Favorites: `slice_num` is JSON `null` in the response → `String?` decodes as `nil` → URL builder writes literal `slice_num=null`.
-- **`PlayListSong.type`** is `"M"` for music, `"P"` for promo. Used both for `audio_type` query-param construction and for UI gating (e.g., disable rating UI on promo blocks — pending follow-up).
-- **`PlayListSong.sliceNum`** is the song's slice index within the channel's event sequence. String for music ("5"), nil for favorites. Sent verbatim back as `slice_num` URL param on the next `play` call.
+- **Universal block-fetch endpoint is **`api/play`**.** All channels (including favorites `chan=99`) use it. Same response shape as the legacy `api/get_block`: a multi-song `GetBlock` for music channels, a single-song `GetBlock` for favorites. Browser-derived discovery (HAR captures from the RP web player). The previous `api/get_block` endpoint and its tests are gone.
+- **Backend tracks cursors per **`(player_id, chan)`**.** Bootstrap from any channel switch is `api/play?event=0&action=start&chan=N&bitrate=X&info=true&elapsed=1&source=24` — the server returns the block where the listener last left off (per its records). The client-side `channelCursors: [Int: Int]` map is removed; the coordinator no longer maintains per-channel cursors.
+- **Within-session advance/skip uses **`api/play?event=<lastEvent>&action=play&audio_type=<M|P>&episode_id=0&slice_num=<n|null>&chan=N&bitrate=X&info=true&elapsed=1&source=24`**.** `lastEvent`, `audio_type`, and `slice_num` come from the song that just finished (`orderedSongs.last`). Favorites: `slice_num` is JSON `null` in the response → `String?` decodes as `nil` → URL builder writes literal `slice_num=null`.
+- `PlayListSong.type` is `"M"` for music, `"P"` for promo. Used both for `audio_type` query-param construction and for UI gating (e.g., disable rating UI on promo blocks — pending follow-up).
+- `PlayListSong.sliceNum` is the song's slice index within the channel's event sequence. String for music ("5"), nil for favorites. Sent verbatim back as `slice_num` URL param on the next `play` call.
 - **Cross-session resume is server-driven.** With the telemetry endpoints (`update_history`, `update_pause`) deferred to PR 14, the server's record of where a desktop user is may lag — so on app restart, the bootstrap `event=0&action=start` may return a recently-played slice rather than the next-after-last-played. PR 14 closes this gap.
 - `skipForward()` past last song issues an `api/play` advance call (`action=play`, `event=<currentBlock.endEvent>`, plus `audio_type` / `slice_num` from the last song). If a prefetched block is already present it is adopted via `swapToPrefetchedBlockIfAvailable()` (no extra fetch). If a prefetch task is in flight it is cancelled before the synchronous fetch.
 - Prefetch issues the same advance call shape with `event=<currentBlock.endEvent>` so the prefetched block is the deterministic next block, not just whatever the live channel happens to be.
@@ -120,7 +119,7 @@ All open smoke bugs from `docs/notes/pr12-outstanding-2026-05-01.md` resolved. (
 
 - The popup is a borderless `NSPanel` (style `[.borderless, .nonactivatingPanel]`, level `.statusBar`), NOT an `NSPopover`. `NSPopover`'s bubble arrow rendered on top of the status item icon and `.transient` dismissal failed for `.accessory`-policy apps on macOS 26. Borderless `NSPanel` gives full positioning control; outside-click dismissal via `NSEvent.addGlobalMonitorForEvents`. Rounded corners on the content view's layer (`cornerRadius = 10`, `masksToBounds = true`) with the panel transparent (`isOpaque = false`, `backgroundColor = .clear`) so the system shadow follows the rounded shape.
 - Panel background uses a SwiftUI `Color(nsColor: .windowBackgroundColor)` background applied via `.background(...)` on the wrapped root view. Light/Dark appearance toggles re-render without recomposing the layer.
-- Activation policy is `.accessory` set at runtime (not `LSUIElement` in an Info.plist) because SPM executable targets do not ship an Info.plist. PR 13's `.app` bundle may move this into `LSUIElement`.
+- Activation policy is `.accessory` set at runtime (not `LSUIElement` in an Info.plist) because SPM executable targets do not ship an Info.plist. PR 15's `.app` bundle may move this into `LSUIElement`.
 - `PopoverController` is a non-`final` class only so tests can override `isShown`. The shell otherwise has no protocol abstractions — `AppContainer.init(...)` parameters are the test seam. `PopoverController(rootView:)` takes an `AnyView`; generic propagation buys nothing while complicating the call site.
 - Popover installs a global mouse-down monitor (outside-click dismissal) and a local key-down monitor (Esc, keycode 53) on `show(relativeTo:)`. The local monitor is process-wide — if a future text field outside the popover needs Esc, gate on `event.window === panel`.
 - The settings gear in `channelRow` is a SwiftUI `Menu` exposing `Settings…` and `Quit RP Player`. Quit calls `NSApp.terminate(nil)`; `AppDelegate.applicationWillTerminate` already handles the graceful coordinator shutdown.
@@ -173,12 +172,12 @@ All open smoke bugs from `docs/notes/pr12-outstanding-2026-05-01.md` resolved. (
 
 ### Notifications
 
-- `LiveNotificationService.init(center:)` has NO default argument. Reason: the eager evaluation of `= UNUserNotificationCenter.current()` throws `NSInternalInconsistencyException` ("bundleProxyForCurrentProcess is nil") on macOS 26 inside unbundled processes (`swift run RPPlayer`). `AppContainer.live()` constructs `LiveNotificationService(center: UNUserNotificationCenter.current())` only when `Bundle.main.bundleIdentifier != nil`, otherwise uses `NoopNotificationService`. PR 13 ships the `.app` bundle and the real path lights up.
+- `LiveNotificationService.init(center:)` has NO default argument. Reason: the eager evaluation of `= UNUserNotificationCenter.current()` throws `NSInternalInconsistencyException` ("bundleProxyForCurrentProcess is nil") on macOS 26 inside unbundled processes (`swift run RPPlayer`). `AppContainer.live()` constructs `LiveNotificationService(center: UNUserNotificationCenter.current())` only when `Bundle.main.bundleIdentifier != nil`, otherwise uses `NoopNotificationService`. PR 15 ships the `.app` bundle and the real path lights up.
 - **Notification authorization requires a stable code-signing identity.** Ad-hoc signing (`codesign --sign -`) registers the bundle with `usernoted` under a non-stable identity; `requestAuthorization` returns `UNErrorDomain Code=1 "Notifications are not allowed for this application"` with no user prompt. Fix: sign with any real identity (Apple Development, Developer ID Application, or self-signed cert named `RP Player Dev`). `scripts/make-app.sh` auto-detects whichever is available and falls back to ad-hoc with a warning. Hardened runtime (`--options runtime`) is required at the same time; library validation must be disabled via `scripts/entitlements.plist` so the ad-hoc-signed vendored libmpv dylibs still load. After changing identity, reset cached state with `tccutil reset All com.gvajda.rpplayer; killall NotificationCenter usernoted` then relaunch — the first launch enables the toggle in System Settings → Notifications, but the in-app prompt only fires on subsequent launches.
 - **Notification request id format:** `"<UUID>|<songId>"`. `LiveNotificationService.extractSongId(from:)` parses the suffix; the UUID prefix prevents `usernoted` from collapsing duplicate notifications when the same song replays.
-- **`SongRegistry`** (in-memory, 100-song bounded ring buffer keyed by songId) caches every notified `PlayListSong` so notification clicks can recover full metadata without an API round-trip when the app is still running. `NotificationCoordinator.handle` records before notifying.
-- **`NotificationClickRouter`** is the `UNUserNotificationCenterDelegate`. On click it: (a) extracts the songId from the request identifier; (b) if it matches `coordinator.nowPlaying`, opens the main popover; (c) else looks up the song in `SongRegistry`; (d) if missing (post-restart, distant past), fetches via `api/info` and converts to `PlayListSong` via `PlayListSong.init(from: SongInfo)`; (e) on API failure, falls back to opening the main popover. Held strongly on `AppDelegate` because `UN.delegate` is `weak`.
-- **`PastSongPopoverController`** mirrors `PopoverController` (borderless `NSPanel` + 10pt corner radius) but rebuilds its hosted `NSHostingView<PastSongView>` per `present(viewModel:relativeTo:)`. Mutual exclusion with the main popover is bidirectional — `pastSongPresenter` calls `statusItemController.closeIfShown()` before showing the past popover, and `mainPresenter` calls `pastSongPopoverController.close()` before toggling the main popover.
+- `SongRegistry` (in-memory, 100-song bounded ring buffer keyed by songId) caches every notified `PlayListSong` so notification clicks can recover full metadata without an API round-trip when the app is still running. `NotificationCoordinator.handle` records before notifying.
+- `NotificationClickRouter` is the `UNUserNotificationCenterDelegate`. On click it: (a) extracts the songId from the request identifier; (b) if it matches `coordinator.nowPlaying`, opens the main popover; (c) else looks up the song in `SongRegistry`; (d) if missing (post-restart, distant past), fetches via `api/info` and converts to `PlayListSong` via `PlayListSong.init(from: SongInfo)`; (e) on API failure, falls back to opening the main popover. Held strongly on `AppDelegate` because `UN.delegate` is `weak`.
+- `PastSongPopoverController` mirrors `PopoverController` (borderless `NSPanel` + 10pt corner radius) but rebuilds its hosted `NSHostingView<PastSongView>` per `present(viewModel:relativeTo:)`. Mutual exclusion with the main popover is bidirectional — `pastSongPresenter` calls `statusItemController.closeIfShown()` before showing the past popover, and `mainPresenter` calls `pastSongPopoverController.close()` before toggling the main popover.
 
 ### Deployment target
 
@@ -211,7 +210,7 @@ All open smoke bugs from `docs/notes/pr12-outstanding-2026-05-01.md` resolved. (
 - After popover visual polish (positionUpdates stream + RatingMenu + edge-to-edge art + Quit menu + press-opacity buttons; deletes RatingRow): 217
 - After popover polish round 2 (Appearance setting + outline play button + ★/☆ rating label + centered picker w/ bitrate@ + inline RP Player; drops verbose-logging caption + footer): 222
 - After notification click → past-song popover (SongRegistry + identifier suffix + NotificationClickRouter + PastSongView + PastSongPopoverController + PlayListSong(from: SongInfo); review fixes: bidirectional mutual exclusion + restored cancellation comment + registry-record test): 246
-- After PR 13 api/play migration (drops getBlock + channelCursors; supports favorites chan=99): 246
+- After PR 13 api/play migration (drops getBlock + channelCursors; per-install rp3_<uuid> player_id; drops GetBlock.filename; supports favorites chan=99): 251
 
 ---
 
