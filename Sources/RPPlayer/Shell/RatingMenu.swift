@@ -13,7 +13,7 @@ struct RatingMenu: View {
         } label: {
             Text(label)
                 .font(.caption.monospacedDigit())
-                .frame(minWidth: 22, alignment: .center)
+                .frame(minWidth: 32, alignment: .center)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
@@ -24,7 +24,7 @@ struct RatingMenu: View {
     }
 
     private var label: String {
-        if let r = currentRating { return "\(r)" }
-        return "—"
+        if let r = currentRating { return "★ \(r)" }
+        return "☆"
     }
 }
