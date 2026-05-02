@@ -737,6 +737,71 @@ extension LivePlaybackCoordinatorTests {
     }
 }
 
+// MARK: - Telemetry: song-start on bootstrap
+extension LivePlaybackCoordinatorTests {
+    func testBootstrapFiresUpdateHistoryForFirstSong() async throws {
+        let api = MockRpApiClient()
+        // Block with cue=3194ms, first song at elapsed=0 → ppm = max(1, 3194 - 0) = 3194
+        let block = makeBlock(
+            channel: "0", cue: 3194, endEvent: "2869396",
+            prebuiltSongs: [
+                PlayListSong(songId: "20093", artist: "A", title: "T", album: "Al",
+                             duration: 60_000, event: "2869396", schedTime: nil,
+                             chan: nil, year: nil, asin: nil, rating: nil,
+                             userRating: nil, cover: nil, elapsed: 0, slideshow: nil,
+                             type: "M", sliceNum: "5")
+            ]
+        )
+        await api.setBlockResponses([block])
+        let fixedDate = Date(timeIntervalSince1970: 1_777_746_855)
+        let coord = LivePlaybackCoordinator(
+            api: api, engine: MockPlayerEngine(), logger: silentLogger(),
+            bitrateProvider: { 0 }, clock: { fixedDate }
+        )
+        try await coord.play(channelId: 0)
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let historyCalls = await api.updateHistoryCalls
+        XCTAssertEqual(historyCalls.count, 1)
+        let call = try XCTUnwrap(historyCalls.first)
+        XCTAssertEqual(call.songId, "20093")
+        XCTAssertEqual(call.chan, 0)
+        XCTAssertEqual(call.event, "2869396")
+        XCTAssertEqual(call.audioType, "M")
+        XCTAssertEqual(call.sliceNum, "5")
+        XCTAssertEqual(call.playPositionMillis, 3194)
+        XCTAssertEqual(call.playtimeSecs, 1_777_746_855)
+        XCTAssertFalse(call.pauseFlag)
+    }
+
+    func testChannelSwitchFiresUpdateHistoryForFirstSong() async throws {
+        let api = MockRpApiClient()
+        let block1 = makeBlock(songs: [("s1", 60_000)])
+        let block2 = makeBlock(
+            channel: "1",
+            prebuiltSongs: [
+                PlayListSong(songId: "99", artist: "A", title: "T", album: "Al",
+                             duration: 60_000, event: "9999", schedTime: nil,
+                             chan: nil, year: nil, asin: nil, rating: nil,
+                             userRating: nil, cover: nil, elapsed: 0, slideshow: nil,
+                             type: "M", sliceNum: "1")
+            ]
+        )
+        await api.setBlockResponses([block1, block2])
+        let coord = LivePlaybackCoordinator(
+            api: api, engine: MockPlayerEngine(), logger: silentLogger(),
+            bitrateProvider: { 0 }
+        )
+        try await coord.play(channelId: 0)
+        try await Task.sleep(nanoseconds: 50_000_000)
+        try await coord.changeChannel(to: 1)
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let historyCalls = await api.updateHistoryCalls
+        XCTAssertEqual(historyCalls.count, 2)
+        XCTAssertEqual(historyCalls.last?.songId, "99")
+        XCTAssertEqual(historyCalls.last?.chan, 1)
+    }
+}
+
 extension LivePlaybackCoordinatorTests {
     func testPlayChannelBootstrapsWithEventZeroAndActionStart() async throws {
         let api = MockRpApiClient()

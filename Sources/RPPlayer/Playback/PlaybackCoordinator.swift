@@ -111,6 +111,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             throw PlaybackCoordinatorError.engineError(message: String(describing: error))
         }
         emitNowPlaying(forSongIndex: 0)
+        fireSongStartTelemetry(song: orderedSongs[0], channelId: channelId)
     }
 
     public func pause() async throws {
