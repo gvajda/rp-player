@@ -773,6 +773,39 @@ extension LivePlaybackCoordinatorTests {
         XCTAssertFalse(call.pauseFlag)
     }
 
+    func testNaturalSongAdvanceFiresUpdateHistory() async throws {
+        let api = MockRpApiClient()
+        let block = makeBlock(
+            prebuiltSongs: [
+                PlayListSong(songId: "s1", artist: "A", title: "T", album: "Al",
+                             duration: 60_000, event: "ev1", schedTime: nil,
+                             chan: nil, year: nil, asin: nil, rating: nil,
+                             userRating: nil, cover: nil, elapsed: 0, slideshow: nil,
+                             type: "M", sliceNum: "1"),
+                PlayListSong(songId: "s2", artist: "A", title: "T2", album: "Al",
+                             duration: 60_000, event: "ev2", schedTime: nil,
+                             chan: nil, year: nil, asin: nil, rating: nil,
+                             userRating: nil, cover: nil, elapsed: 60_000, slideshow: nil,
+                             type: "M", sliceNum: "2"),
+            ]
+        )
+        await api.setBlockResponses([block])
+        let engine = MockPlayerEngine()
+        let coord = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 0 }
+        )
+        try await coord.play(channelId: 0)
+        try await Task.sleep(nanoseconds: 50_000_000)
+        // Simulate engine crossing into song 2 (elapsed=60_000ms → 60.0s start)
+        await engine.fire(.positionUpdate(seconds: 60.01))
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let historyCalls = await api.updateHistoryCalls
+        XCTAssertEqual(historyCalls.count, 2)  // bootstrap + boundary
+        XCTAssertEqual(historyCalls.last?.songId, "s2")
+        XCTAssertEqual(historyCalls.last?.event, "ev2")
+        XCTAssertFalse(historyCalls.last?.pauseFlag ?? true)
+    }
+
     func testChannelSwitchFiresUpdateHistoryForFirstSong() async throws {
         let api = MockRpApiClient()
         let block1 = makeBlock(songs: [("s1", 60_000)])

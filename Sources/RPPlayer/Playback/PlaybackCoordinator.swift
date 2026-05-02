@@ -265,6 +265,9 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
                 logger.debug("song boundary crossed: \(currentSongIndex) -> \(newIndex) at pos=\(seconds)")
                 currentSongIndex = newIndex
                 emitNowPlaying(forSongIndex: newIndex)
+                if let channelId = currentChannelId {
+                    fireSongStartTelemetry(song: orderedSongs[newIndex], channelId: channelId)
+                }
             }
             maybeStartPrefetch()
         case .fileEnded(let reason):
