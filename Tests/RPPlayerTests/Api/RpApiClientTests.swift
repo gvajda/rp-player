@@ -160,6 +160,80 @@ final class RpApiClientTests: XCTestCase {
         XCTAssertFalse(block.song.isEmpty)
     }
 
+    func testUpdateHistoryBuildsCorrectURL() async throws {
+        var components = URLComponents(url: baseURL.appendingPathComponent("api/update_history"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "chan", value: "0"),
+            URLQueryItem(name: "episode_id", value: "0"),
+            URLQueryItem(name: "event", value: "2869397"),
+            URLQueryItem(name: "event_num", value: "undefined"),
+            URLQueryItem(name: "play_position_millis", value: "3194"),
+            URLQueryItem(name: "player_id", value: "rp3_test-player"),
+            URLQueryItem(name: "playtime_secs", value: "1777746855"),
+            URLQueryItem(name: "slice_num", value: "5"),
+            URLQueryItem(name: "song_id", value: "20093"),
+            URLQueryItem(name: "source", value: "24"),
+            URLQueryItem(name: "time_relative", value: "-3"),
+            URLQueryItem(name: "type", value: "M"),
+        ]
+        StubURLProtocol.register(url: components.url!, body: Data())
+        let client = makeClient(playerId: "rp3_test-player")
+        try await client.updateHistory(
+            songId: "20093", chan: 0, event: "2869397", audioType: "M",
+            sliceNum: "5", playPositionMillis: 3194, playtimeSecs: 1777746855,
+            pauseFlag: false
+        )
+    }
+
+    func testUpdateHistoryWithPauseFlagAddsParam() async throws {
+        var components = URLComponents(url: baseURL.appendingPathComponent("api/update_history"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "chan", value: "0"),
+            URLQueryItem(name: "episode_id", value: "0"),
+            URLQueryItem(name: "event", value: "2869397"),
+            URLQueryItem(name: "event_num", value: "undefined"),
+            URLQueryItem(name: "pause", value: "1"),
+            URLQueryItem(name: "play_position_millis", value: "21233"),
+            URLQueryItem(name: "player_id", value: "rp3_test-player"),
+            URLQueryItem(name: "playtime_secs", value: "1777746905"),
+            URLQueryItem(name: "slice_num", value: "6"),
+            URLQueryItem(name: "song_id", value: "55464"),
+            URLQueryItem(name: "source", value: "24"),
+            URLQueryItem(name: "time_relative", value: "-21"),
+            URLQueryItem(name: "type", value: "M"),
+        ]
+        StubURLProtocol.register(url: components.url!, body: Data())
+        let client = makeClient(playerId: "rp3_test-player")
+        try await client.updateHistory(
+            songId: "55464", chan: 0, event: "2869397", audioType: "M",
+            sliceNum: "6", playPositionMillis: 21233, playtimeSecs: 1777746905,
+            pauseFlag: true
+        )
+    }
+
+    func testUpdatePauseBuildsCorrectURL() async throws {
+        var components = URLComponents(url: baseURL.appendingPathComponent("api/update_pause"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "chan", value: "0"),
+            URLQueryItem(name: "episode_id", value: "0"),
+            URLQueryItem(name: "event", value: "2869397"),
+            URLQueryItem(name: "event_num", value: "undefined"),
+            URLQueryItem(name: "pause", value: "21233"),
+            URLQueryItem(name: "player_id", value: "rp3_test-player"),
+            URLQueryItem(name: "playtime_secs", value: "1777746899"),
+            URLQueryItem(name: "slice_num", value: "6"),
+            URLQueryItem(name: "song_id", value: "55464"),
+            URLQueryItem(name: "source", value: "24"),
+            URLQueryItem(name: "type", value: "M"),
+        ]
+        StubURLProtocol.register(url: components.url!, body: Data())
+        let client = makeClient(playerId: "rp3_test-player")
+        try await client.updatePause(
+            songId: "55464", chan: 0, event: "2869397", audioType: "M",
+            sliceNum: "6", pauseDurationMillis: 21233, playtimeSecs: 1777746899
+        )
+    }
+
     func testNon200StatusThrowsInvalidResponse() async throws {
         let url = baseURL.appendingPathComponent("api/list_chan")
         StubURLProtocol.register(url: url, body: Data("server error".utf8), status: 500)

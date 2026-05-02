@@ -92,12 +92,80 @@ public struct LiveRpApiClient: RpApiClient {
         sliceNum: String?, playPositionMillis: Int, playtimeSecs: Int,
         pauseFlag: Bool
     ) async throws {
+        let seconds = Int((Double(playPositionMillis) / 1000.0).rounded())
+        var query: [String: String] = [
+            "chan": String(chan),
+            "episode_id": "0",
+            "event": event,
+            "event_num": "undefined",
+            "play_position_millis": String(playPositionMillis),
+            "playtime_secs": String(playtimeSecs),
+            "slice_num": sliceNum ?? "null",
+            "song_id": songId,
+            "source": "24",
+            "time_relative": "-\(seconds)",
+            "type": audioType,
+        ]
+        if pauseFlag { query["pause"] = "1" }
+        if let playerId { query["player_id"] = playerId }
+        try await fire(path: "api/update_history", query: query)
     }
 
     public func updatePause(
         songId: String, chan: Int, event: String, audioType: String,
         sliceNum: String?, pauseDurationMillis: Int, playtimeSecs: Int
     ) async throws {
+        var query: [String: String] = [
+            "chan": String(chan),
+            "episode_id": "0",
+            "event": event,
+            "event_num": "undefined",
+            "pause": String(pauseDurationMillis),
+            "playtime_secs": String(playtimeSecs),
+            "slice_num": sliceNum ?? "null",
+            "song_id": songId,
+            "source": "24",
+            "type": audioType,
+        ]
+        if let playerId { query["player_id"] = playerId }
+        try await fire(path: "api/update_pause", query: query)
+    }
+
+    private func fire(path: String, query: [String: String]) async throws {
+        guard var components = URLComponents(url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false) else {
+            throw RpApiError.network(URLError(.badURL))
+        }
+        if !query.isEmpty {
+            components.queryItems = query.sorted(by: { $0.key < $1.key }).map { URLQueryItem(name: $0.key, value: $0.value) }
+        }
+        guard let url = components.url else {
+            throw RpApiError.network(URLError(.badURL))
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        let cookie = await cookieProvider.currentCookie()
+        if let cookie { request.setValue(cookie, forHTTPHeaderField: "Cookie") }
+        let cookieNames = cookie.map { Self.cookieNameSummary($0) } ?? "none"
+        logger.debug("GET \(url.absoluteString) cookies=[\(cookieNames)]")
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch let error as URLError {
+            logger.error("Network failure for \(url.absoluteString): \(error)")
+            throw RpApiError.network(error)
+        } catch {
+            logger.error("Unknown network error for \(url.absoluteString): \(error)")
+            throw RpApiError.underlying(error)
+        }
+        guard let http = response as? HTTPURLResponse else {
+            throw RpApiError.invalidResponse(statusCode: -1, body: data)
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            let bodyPreview = Self.bodyPreview(data)
+            logger.error("HTTP \(http.statusCode) for \(url.absoluteString) cookies=[\(cookieNames)] — body: \(bodyPreview)")
+            throw RpApiError.invalidResponse(statusCode: http.statusCode, body: data)
+        }
     }
 
     private func get<T: Decodable>(path: String, query: [String: String]) async throws -> T {
