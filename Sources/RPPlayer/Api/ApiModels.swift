@@ -30,9 +30,7 @@ public struct PlayListSong: Codable, Sendable, Equatable {
     public let slideshow: String?
     /// RP block type: "M" = music, "P" = promo. Null for favorites bootstrap.
     public let type: String?
-    /// Slice index within the audio file. Live API encodes as String for music ("5"),
-    /// JSON null for favorites. Sent verbatim back as `slice_num` URL param on the
-    /// next `api/play` call.
+    /// Per-block slice index. String for music ("5"), JSON null for favorites; sent verbatim back as `slice_num` on the next `api/play`.
     public let sliceNum: String?
 
     public init(
