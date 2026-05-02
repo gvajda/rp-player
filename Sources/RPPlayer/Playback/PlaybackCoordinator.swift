@@ -173,10 +173,11 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             currentPositionSeconds = target
             emitNowPlaying(forSongIndex: nextIndex)
         } else {
-            let endEvent: Int? = Int(currentBlock?.endEvent ?? "")
-            if let endEvent, let chan = currentChannelId {
-                channelCursors[chan] = endEvent
-                logger.debug("cursor[\(chan)] = \(endEvent) (skipForward past-last)")
+            let lastSong = orderedSongs.last
+            let lastEvent: Int = Int(lastSong?.event ?? "") ?? Int(currentBlock?.endEvent ?? "") ?? 0
+            if lastEvent != 0, let chan = currentChannelId {
+                channelCursors[chan] = lastEvent
+                logger.debug("cursor[\(chan)] = \(lastEvent) (skipForward past-last)")
             }
             if prefetchedBlock != nil {
                 logger.debug("skipForward past-last: adopting prefetched block")
@@ -189,8 +190,13 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
                 prefetchTask = nil
             }
             let bitrate = await bitrateProvider()
-            logger.debug("skipForward past last song, fetching next block channel=\(channelId) bitrate=\(bitrate) event=\(endEvent.map(String.init) ?? "nil")")
-            let block = try await api.getBlock(channel: channelId, bitrate: bitrate, info: true, event: endEvent)
+            let audioType = lastSong?.type ?? "M"
+            let sliceNum = lastSong?.sliceNum
+            logger.debug("skipForward past last song, fetching next block channel=\(channelId) bitrate=\(bitrate) event=\(lastEvent) audioType=\(audioType) sliceNum=\(sliceNum ?? "null")")
+            let block = try await api.play(
+                channel: channelId, bitrate: bitrate, event: lastEvent, action: .play,
+                audioType: audioType, episodeId: 0, sliceNum: sliceNum
+            )
             let songs = BlockSongs.orderedSongs(from: block)
             guard !songs.isEmpty else { throw PlaybackCoordinatorError.blockHasNoSongs }
             let newStarts = BlockSongs.startsAtSeconds(songs: songs)

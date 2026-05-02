@@ -205,8 +205,41 @@ extension LivePlaybackCoordinatorTests {
         let apiCalls = await api.calls
         let engineCalls = await engine.recordedCalls()
         XCTAssertEqual(apiCalls.count, 2)
-        XCTAssertEqual(apiCalls.last, .getBlock(channel: 0, bitrate: 0, info: true, event: nil))
+        XCTAssertEqual(apiCalls.last, .play(channel: 0, bitrate: 0, event: 0, action: .play,
+                                            audioType: "M", episodeId: 0, sliceNum: nil))
         XCTAssertEqual(engineCalls.last, .play(url: URL(string: "https://example.com/0-2.flac")!, startSeconds: nil))
+    }
+
+    func testSkipForwardPastLastSongUsesPlayActionWithSongMetadata() async throws {
+        let api = MockRpApiClient()
+        let firstSong = PlayListSong(
+            songId: "1", artist: "A", title: "T", album: "Al", duration: 60_000,
+            event: "100", schedTime: nil, chan: "0", year: nil, asin: nil,
+            rating: nil, userRating: nil, cover: nil, elapsed: 0, slideshow: nil,
+            type: "M", sliceNum: "5"
+        )
+        let firstBlock = makeBlock(endEvent: "100", prebuiltSongs: [firstSong])
+        let secondBlock = makeBlock(songs: [("s2", 60_000)])
+        await api.setBlockResponses([firstBlock, secondBlock])
+        let engine = MockPlayerEngine()
+        let coord = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 2 }
+        )
+        try await coord.play(channelId: 0)
+        try await coord.skipForward()
+
+        let calls = await api.calls
+        XCTAssertEqual(calls.count, 2)
+        guard case let .play(channel, bitrate, event, action, audioType, episodeId, sliceNum) = calls[1] else {
+            return XCTFail("expected second call to be .play, got \(calls[1])")
+        }
+        XCTAssertEqual(channel, 0)
+        XCTAssertEqual(bitrate, 2)
+        XCTAssertEqual(event, 100)
+        XCTAssertEqual(action, .play)
+        XCTAssertEqual(audioType, "M")
+        XCTAssertEqual(episodeId, 0)
+        XCTAssertEqual(sliceNum, "5")
     }
 
     func testSkipForwardPastLastSongUsesEndEventAsCursorAndFetchParam() async throws {
