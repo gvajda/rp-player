@@ -7,7 +7,7 @@ public struct NowPlaying: Sendable, Equatable {
     public let blockDurationSeconds: Double
     public let songStartSeconds: Double
     public let songEndSeconds: Double
-    /// Raw `bitrate` field from the live API's get_block response (server-defined
+    /// Raw `bitrate` field from the live API's `api/play` response (server-defined
     /// label, e.g. "flac", "flacm", "320", "32k aac"). Reflects what the app
     /// requested + the server served — single source of truth for the popover label.
     public var blockBitrate: String?
