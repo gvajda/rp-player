@@ -149,10 +149,13 @@ extension AppContainer {
         // UNUserNotificationCenter.current() throws on unbundled processes
         // (no main bundle proxy). PR 12 ships the .app; until then `swift run`
         // gets a no-op service so the rest of the wiring still constructs.
+        let bundleId = Bundle.main.bundleIdentifier
+        logger.info("notification setup: Bundle.main.bundleIdentifier=\(bundleId ?? "nil")")
         let notificationService: any NotificationService =
-            Bundle.main.bundleIdentifier != nil
+            bundleId != nil
                 ? LiveNotificationService(center: UNUserNotificationCenter.current())
                 : NoopNotificationService()
+        logger.info("notification service: \(bundleId != nil ? "Live" : "Noop")")
 
         let notificationCoordinator = NotificationCoordinator(
             coordinator: coordinator,
@@ -202,7 +205,14 @@ extension AppContainer {
         )
 
         let onLaunchTasks: [@Sendable () async -> Void] = [
-            { _ = try? await notificationService.requestAuthorization() },
+            { [logger] in
+                do {
+                    let granted = try await notificationService.requestAuthorization()
+                    logger.info("notification authorization: granted=\(granted)")
+                } catch {
+                    logger.error("notification authorization failed: \(String(describing: error))")
+                }
+            },
             { @MainActor in
                 await StartupAuthProbe.run(api: api, auth: keychainAuth, logger: logger) {
                     viewModel.refreshAuthState()
