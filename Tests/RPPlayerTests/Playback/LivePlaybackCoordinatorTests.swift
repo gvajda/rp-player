@@ -242,34 +242,6 @@ extension LivePlaybackCoordinatorTests {
         XCTAssertEqual(sliceNum, "5")
     }
 
-    func testSkipForwardPastLastSongUsesEndEventAsCursorAndFetchParam() async throws {
-        try XCTSkipIf(true, "FIXME(task-7): cursor-related, drop or rewrite when channelCursors map is removed")
-        let api = MockRpApiClient()
-        let block1 = makeBlock(
-            endEvent: "300",
-            prebuiltSongs: [makeSong(id: "1", duration: 60_000, elapsed: 0, event: "300")]
-        )
-        let block2 = makeBlock(songs: [("s2a", 60_000), ("s2b", 60_000)])
-        await api.setBlockResponses([block1, block2])
-        let engine = MockPlayerEngine()
-        let coordinator = LivePlaybackCoordinator(
-            api: api, engine: engine,
-            logger: AppLogger(category: "test"),
-            bitrateProvider: { 4 }
-        )
-
-        try await coordinator.play(channelId: 0)
-        try await coordinator.skipForward()
-
-        let calls = await api.calls
-        let getBlockEvents = calls.compactMap { call -> Int?? in
-            if case let .getBlock(_, _, _, event) = call { return event }
-            return nil
-        }
-        XCTAssertEqual(getBlockEvents.count, 2)
-        XCTAssertEqual(getBlockEvents.last, 300)
-    }
-
     func testSkipForwardWithoutCurrentBlockThrows() async throws {
         let api = MockRpApiClient()
         let engine = MockPlayerEngine()
@@ -613,7 +585,7 @@ extension LivePlaybackCoordinatorTests {
 }
 
 extension LivePlaybackCoordinatorTests {
-    func testPlayWithoutCursorCallsGetBlockWithoutEventParam() async throws {
+    func testPlayChannelInvokesPlayWithEventZero() async throws {
         let api = MockRpApiClient()
         await api.setBlockResponses([makeBlock(songs: [("s1", 60_000)])])
         let engine = MockPlayerEngine()
@@ -628,140 +600,6 @@ extension LivePlaybackCoordinatorTests {
         let calls = await api.calls
         XCTAssertEqual(calls.last, .play(channel: 0, bitrate: 4, event: 0, action: .start,
                                          audioType: nil, episodeId: nil, sliceNum: nil))
-    }
-
-    func testPlayWithCursorCallsGetBlockWithEventParam() async throws {
-        try XCTSkipIf(true, "FIXME(task-7): cursor-related, drop or rewrite when channelCursors map is removed")
-        let api = MockRpApiClient()
-        let song0 = makeSong(id: "1", duration: 60_000, elapsed: 0, event: "100")
-        let song1 = makeSong(id: "2", duration: 60_000, elapsed: 60_000, event: "101")
-        let block1 = makeBlock(
-            cue: 0,
-            endEvent: "101",
-            prebuiltSongs: [song0, song1]
-        )
-        let block2 = makeBlock(songs: [("s3", 60_000)])
-        await api.setBlockResponses([block1, block2])
-        let engine = MockPlayerEngine()
-        let coordinator = LivePlaybackCoordinator(
-            api: api, engine: engine,
-            logger: AppLogger(category: "test"),
-            bitrateProvider: { 4 }
-        )
-
-        try await coordinator.play(channelId: 0)
-        // Drive position past song1's start (60s) — boundary cross writes cursor = song0.event = "100" → Int 100.
-        await engine.fire(.positionUpdate(seconds: 60.5))
-        try await Task.sleep(nanoseconds: 50_000_000)
-        // Replay channel 0 — should pass event=100.
-        try await coordinator.play(channelId: 0)
-
-        let calls = await api.calls
-        let eventParams = calls.compactMap { call -> Int?? in
-            if case let .getBlock(_, _, _, event) = call { return .some(event) }
-            return nil
-        }
-        XCTAssertEqual(eventParams.count, 2)
-        XCTAssertNil(eventParams[0], "first play must have event=nil")
-        XCTAssertEqual(eventParams[1], 100, "second play must pass cursor event=100")
-    }
-
-    func testInBlockAutoAdvanceUpdatesCursorToFinishedSongEvent() async throws {
-        try XCTSkipIf(true, "FIXME(task-7): cursor-related, drop or rewrite when channelCursors map is removed")
-        let api = MockRpApiClient()
-        let song0 = makeSong(id: "1", duration: 60_000, elapsed: 0, event: "100")
-        let song1 = makeSong(id: "2", duration: 60_000, elapsed: 60_000, event: "101")
-        let block = makeBlock(
-            cue: 0,
-            endEvent: "101",
-            prebuiltSongs: [song0, song1]
-        )
-        await api.setBlockResponses([block])
-        let engine = MockPlayerEngine()
-        let coordinator = LivePlaybackCoordinator(
-            api: api, engine: engine,
-            logger: AppLogger(category: "test"),
-            bitrateProvider: { 4 }
-        )
-
-        try await coordinator.play(channelId: 0)
-        await engine.fire(.positionUpdate(seconds: 60.5))
-        try await Task.sleep(nanoseconds: 50_000_000)
-
-        await api.setBlockResponses([block])
-        try await coordinator.play(channelId: 0)
-        let calls = await api.calls
-        let lastEvent: Int? = {
-            if case let .getBlock(_, _, _, event) = calls.last { return event }
-            return nil
-        }()
-        XCTAssertEqual(lastEvent, 100)
-    }
-
-    func testSwapToPrefetchedBlockUpdatesCursorToOldEndEvent() async throws {
-        try XCTSkipIf(true, "FIXME(task-7): cursor-related, drop or rewrite when channelCursors map is removed")
-        let api = MockRpApiClient()
-        let block1 = makeBlock(
-            endEvent: "500",
-            prebuiltSongs: [makeSong(id: "1", duration: 11_000, elapsed: 0, event: "500")]
-        )
-        let block2 = makeBlock(
-            endEvent: "501",
-            prebuiltSongs: [makeSong(id: "2", duration: 60_000, elapsed: 0, event: "501")]
-        )
-        await api.setBlockResponses([block1, block2])
-        let engine = MockPlayerEngine()
-        let coordinator = LivePlaybackCoordinator(
-            api: api, engine: engine,
-            logger: AppLogger(category: "test"),
-            bitrateProvider: { 4 }
-        )
-
-        try await coordinator.play(channelId: 0)
-        await engine.fire(.positionUpdate(seconds: 2.0))
-        try await Task.sleep(nanoseconds: 100_000_000)
-        await engine.fire(.fileEnded(reason: .eof))
-        try await Task.sleep(nanoseconds: 100_000_000)
-
-        await api.setBlockResponses([block1])
-        try await coordinator.play(channelId: 0)
-        let calls = await api.calls
-        let lastEvent: Int? = {
-            if case let .getBlock(_, _, _, event) = calls.last { return event }
-            return nil
-        }()
-        XCTAssertEqual(lastEvent, 500)
-    }
-
-    func testSkipForwardInBlockUpdatesCursorBeforeAdvance() async throws {
-        try XCTSkipIf(true, "FIXME(task-7): cursor-related, drop or rewrite when channelCursors map is removed")
-        let api = MockRpApiClient()
-        let song0 = makeSong(id: "1", duration: 60_000, elapsed: 0, event: "200")
-        let song1 = makeSong(id: "2", duration: 60_000, elapsed: 60_000, event: "201")
-        let block = makeBlock(
-            cue: 0,
-            endEvent: "201",
-            prebuiltSongs: [song0, song1]
-        )
-        await api.setBlockResponses([block])
-        let engine = MockPlayerEngine()
-        let coordinator = LivePlaybackCoordinator(
-            api: api, engine: engine,
-            logger: AppLogger(category: "test"),
-            bitrateProvider: { 4 }
-        )
-
-        try await coordinator.play(channelId: 0)
-        try await coordinator.skipForward()
-
-        await api.setBlockResponses([block])
-        try await coordinator.play(channelId: 0)
-        let calls = await api.calls
-        let lastEvent: Int? = {
-            if case let .getBlock(_, _, _, event) = calls.last { return event }
-            return nil
-        }()
-        XCTAssertEqual(lastEvent, 200)
     }
 
     func testSkipForwardPastLastSongAdoptsPrefetchedBlockWhenAvailable() async throws {
@@ -822,49 +660,6 @@ extension LivePlaybackCoordinatorTests {
         XCTAssertEqual(cancellations, 1, "in-flight prefetch must be cancelled by skipForward past-last")
         let np = await coordinator.nowPlaying
         XCTAssertNotNil(np, "coordinator must have nowPlaying after skip")
-    }
-}
-
-extension LivePlaybackCoordinatorTests {
-    func testChannelSwitchPreservesCursors() async throws {
-        try XCTSkipIf(true, "FIXME(task-7): cursor-related, drop or rewrite when channelCursors map is removed")
-        let api = MockRpApiClient()
-        let block0a = makeBlock(
-            channel: "0",
-            endEvent: "801",
-            prebuiltSongs: [
-                makeSong(id: "1", duration: 60_000, elapsed: 0, event: "800"),
-                makeSong(id: "2", duration: 60_000, elapsed: 60_000, event: "801"),
-            ]
-        )
-        let block1 = makeBlock(
-            channel: "1",
-            endEvent: "900",
-            prebuiltSongs: [
-                makeSong(id: "3", duration: 60_000, elapsed: 0, event: "900"),
-            ]
-        )
-        let block0b = makeBlock(channel: "0", songs: [("s1", 60_000)])
-        await api.setBlockResponses([block0a, block1, block0b])
-        let engine = MockPlayerEngine()
-        let coordinator = LivePlaybackCoordinator(
-            api: api, engine: engine,
-            logger: AppLogger(category: "test"),
-            bitrateProvider: { 4 }
-        )
-
-        try await coordinator.play(channelId: 0)
-        await engine.fire(.positionUpdate(seconds: 60.5))
-        try await Task.sleep(nanoseconds: 50_000_000)
-        try await coordinator.changeChannel(to: 1)
-        try await coordinator.changeChannel(to: 0)
-
-        let calls = await api.calls
-        let events = calls.compactMap { call -> Int?? in
-            if case let .getBlock(_, _, _, event) = call { return event }
-            return nil
-        }
-        XCTAssertEqual(events, [nil, nil, 800])
     }
 }
 

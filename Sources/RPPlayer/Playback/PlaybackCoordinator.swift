@@ -32,7 +32,6 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     private var eventTask: Task<Void, Never>?
     private var prefetchedBlock: GetBlock?
     private var prefetchTask: Task<Void, Never>?
-    private var channelCursors: [Int: Int] = [:]
     private var isShutdown = false
 
     public init(
@@ -159,11 +158,6 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             let target = startsAt[nextIndex] + 0.05
             let nextSong = orderedSongs[nextIndex]
             logger.debug("skipForward in-block: url=\(currentBlock?.url ?? "?") seek to \(target)s → song [\(nextIndex)] '\(nextSong.artist) – \(nextSong.title)'")
-            if let chan = currentChannelId,
-               let skippedEvent = Int(orderedSongs[currentSongIndex].event ?? "") {
-                channelCursors[chan] = skippedEvent
-                logger.debug("cursor[\(chan)] = \(skippedEvent) (skipForward in-block)")
-            }
             do {
                 try await engine.seek(to: target)
             } catch {
@@ -175,10 +169,6 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         } else {
             let lastSong = orderedSongs.last
             let lastEvent: Int = Int(lastSong?.event ?? "") ?? Int(currentBlock?.endEvent ?? "") ?? 0
-            if lastEvent != 0, let chan = currentChannelId {
-                channelCursors[chan] = lastEvent
-                logger.debug("cursor[\(chan)] = \(lastEvent) (skipForward past-last)")
-            }
             if prefetchedBlock != nil {
                 logger.debug("skipForward past-last: adopting prefetched block")
                 await swapToPrefetchedBlockIfAvailable()
@@ -267,12 +257,6 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             let newIndex = BlockSongs.indexOfSong(at: seconds, in: startsAt)
             if newIndex != currentSongIndex {
                 logger.debug("song boundary crossed: \(currentSongIndex) -> \(newIndex) at pos=\(seconds)")
-                if let chan = currentChannelId,
-                   currentSongIndex < orderedSongs.count,
-                   let finishedEvent = Int(orderedSongs[currentSongIndex].event ?? "") {
-                    channelCursors[chan] = finishedEvent
-                    logger.debug("cursor[\(chan)] = \(finishedEvent) (auto-advance)")
-                }
                 currentSongIndex = newIndex
                 emitNowPlaying(forSongIndex: newIndex)
             }
@@ -333,9 +317,9 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         let sliceNum = lastSong?.sliceNum
         let api = self.api
         let provider = self.bitrateProvider
-        logger.debug("prefetch start, channel=\(channelId) event=\(lastEvent) audioType=\(audioType) sliceNum=\(sliceNum ?? "null")")
-        prefetchTask = Task { [weak self] in
+        prefetchTask = Task { [weak self, logger] in
             let bitrate = await provider()
+            logger.debug("prefetch start, channel=\(channelId) bitrate=\(bitrate) event=\(lastEvent) audioType=\(audioType) sliceNum=\(sliceNum ?? "null")")
             let result = try? await api.play(
                 channel: channelId, bitrate: bitrate, event: lastEvent, action: .play,
                 audioType: audioType, episodeId: 0, sliceNum: sliceNum
@@ -364,11 +348,6 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             currentPositionSeconds = 0
             current = nil
             return
-        }
-        if let chan = currentChannelId,
-           let oldEnd = Int(currentBlock?.endEvent ?? "") {
-            channelCursors[chan] = oldEnd
-            logger.debug("cursor[\(chan)] = \(oldEnd) (swap to prefetched)")
         }
         prefetchedBlock = nil
         let songs = BlockSongs.orderedSongs(from: block)
