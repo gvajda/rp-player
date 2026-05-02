@@ -1,8 +1,15 @@
 import Foundation
 
+public enum PlayAction: String, Sendable {
+    case start
+    case play
+}
+
 public protocol RpApiClient: Sendable {
     func listChannels() async throws -> [Channel]
     func getBlock(channel: Int, bitrate: Int, info: Bool, event: Int?) async throws -> GetBlock
+    func play(channel: Int, bitrate: Int, event: Int, action: PlayAction,
+              audioType: String?, episodeId: Int?, sliceNum: String?) async throws -> GetBlock
     func info(songId: Int) async throws -> SongInfo
     func rate(songId: Int, rating: Int) async throws -> Rating
     func authState() async throws -> Auth
@@ -42,6 +49,25 @@ public struct LiveRpApiClient: RpApiClient {
             query["event"] = String(event)
         }
         return try await get(path: "api/get_block", query: query)
+    }
+
+    public func play(channel: Int, bitrate: Int, event: Int, action: PlayAction,
+                     audioType: String?, episodeId: Int?, sliceNum: String?) async throws -> GetBlock {
+        var query: [String: String] = [
+            "chan": String(channel),
+            "bitrate": String(bitrate),
+            "event": String(event),
+            "action": action.rawValue,
+            "info": "true",
+            "elapsed": "1",
+            "source": "24",
+        ]
+        if action == .play {
+            query["audio_type"] = audioType ?? ""
+            query["episode_id"] = String(episodeId ?? 0)
+            query["slice_num"] = sliceNum ?? "null"
+        }
+        return try await get(path: "api/play", query: query)
     }
 
     public func info(songId: Int) async throws -> SongInfo {
