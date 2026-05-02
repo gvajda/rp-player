@@ -28,6 +28,51 @@ public struct PlayListSong: Codable, Sendable, Equatable {
     public let cover: String?
     public let elapsed: Int?
     public let slideshow: String?
+
+    public init(
+        songId: String, artist: String, title: String, album: String?,
+        duration: Int, event: String?, schedTime: String?, chan: String?,
+        year: String?, asin: String?, rating: String?, userRating: String?,
+        cover: String?, elapsed: Int?, slideshow: String?
+    ) {
+        self.songId = songId
+        self.artist = artist
+        self.title = title
+        self.album = album
+        self.duration = duration
+        self.event = event
+        self.schedTime = schedTime
+        self.chan = chan
+        self.year = year
+        self.asin = asin
+        self.rating = rating
+        self.userRating = userRating
+        self.cover = cover
+        self.elapsed = elapsed
+        self.slideshow = slideshow
+    }
+}
+
+public extension PlayListSong {
+    init(from info: SongInfo) {
+        self.init(
+            songId: String(info.songId),
+            artist: info.artist,
+            title: info.title,
+            album: info.album,
+            duration: (info.length.flatMap(Int.init) ?? 0) * 1000,
+            event: nil,
+            schedTime: nil,
+            chan: nil,
+            year: nil,
+            asin: info.asin,
+            rating: info.avgRating.map { String($0) },
+            userRating: info.userRating.map { String($0) },
+            cover: info.largeCover ?? info.medCover,
+            elapsed: nil,
+            slideshow: info.slideshow
+        )
+    }
 }
 
 public struct GetBlock: Codable, Sendable, Equatable {
@@ -70,6 +115,33 @@ public struct SongInfo: Codable, Sendable, Equatable {
     public let length: String?
     public let plays30: Int?
     public let slideshow: String?
+
+    public init(
+        songId: Int, artist: String, title: String, album: String?, asin: String?,
+        avgRating: Double?, numRatings: String?, userRating: Int?,
+        webLink: String?, wikiLink: String?, lyricsAvail: String?, lyrics: String?,
+        medCover: String?, largeCover: String?,
+        releaseDate: String?, length: String?, plays30: Int?, slideshow: String?
+    ) {
+        self.songId = songId
+        self.artist = artist
+        self.title = title
+        self.album = album
+        self.asin = asin
+        self.avgRating = avgRating
+        self.numRatings = numRatings
+        self.userRating = userRating
+        self.webLink = webLink
+        self.wikiLink = wikiLink
+        self.lyricsAvail = lyricsAvail
+        self.lyrics = lyrics
+        self.medCover = medCover
+        self.largeCover = largeCover
+        self.releaseDate = releaseDate
+        self.length = length
+        self.plays30 = plays30
+        self.slideshow = slideshow
+    }
 
     private enum CodingKeys: String, CodingKey {
         case songId, artist, title, album, asin, avgRating, numRatings, userRating
