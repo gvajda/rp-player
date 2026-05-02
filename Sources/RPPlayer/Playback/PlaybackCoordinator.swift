@@ -118,6 +118,10 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         logger.debug("pause()")
         guard currentBlock != nil else { throw PlaybackCoordinatorError.notPlaying }
         do { try await engine.pause() } catch { throw PlaybackCoordinatorError.engineError(message: String(describing: error)) }
+        pausedAt = clock()
+        if currentSongIndex < startsAt.count {
+            pausePositionMs = max(1, Int((currentPositionSeconds - startsAt[currentSongIndex]) * 1000))
+        }
     }
 
     public func resume() async throws {
@@ -127,11 +131,42 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
            Date().timeIntervalSince1970 > Double(block.expiration),
            let channelId = currentChannelId {
             logger.info("resume: block expired (now=\(Int(Date().timeIntervalSince1970)) > expiration=\(block.expiration)), refetching")
+            pausedAt = nil
+            pausePositionMs = 0
             try await play(channelId: channelId)
             return
         }
         logger.debug("resume: block fresh, engine.resume()")
         do { try await engine.resume() } catch { throw PlaybackCoordinatorError.engineError(message: String(describing: error)) }
+        guard let at = pausedAt, let channelId = currentChannelId,
+              currentSongIndex < orderedSongs.count else { return }
+        let song = orderedSongs[currentSongIndex]
+        guard song.type != "P" else {
+            pausedAt = nil
+            pausePositionMs = 0
+            return
+        }
+        let durationMs = Int(clock().timeIntervalSince(at) * 1000)
+        let ppm = pausePositionMs
+        let ts = Int(clock().timeIntervalSince1970)
+        let songId = song.songId
+        let event = song.event ?? ""
+        let audioType = song.type ?? "M"
+        let sliceNum = song.sliceNum
+        let api = self.api
+        pausedAt = nil
+        pausePositionMs = 0
+        Task.detached {
+            try? await api.updatePause(
+                songId: songId, chan: channelId, event: event, audioType: audioType,
+                sliceNum: sliceNum, pauseDurationMillis: durationMs, playtimeSecs: ts
+            )
+            try? await api.updateHistory(
+                songId: songId, chan: channelId, event: event, audioType: audioType,
+                sliceNum: sliceNum, playPositionMillis: ppm, playtimeSecs: ts,
+                pauseFlag: true
+            )
+        }
     }
 
     public func stop() async throws {

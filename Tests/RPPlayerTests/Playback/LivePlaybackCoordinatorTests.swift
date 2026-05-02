@@ -977,6 +977,80 @@ extension LivePlaybackCoordinatorTests {
 }
 
 extension LivePlaybackCoordinatorTests {
+    func testPauseResumeFiresUpdatePauseAndUpdateHistory() async throws {
+        let api = MockRpApiClient()
+        let block = makeBlock(
+            prebuiltSongs: [
+                PlayListSong(songId: "55464", artist: "A", title: "T", album: "Al",
+                             duration: 120_000, event: "2869397", schedTime: nil,
+                             chan: nil, year: nil, asin: nil, rating: nil,
+                             userRating: nil, cover: nil, elapsed: 0, slideshow: nil,
+                             type: "M", sliceNum: "6"),
+            ]
+        )
+        await api.setBlockResponses([block])
+        let engine = MockPlayerEngine()
+        let coord = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 0 }
+        )
+        try await coord.play(channelId: 0)
+        try await Task.sleep(nanoseconds: 50_000_000)
+        await engine.fire(.positionUpdate(seconds: 10.0))
+        try await Task.sleep(nanoseconds: 20_000_000)
+        try await coord.pause()
+        try await coord.resume()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let pauseCalls = await api.updatePauseCalls
+        let historyCalls = await api.updateHistoryCalls
+        XCTAssertEqual(pauseCalls.count, 1)
+        XCTAssertEqual(pauseCalls.first?.songId, "55464")
+        XCTAssertGreaterThanOrEqual(pauseCalls.first?.pauseDurationMillis ?? -1, 0)
+        XCTAssertEqual(pauseCalls.first?.chan, 0)
+        let resumeHistory = historyCalls.last(where: { $0.pauseFlag })
+        XCTAssertNotNil(resumeHistory)
+        XCTAssertEqual(resumeHistory?.songId, "55464")
+        XCTAssertEqual(resumeHistory?.pauseFlag, true)
+    }
+
+    func testPauseDurationMillisIsCorrect() async throws {
+        final class MutableClock: @unchecked Sendable {
+            var date = Date(timeIntervalSince1970: 1_000)
+        }
+        let clockState = MutableClock()
+        let api = MockRpApiClient()
+        let block = makeBlock(songs: [("s1", 120_000)])
+        await api.setBlockResponses([block])
+        let coord = LivePlaybackCoordinator(
+            api: api, engine: MockPlayerEngine(), logger: silentLogger(),
+            bitrateProvider: { 0 }, clock: { clockState.date }
+        )
+        try await coord.play(channelId: 0)
+        try await Task.sleep(nanoseconds: 20_000_000)
+        try await coord.pause()                                    // pausedAt = t=1000
+        clockState.date = Date(timeIntervalSince1970: 1_005)       // advance clock 5s
+        try await coord.resume()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let pauseCalls = await api.updatePauseCalls
+        XCTAssertEqual(pauseCalls.first?.pauseDurationMillis, 5_000)
+    }
+
+    func testResumeWithoutPriorPauseDoesNotFireTelemetry() async throws {
+        let api = MockRpApiClient()
+        let block = makeBlock(songs: [("s1", 60_000)])
+        await api.setBlockResponses([block])
+        let coord = LivePlaybackCoordinator(
+            api: api, engine: MockPlayerEngine(), logger: silentLogger(), bitrateProvider: { 0 }
+        )
+        try await coord.play(channelId: 0)
+        try await Task.sleep(nanoseconds: 50_000_000)
+        try? await coord.resume()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let pauseCalls = await api.updatePauseCalls
+        XCTAssertEqual(pauseCalls.count, 0)
+    }
+}
+
+extension LivePlaybackCoordinatorTests {
     func testPlayChannelBootstrapsWithEventZeroAndActionStart() async throws {
         let api = MockRpApiClient()
         let block = makeBlock(songs: [("s1", 60_000), ("s2", 60_000)])
