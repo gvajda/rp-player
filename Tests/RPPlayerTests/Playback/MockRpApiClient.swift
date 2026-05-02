@@ -4,7 +4,6 @@ import Foundation
 actor MockRpApiClient: RpApiClient {
     enum Call: Sendable, Equatable {
         case listChannels
-        case getBlock(channel: Int, bitrate: Int, info: Bool, event: Int?)
         case play(channel: Int, bitrate: Int, event: Int, action: PlayAction, audioType: String?, episodeId: Int?, sliceNum: String?)
         case info(songId: Int)
         case rate(songId: Int, rating: Int)
@@ -12,9 +11,9 @@ actor MockRpApiClient: RpApiClient {
     }
 
     private(set) var calls: [Call] = []
-    private(set) var getBlockCancellations: Int = 0
+    private(set) var playCancellations: Int = 0
 
-    var getBlockDelayNanos: UInt64 = 0
+    var playDelayNanos: UInt64 = 0
     var blockResponses: [GetBlock] = []
     var listChannelsResponse: [Channel] = []
     var listChannelsError: Error?
@@ -29,8 +28,8 @@ actor MockRpApiClient: RpApiClient {
         self.blockResponses = responses
     }
 
-    func setGetBlockDelay(nanos: UInt64) {
-        self.getBlockDelayNanos = nanos
+    func setPlayDelay(nanos: UInt64) {
+        self.playDelayNanos = nanos
     }
 
     func setInfoResponse(_ response: SongInfo) {
@@ -65,31 +64,15 @@ actor MockRpApiClient: RpApiClient {
         return listChannelsResponse
     }
 
-    func getBlock(channel: Int, bitrate: Int, info: Bool, event: Int?) async throws -> GetBlock {
-        calls.append(.getBlock(channel: channel, bitrate: bitrate, info: info, event: event))
-        if getBlockDelayNanos > 0 {
-            do {
-                try await Task.sleep(nanoseconds: getBlockDelayNanos)
-            } catch {
-                getBlockCancellations += 1
-                throw error
-            }
-        }
-        guard !blockResponses.isEmpty else {
-            throw RpApiError.network(URLError(.unknown))
-        }
-        return blockResponses.removeFirst()
-    }
-
     func play(channel: Int, bitrate: Int, event: Int, action: PlayAction,
               audioType: String?, episodeId: Int?, sliceNum: String?) async throws -> GetBlock {
         calls.append(.play(channel: channel, bitrate: bitrate, event: event, action: action,
                            audioType: audioType, episodeId: episodeId, sliceNum: sliceNum))
-        if getBlockDelayNanos > 0 {
+        if playDelayNanos > 0 {
             do {
-                try await Task.sleep(nanoseconds: getBlockDelayNanos)
+                try await Task.sleep(nanoseconds: playDelayNanos)
             } catch {
-                getBlockCancellations += 1
+                playCancellations += 1
                 throw error
             }
         }

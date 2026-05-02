@@ -277,7 +277,7 @@ extension LivePlaybackCoordinatorTests {
         await engine.fire(.positionUpdate(seconds: 232.0))
         try await Task.sleep(nanoseconds: 100_000_000)
         let apiCalls = await api.calls
-        XCTAssertEqual(apiCalls.count, 2, "second getBlock call should have been triggered as prefetch")
+        XCTAssertEqual(apiCalls.count, 2, "second play call should have been triggered as prefetch")
     }
 
     func testPrefetchOnlyHappensOncePerBlock() async throws {
@@ -399,7 +399,7 @@ extension LivePlaybackCoordinatorTests {
             songs: [("a1", 60_000), ("a2", 60_000), ("a3", 60_000), ("a4", 60_000)]
         )
         // Second response is consumed by the in-flight prefetch (the mock's
-        // getBlock doesn't observe Task.cancel()). Its result must be discarded
+        // play doesn't observe Task.cancel()). Its result must be discarded
         // by changeChannel's cleanup.
         let prefetchVictim = makeBlock(
             url: "https://example.com/chan0-prefetch.flac",
@@ -478,7 +478,7 @@ extension LivePlaybackCoordinatorTests {
             api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 0 }
         )
         try await coordinator.play(channelId: 0)
-        // Trigger prefetch (in-flight call to api.getBlock). Sleep gives the
+        // Trigger prefetch (in-flight call to api.play). Sleep gives the
         // eventTask a chance to process the positionUpdate before stop runs,
         // so the prefetch is actually in-flight when we cancel it.
         await engine.fire(.positionUpdate(seconds: 232.0))
@@ -647,16 +647,16 @@ extension LivePlaybackCoordinatorTests {
         )
 
         try await coordinator.play(channelId: 0)
-        await api.setGetBlockDelay(nanos: 2_000_000_000)
+        await api.setPlayDelay(nanos: 2_000_000_000)
         await engine.fire(.positionUpdate(seconds: 2.0))
         // Yield so prefetch task enters Task.sleep before we cancel.
         try await Task.sleep(nanoseconds: 50_000_000)
-        await api.setGetBlockDelay(nanos: 0)
+        await api.setPlayDelay(nanos: 0)
         try await coordinator.skipForward()
         // Yield so cancelled prefetch observes cancellation and records.
         try await Task.sleep(nanoseconds: 100_000_000)
 
-        let cancellations = await api.getBlockCancellations
+        let cancellations = await api.playCancellations
         XCTAssertEqual(cancellations, 1, "in-flight prefetch must be cancelled by skipForward past-last")
         let np = await coordinator.nowPlaying
         XCTAssertNotNil(np, "coordinator must have nowPlaying after skip")
