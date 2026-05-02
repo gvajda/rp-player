@@ -27,4 +27,20 @@ final class AppSettingsCodableTests: XCTestCase {
             XCTAssertEqual(decoded.appearance, mode, "round-trip failed for \(mode)")
         }
     }
+
+    func testMissingPlayerIdKeyDecodesAsNil() throws {
+        let json = """
+        {"selectedChannelId":0}
+        """.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: json)
+        XCTAssertNil(decoded.playerId)
+    }
+
+    func testPlayerIdRoundTrips() throws {
+        var settings = AppSettings.default
+        settings.playerId = "rp3_abcd1234-5678-90ab-cdef-1234567890ab"
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
+        XCTAssertEqual(decoded.playerId, "rp3_abcd1234-5678-90ab-cdef-1234567890ab")
+    }
 }

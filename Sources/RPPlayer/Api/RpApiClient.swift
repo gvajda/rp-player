@@ -20,17 +20,20 @@ public struct LiveRpApiClient: RpApiClient {
     private let baseURL: URL
     private let session: URLSession
     private let cookieProvider: any CookieProvider
+    private let playerId: String?
     private let logger: any Logging
 
     public init(
         baseURL: URL = LiveRpApiClient.defaultBaseURL,
         session: URLSession = .shared,
         cookieProvider: any CookieProvider,
+        playerId: String? = nil,
         logger: any Logging
     ) {
         self.baseURL = baseURL
         self.session = session
         self.cookieProvider = cookieProvider
+        self.playerId = playerId
         self.logger = logger
     }
 
@@ -53,6 +56,9 @@ public struct LiveRpApiClient: RpApiClient {
             query["audio_type"] = audioType ?? ""
             query["episode_id"] = String(episodeId ?? 0)
             query["slice_num"] = sliceNum ?? "null"
+        }
+        if let playerId {
+            query["player_id"] = playerId
         }
         return try await get(path: "api/play", query: query)
     }

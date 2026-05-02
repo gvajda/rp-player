@@ -158,4 +158,17 @@ final class AppContainerTests: XCTestCase {
         let count = await counter.count
         XCTAssertEqual(count, 2)
     }
+
+    func testGeneratePlayerIdMatchesRp3UuidShape() {
+        let id = AppContainer.generatePlayerId()
+        let pattern = "^rp3_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        XCTAssertNotNil(id.range(of: pattern, options: .regularExpression),
+                        "playerId '\(id)' does not match rp3_<8-4-4-4-12 hex> shape")
+    }
+
+    func testGeneratePlayerIdProducesUniqueValues() {
+        let a = AppContainer.generatePlayerId()
+        let b = AppContainer.generatePlayerId()
+        XCTAssertNotEqual(a, b)
+    }
 }

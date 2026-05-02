@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import Security
 import UserNotifications
 
 @MainActor
@@ -80,8 +81,20 @@ extension AppContainer {
             store = nil
         }
 
+        let playerId: String
+        if let existing = initial.playerId, !existing.isEmpty {
+            playerId = existing
+            logger.info("player_id=\(playerId) (loaded)")
+        } else {
+            playerId = Self.generatePlayerId()
+            logger.info("player_id=\(playerId) (newly generated)")
+            if let store {
+                Task { try? await store.update { $0.playerId = playerId } }
+            }
+        }
+
         let keychainAuth = KeychainCookieProvider()
-        let api = LiveRpApiClient(cookieProvider: keychainAuth, logger: logger)
+        let api = LiveRpApiClient(cookieProvider: keychainAuth, playerId: playerId, logger: logger)
 
         let imageBaseURL = URL(string: "https://img.radioparadise.com/")!
         let cache: any AlbumArtCache
@@ -264,6 +277,15 @@ extension AppContainer {
               let settings = try? JSONDecoder().decode(AppSettings.self, from: data)
         else { return .default }
         return settings
+    }
+
+    static func generatePlayerId() -> String {
+        var bytes = [UInt8](repeating: 0, count: 16)
+        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        let hex = bytes.map { String(format: "%02x", $0) }.joined()
+        let s = Array(hex)
+        let part = { (start: Int, len: Int) in String(s[start..<start+len]) }
+        return "rp3_\(part(0,8))-\(part(8,4))-\(part(12,4))-\(part(16,4))-\(part(20,12))"
     }
 }
 

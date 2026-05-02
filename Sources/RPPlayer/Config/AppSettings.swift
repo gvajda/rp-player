@@ -15,6 +15,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var outputDeviceUID: String?
     public var logLevel: AppLogger.Level
     public var verboseLoggingEnabled: Bool
+    /// Stable per-install `rp3_<uuid>` identifier sent as `player_id` URL param to `api/play` (and future telemetry endpoints). Generated lazily by AppContainer on first launch when nil.
+    public var playerId: String?
 
     public init(
         selectedChannelId: Int = 0,
@@ -25,7 +27,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         bitrate: Int = 4,
         outputDeviceUID: String? = nil,
         logLevel: AppLogger.Level = .info,
-        verboseLoggingEnabled: Bool = false
+        verboseLoggingEnabled: Bool = false,
+        playerId: String? = nil
     ) {
         self.selectedChannelId = selectedChannelId
         self.hogModeEnabled = hogModeEnabled
@@ -36,6 +39,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.outputDeviceUID = outputDeviceUID
         self.logLevel = logLevel
         self.verboseLoggingEnabled = verboseLoggingEnabled
+        self.playerId = playerId
     }
 
     public init(from decoder: Decoder) throws {
@@ -49,6 +53,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.outputDeviceUID = try c.decodeIfPresent(String.self, forKey: .outputDeviceUID)
         self.logLevel = try c.decodeIfPresent(AppLogger.Level.self, forKey: .logLevel) ?? .info
         self.verboseLoggingEnabled = try c.decodeIfPresent(Bool.self, forKey: .verboseLoggingEnabled) ?? false
+        self.playerId = try c.decodeIfPresent(String.self, forKey: .playerId)
     }
 
     public static let `default` = AppSettings()
