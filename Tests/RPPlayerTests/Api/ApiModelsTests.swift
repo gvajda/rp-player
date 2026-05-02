@@ -57,4 +57,30 @@ final class ApiModelsTests: XCTestCase {
         XCTAssertEqual(rating.songId, 12345)
         XCTAssertEqual(rating.userRating, 7)
     }
+
+    func testPlayListSongDecodesSliceNumAndType() throws {
+        let url = Bundle.module.url(forResource: "get_block", withExtension: "json", subdirectory: "Fixtures/Api")!
+        let data = try Data(contentsOf: url)
+        let block = try JSONDecoder.rpDecoder.decode(GetBlock.self, from: data)
+        let song0 = try XCTUnwrap(block.song["0"])
+        XCTAssertEqual(song0.type, "M")
+        XCTAssertEqual(song0.sliceNum, "5")
+    }
+
+    func testPlayListSongDecodesNullSliceNum() throws {
+        let json = """
+        {
+          "song_id": "12345",
+          "artist": "X",
+          "title": "Y",
+          "album": "Z",
+          "duration": 100000,
+          "slice_num": null,
+          "type": "M"
+        }
+        """.data(using: .utf8)!
+        let song = try JSONDecoder.rpDecoder.decode(PlayListSong.self, from: json)
+        XCTAssertNil(song.sliceNum)
+        XCTAssertEqual(song.type, "M")
+    }
 }

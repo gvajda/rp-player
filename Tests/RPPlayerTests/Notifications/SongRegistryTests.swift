@@ -5,7 +5,8 @@ private func makeSong(id: String, title: String = "T") -> PlayListSong {
     PlayListSong(
         songId: id, artist: "A", title: title, album: "Al", duration: 1000,
         event: nil, schedTime: nil, chan: nil, year: nil, asin: nil,
-        rating: nil, userRating: nil, cover: nil, elapsed: nil, slideshow: nil
+        rating: nil, userRating: nil, cover: nil, elapsed: nil, slideshow: nil,
+        type: nil, sliceNum: nil
     )
 }
 

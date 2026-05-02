@@ -6,7 +6,8 @@ final class BlockSongsTests: XCTestCase {
         PlayListSong(
             songId: id, artist: "A", title: id, album: "Al", duration: duration,
             event: nil, schedTime: nil, chan: nil, year: nil, asin: nil,
-            rating: nil, userRating: nil, cover: nil, elapsed: elapsed, slideshow: nil
+            rating: nil, userRating: nil, cover: nil, elapsed: elapsed, slideshow: nil,
+            type: nil, sliceNum: nil
         )
     }
 

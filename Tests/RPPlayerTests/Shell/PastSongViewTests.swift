@@ -9,7 +9,8 @@ final class PastSongViewTests: XCTestCase {
         let song = PlayListSong(
             songId: "1", artist: "A", title: "T", album: "Al", duration: 0,
             event: nil, schedTime: nil, chan: nil, year: nil, asin: nil,
-            rating: nil, userRating: nil, cover: nil, elapsed: nil, slideshow: nil
+            rating: nil, userRating: nil, cover: nil, elapsed: nil, slideshow: nil,
+            type: nil, sliceNum: nil
         )
         let viewModel = PastSongViewModel(
             song: song,

@@ -6,7 +6,8 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         PlayListSong(
             songId: id, artist: "Artist-\(id)", title: "Title-\(id)", album: "Al", duration: duration,
             event: event, schedTime: nil, chan: nil, year: nil, asin: nil,
-            rating: nil, userRating: nil, cover: nil, elapsed: elapsed, slideshow: nil
+            rating: nil, userRating: nil, cover: nil, elapsed: elapsed, slideshow: nil,
+            type: nil, sliceNum: nil
         )
     }
 

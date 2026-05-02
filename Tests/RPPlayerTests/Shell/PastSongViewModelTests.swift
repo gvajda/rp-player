@@ -8,7 +8,8 @@ final class PastSongViewModelTests: XCTestCase {
         PlayListSong(
             songId: "100", artist: "Artist", title: "Title", album: "Album",
             duration: 0, event: nil, schedTime: nil, chan: nil, year: nil, asin: nil,
-            rating: nil, userRating: rating, cover: cover, elapsed: nil, slideshow: nil
+            rating: nil, userRating: rating, cover: cover, elapsed: nil, slideshow: nil,
+            type: nil, sliceNum: nil
         )
     }
 

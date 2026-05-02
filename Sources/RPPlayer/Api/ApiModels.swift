@@ -28,12 +28,19 @@ public struct PlayListSong: Codable, Sendable, Equatable {
     public let cover: String?
     public let elapsed: Int?
     public let slideshow: String?
+    /// RP block type: "M" = music, "P" = promo. Null for favorites bootstrap.
+    public let type: String?
+    /// Slice index within the audio file. Live API encodes as String for music ("5"),
+    /// JSON null for favorites. Sent verbatim back as `slice_num` URL param on the
+    /// next `api/play` call.
+    public let sliceNum: String?
 
     public init(
         songId: String, artist: String, title: String, album: String?,
         duration: Int, event: String?, schedTime: String?, chan: String?,
         year: String?, asin: String?, rating: String?, userRating: String?,
-        cover: String?, elapsed: Int?, slideshow: String?
+        cover: String?, elapsed: Int?, slideshow: String?,
+        type: String?, sliceNum: String?
     ) {
         self.songId = songId
         self.artist = artist
@@ -50,6 +57,8 @@ public struct PlayListSong: Codable, Sendable, Equatable {
         self.cover = cover
         self.elapsed = elapsed
         self.slideshow = slideshow
+        self.type = type
+        self.sliceNum = sliceNum
     }
 }
 
@@ -70,7 +79,9 @@ public extension PlayListSong {
             userRating: info.userRating.map { String($0) },
             cover: info.largeCover ?? info.medCover,
             elapsed: nil,
-            slideshow: info.slideshow
+            slideshow: info.slideshow,
+            type: nil,
+            sliceNum: nil
         )
     }
 }

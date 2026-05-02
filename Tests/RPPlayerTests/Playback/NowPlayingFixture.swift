@@ -21,7 +21,8 @@ extension NowPlaying {
                 album: album,
                 duration: 180_000,
                 event: nil, schedTime: nil, chan: nil, year: nil, asin: nil,
-                rating: nil, userRating: userRating, cover: cover, elapsed: nil, slideshow: nil
+                rating: nil, userRating: userRating, cover: cover, elapsed: nil, slideshow: nil,
+                type: nil, sliceNum: nil
             ),
             songIndexInBlock: 0,
             blockDurationSeconds: 720,
