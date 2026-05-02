@@ -12,8 +12,8 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 
 ## Current state
 
-- Last merged: **PR 12.5** (event-cursor block resume) + all PR 12 follow-ups (pull-based bitrate, libmpv hog vestige cleanup, bitrate-display fix, stream-format pipeline removal, elapsed-based offsets, settings bitrate picker corrected). 209 tests passing on `main`.
-- Next: **popover visual polish** branch in flight (then PR 13 — distribution CI workflow + `.app` bundling).
+- Last merged: **popover visual polish** (rounds 1 + 2 — positionUpdates stream, edge-to-edge album art, song progress bar, RatingMenu w/ ★/☆, outline play button, gear → Settings/Quit menu, PressOpacityButtonStyle, 3-section channel row w/ centered picker + `<bitrate> @` flush to picker, AppearanceMode setting). 222 tests passing on `main`.
+- Next: **PR 13** — distribution CI workflow + `.app` bundling.
 
 ### PR 12 follow-ups (landed post-merge)
 
