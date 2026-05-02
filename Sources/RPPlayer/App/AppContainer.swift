@@ -132,6 +132,16 @@ extension AppContainer {
                     logger.setVerbose(settings.verboseLoggingEnabled)
                 }
             }
+            Task { @MainActor in
+                let stream = await store.changes
+                for await settings in stream {
+                    switch settings.appearance {
+                    case .system: NSApp.appearance = nil
+                    case .light:  NSApp.appearance = NSAppearance(named: .aqua)
+                    case .dark:   NSApp.appearance = NSAppearance(named: .darkAqua)
+                    }
+                }
+            }
         }
 
         let deviceCatalog = CoreAudioDeviceCatalog(lister: CoreAudioDeviceLister())
