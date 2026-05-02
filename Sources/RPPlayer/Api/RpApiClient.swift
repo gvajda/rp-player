@@ -12,6 +12,15 @@ public protocol RpApiClient: Sendable {
     func info(songId: Int) async throws -> SongInfo
     func rate(songId: Int, rating: Int) async throws -> Rating
     func authState() async throws -> Auth
+    func updateHistory(
+        songId: String, chan: Int, event: String, audioType: String,
+        sliceNum: String?, playPositionMillis: Int, playtimeSecs: Int,
+        pauseFlag: Bool
+    ) async throws
+    func updatePause(
+        songId: String, chan: Int, event: String, audioType: String,
+        sliceNum: String?, pauseDurationMillis: Int, playtimeSecs: Int
+    ) async throws
 }
 
 public struct LiveRpApiClient: RpApiClient {
@@ -76,6 +85,19 @@ public struct LiveRpApiClient: RpApiClient {
 
     public func authState() async throws -> Auth {
         try await get(path: "api/auth-state", query: [:])
+    }
+
+    public func updateHistory(
+        songId: String, chan: Int, event: String, audioType: String,
+        sliceNum: String?, playPositionMillis: Int, playtimeSecs: Int,
+        pauseFlag: Bool
+    ) async throws {
+    }
+
+    public func updatePause(
+        songId: String, chan: Int, event: String, audioType: String,
+        sliceNum: String?, pauseDurationMillis: Int, playtimeSecs: Int
+    ) async throws {
     }
 
     private func get<T: Decodable>(path: String, query: [String: String]) async throws -> T {

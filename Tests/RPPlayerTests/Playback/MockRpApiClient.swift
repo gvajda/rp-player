@@ -1,6 +1,27 @@
 import Foundation
 @testable import RPPlayer
 
+struct UpdateHistoryArgs: Sendable, Equatable {
+    let songId: String
+    let chan: Int
+    let event: String
+    let audioType: String
+    let sliceNum: String?
+    let playPositionMillis: Int
+    let playtimeSecs: Int
+    let pauseFlag: Bool
+}
+
+struct UpdatePauseArgs: Sendable, Equatable {
+    let songId: String
+    let chan: Int
+    let event: String
+    let audioType: String
+    let sliceNum: String?
+    let pauseDurationMillis: Int
+    let playtimeSecs: Int
+}
+
 actor MockRpApiClient: RpApiClient {
     enum Call: Sendable, Equatable {
         case listChannels
@@ -12,6 +33,8 @@ actor MockRpApiClient: RpApiClient {
 
     private(set) var calls: [Call] = []
     private(set) var playCancellations: Int = 0
+    var updateHistoryCalls: [UpdateHistoryArgs] = []
+    var updatePauseCalls: [UpdatePauseArgs] = []
 
     var playDelayNanos: UInt64 = 0
     var blockResponses: [GetBlock] = []
@@ -98,5 +121,28 @@ actor MockRpApiClient: RpApiClient {
         calls.append(.authState)
         if let error = authStateError { throw error }
         return authStateResponse
+    }
+
+    func updateHistory(
+        songId: String, chan: Int, event: String, audioType: String,
+        sliceNum: String?, playPositionMillis: Int, playtimeSecs: Int,
+        pauseFlag: Bool
+    ) async throws {
+        updateHistoryCalls.append(UpdateHistoryArgs(
+            songId: songId, chan: chan, event: event, audioType: audioType,
+            sliceNum: sliceNum, playPositionMillis: playPositionMillis,
+            playtimeSecs: playtimeSecs, pauseFlag: pauseFlag
+        ))
+    }
+
+    func updatePause(
+        songId: String, chan: Int, event: String, audioType: String,
+        sliceNum: String?, pauseDurationMillis: Int, playtimeSecs: Int
+    ) async throws {
+        updatePauseCalls.append(UpdatePauseArgs(
+            songId: songId, chan: chan, event: event, audioType: audioType,
+            sliceNum: sliceNum, pauseDurationMillis: pauseDurationMillis,
+            playtimeSecs: playtimeSecs
+        ))
     }
 }
