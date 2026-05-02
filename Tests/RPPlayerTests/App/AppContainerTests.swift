@@ -73,6 +73,12 @@ final class AppContainerTests: XCTestCase {
             settingsViewModel: settingsViewModel,
             settingsWindowController: settingsWindowController,
             loginWindowController: loginWindowController,
+            songRegistry: SongRegistry(),
+            coordinator: coordinator,
+            api: api,
+            albumArtCache: cache,
+            keychainAuth: auth,
+            pastSongPopoverController: PastSongPopoverController(),
             coordinatorShutdown: coordinatorShutdown,
             onLaunchTasks: onLaunchTasks
         )

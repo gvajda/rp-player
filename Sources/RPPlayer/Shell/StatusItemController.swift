@@ -42,6 +42,18 @@ final class StatusItemController {
         }
     }
 
+    func toggleIfHidden() {
+        if !popover.isShown, let button = statusItem.button {
+            showHandler(button)
+        }
+    }
+
+    func closeIfShown() {
+        if popover.isShown {
+            closeHandler()
+        }
+    }
+
     @objc private func buttonClicked(_ sender: NSStatusBarButton) {
         toggle()
     }

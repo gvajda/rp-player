@@ -49,6 +49,12 @@ final class AppDelegateTests: XCTestCase {
                 settingsViewModel: settingsViewModel,
                 settingsWindowController: settingsWindowController,
                 loginWindowController: loginWindowController,
+                songRegistry: SongRegistry(),
+                coordinator: coordinator,
+                api: api,
+                albumArtCache: cache,
+                keychainAuth: auth,
+                pastSongPopoverController: PastSongPopoverController(),
                 coordinatorShutdown: { await coordinator.shutdown() },
                 onLaunchTasks: []
             )
@@ -113,6 +119,12 @@ final class AppDelegateTests: XCTestCase {
                 settingsViewModel: settingsViewModel,
                 settingsWindowController: settingsWindowController,
                 loginWindowController: loginWindowController,
+                songRegistry: SongRegistry(),
+                coordinator: coordinator,
+                api: api,
+                albumArtCache: cache,
+                keychainAuth: auth,
+                pastSongPopoverController: PastSongPopoverController(),
                 coordinatorShutdown: { didShutDown.signal() },
                 onLaunchTasks: []
             )

@@ -9,6 +9,12 @@ final class AppContainer {
     let settingsViewModel: SettingsViewModel
     let settingsWindowController: SettingsWindowController
     let loginWindowController: LoginWindowController
+    let songRegistry: SongRegistry
+    let coordinator: any PlaybackCoordinator
+    let api: any RpApiClient
+    let albumArtCache: any AlbumArtCache
+    let keychainAuth: any KeychainAuth
+    let pastSongPopoverController: PastSongPopoverController
 
     private let coordinatorShutdown: @Sendable () async -> Void
     private let onLaunchTasksClosures: [@Sendable () async -> Void]
@@ -19,6 +25,12 @@ final class AppContainer {
         settingsViewModel: SettingsViewModel,
         settingsWindowController: SettingsWindowController,
         loginWindowController: LoginWindowController,
+        songRegistry: SongRegistry,
+        coordinator: any PlaybackCoordinator,
+        api: any RpApiClient,
+        albumArtCache: any AlbumArtCache,
+        keychainAuth: any KeychainAuth,
+        pastSongPopoverController: PastSongPopoverController,
         coordinatorShutdown: @escaping @Sendable () async -> Void,
         onLaunchTasks: [@Sendable () async -> Void] = []
     ) {
@@ -27,6 +39,12 @@ final class AppContainer {
         self.settingsViewModel = settingsViewModel
         self.settingsWindowController = settingsWindowController
         self.loginWindowController = loginWindowController
+        self.songRegistry = songRegistry
+        self.coordinator = coordinator
+        self.api = api
+        self.albumArtCache = albumArtCache
+        self.keychainAuth = keychainAuth
+        self.pastSongPopoverController = pastSongPopoverController
         self.coordinatorShutdown = coordinatorShutdown
         self.onLaunchTasksClosures = onLaunchTasks
     }
@@ -230,6 +248,12 @@ extension AppContainer {
             settingsViewModel: settingsViewModel,
             settingsWindowController: settingsWindowController,
             loginWindowController: loginWindowController,
+            songRegistry: songRegistry,
+            coordinator: coordinator,
+            api: api,
+            albumArtCache: cache,
+            keychainAuth: keychainAuth,
+            pastSongPopoverController: PastSongPopoverController(),
             coordinatorShutdown: { await coordinator.shutdown(); await hogController.release() },
             onLaunchTasks: onLaunchTasks
         )

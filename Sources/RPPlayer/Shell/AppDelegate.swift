@@ -1,12 +1,15 @@
 import AppKit
 import Foundation
 import SwiftUI
+import UserNotifications
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let containerFactory: @MainActor () throws -> AppContainer
     private(set) var container: AppContainer?
     private(set) var statusItemController: StatusItemController?
+    // delegate is weak so AppDelegate holds a strong ref
+    private(set) var notificationClickRouter: NotificationClickRouter?
 
     init(containerFactory: @escaping @MainActor () throws -> AppContainer = { try .live() }) {
         self.containerFactory = containerFactory
@@ -32,7 +35,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { await container.notificationCoordinator.start() }
 
         let popover = PopoverController(rootView: AnyView(MiniPlayerView(viewModel: container.viewModel)))
-        statusItemController = StatusItemController(popover: popover)
+        let statusItemController = StatusItemController(popover: popover)
+        self.statusItemController = statusItemController
+
+        if Bundle.main.bundleIdentifier != nil && Bundle.main.bundleURL.pathExtension == "app" {
+            let router = NotificationClickRouter(
+                coordinator: container.coordinator,
+                registry: container.songRegistry,
+                api: container.api,
+                mainPresenter: { [weak statusItemController] in
+                    statusItemController?.toggleIfHidden()
+                },
+                pastSongPresenter: { [weak statusItemController, container] song in
+                    statusItemController?.closeIfShown()
+                    guard let anchor = statusItemController?.statusItem.button else { return }
+                    let viewModel = PastSongViewModel(
+                        song: song,
+                        albumArtCache: container.albumArtCache,
+                        auth: container.keychainAuth,
+                        api: container.api
+                    )
+                    container.pastSongPopoverController.present(viewModel: viewModel, relativeTo: anchor)
+                }
+            )
+            self.notificationClickRouter = router
+            UNUserNotificationCenter.current().delegate = router
+        }
 
         Task { await container.runOnLaunchTasks() }
     }
