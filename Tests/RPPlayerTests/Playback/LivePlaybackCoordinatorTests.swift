@@ -885,6 +885,71 @@ extension LivePlaybackCoordinatorTests {
         XCTAssertEqual(historyCalls.count, 0)  // promo skipped
     }
 
+    func testSkipPastLastSongFiresUpdateHistoryForNewBlock() async throws {
+        let api = MockRpApiClient()
+        let firstBlock = makeBlock(songs: [("s1", 60_000)])
+        let secondBlock = makeBlock(
+            prebuiltSongs: [
+                PlayListSong(songId: "s2", artist: "A", title: "T", album: "Al",
+                             duration: 60_000, event: "ev2", schedTime: nil,
+                             chan: nil, year: nil, asin: nil, rating: nil,
+                             userRating: nil, cover: nil, elapsed: 0, slideshow: nil,
+                             type: "M", sliceNum: "1"),
+            ]
+        )
+        await api.setBlockResponses([firstBlock, secondBlock])
+        let coord = LivePlaybackCoordinator(
+            api: api, engine: MockPlayerEngine(), logger: silentLogger(), bitrateProvider: { 0 }
+        )
+        try await coord.play(channelId: 0)
+        try await Task.sleep(nanoseconds: 50_000_000)
+        try await coord.skipForward()  // past last song → fetches new block
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let historyCalls = await api.updateHistoryCalls
+        XCTAssertEqual(historyCalls.count, 2)  // bootstrap + new block first song
+        XCTAssertEqual(historyCalls.last?.songId, "s2")
+        XCTAssertEqual(historyCalls.last?.playPositionMillis, 1)
+    }
+
+    func testPrefetchSwapFiresUpdateHistoryForNewBlock() async throws {
+        let api = MockRpApiClient()
+        let firstBlock = makeBlock(
+            endEvent: "100",
+            prebuiltSongs: [
+                PlayListSong(songId: "s1", artist: "A", title: "T", album: "Al",
+                             duration: 60_000, event: "100", schedTime: nil,
+                             chan: nil, year: nil, asin: nil, rating: nil,
+                             userRating: nil, cover: nil, elapsed: 0, slideshow: nil,
+                             type: "M", sliceNum: "5"),
+            ]
+        )
+        let prefetchBlock = makeBlock(
+            prebuiltSongs: [
+                PlayListSong(songId: "s2", artist: "A", title: "T2", album: "Al",
+                             duration: 60_000, event: "101", schedTime: nil,
+                             chan: nil, year: nil, asin: nil, rating: nil,
+                             userRating: nil, cover: nil, elapsed: 0, slideshow: nil,
+                             type: "M", sliceNum: "6"),
+            ]
+        )
+        await api.setBlockResponses([firstBlock, prefetchBlock])
+        let engine = MockPlayerEngine()
+        let coord = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 0 }
+        )
+        try await coord.play(channelId: 0)
+        try await Task.sleep(nanoseconds: 50_000_000)
+        // Trigger prefetch: last song with <10s remaining (totalDuration=60s, position=51s)
+        await engine.fire(.positionUpdate(seconds: 51.0))
+        try await Task.sleep(nanoseconds: 100_000_000)  // let prefetch complete
+        // Simulate EOF to trigger swap
+        await engine.fire(.fileEnded(reason: .eof))
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let historyCalls = await api.updateHistoryCalls
+        XCTAssertEqual(historyCalls.count, 2)  // bootstrap + swap
+        XCTAssertEqual(historyCalls.last?.songId, "s2")
+    }
+
     func testFavoritesChannelSendsNullSliceNum() async throws {
         let api = MockRpApiClient()
         let block = makeBlock(

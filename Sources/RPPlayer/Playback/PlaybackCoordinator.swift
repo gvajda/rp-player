@@ -215,6 +215,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
                 throw PlaybackCoordinatorError.engineError(message: String(describing: error))
             }
             emitNowPlaying(forSongIndex: 0)
+            fireSongStartTelemetry(song: songs[0], channelId: channelId, ppm: 1)
         }
     }
 
@@ -401,6 +402,9 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             return
         }
         emitNowPlaying(forSongIndex: 0)
+        if let channelId = currentChannelId {
+            fireSongStartTelemetry(song: orderedSongs[0], channelId: channelId)
+        }
     }
 }
 
