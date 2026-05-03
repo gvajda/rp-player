@@ -1101,6 +1101,15 @@ extension LivePlaybackCoordinatorTests {
 
         let npAfter = await coordinator.nowPlaying
         XCTAssertNil(npAfter)
+
+        // currentChannelId is private; skipForward throws .notPlaying when both
+        // currentBlock and currentChannelId are nil — confirming the full reset.
+        do {
+            try await coordinator.skipForward()
+            XCTFail("expected notPlaying")
+        } catch let error as PlaybackCoordinatorError {
+            XCTAssertEqual(error, .notPlaying)
+        }
     }
 
     func testFileEndedWithArbitraryErrorCodeYieldsGenericError() async throws {

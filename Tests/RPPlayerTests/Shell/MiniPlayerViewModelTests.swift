@@ -371,6 +371,8 @@ final class MiniPlayerViewModelTests: XCTestCase {
 
         XCTAssertEqual(sut.errorMessage, "Audio device lost")
         XCTAssertEqual(popoverCallCount, 1)
+        XCTAssertFalse(sut.isPlaying)
+        XCTAssertNil(sut.nowPlaying)
     }
 
     func testUserActionClearsErrorMessageFromCoordinatorStream() async throws {

@@ -121,6 +121,8 @@ final class MiniPlayerViewModel: ObservableObject {
             for await message in errorsStream {
                 guard let self else { return }
                 self.errorMessage = message
+                self.isPlaying = false
+                self.nowPlaying = nil
                 self.showPopoverIfNeeded()
             }
         }

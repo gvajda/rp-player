@@ -350,6 +350,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         prefetchTask?.cancel()
         prefetchTask = nil
         prefetchedBlock = nil
+        currentChannelId = nil
         currentBlock = nil
         orderedSongs = []
         startsAt = []
