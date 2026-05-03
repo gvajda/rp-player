@@ -71,6 +71,7 @@ struct SettingsView: View {
                 Text("Dark").tag(AppearanceMode.dark)
             }
             .pickerStyle(.menu)
+            Toggle("Ambient background from album art", isOn: ambientBackgroundBinding)
         }
     }
 
@@ -142,6 +143,13 @@ struct SettingsView: View {
         Binding(
             get: { viewModel.appearance },
             set: { newValue in Task { await viewModel.setAppearance(newValue) } }
+        )
+    }
+
+    private var ambientBackgroundBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.ambientBackgroundEnabled },
+            set: { newValue in Task { await viewModel.setAmbientBackgroundEnabled(newValue) } }
         )
     }
 
