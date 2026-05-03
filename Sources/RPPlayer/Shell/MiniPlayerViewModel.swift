@@ -198,8 +198,9 @@ final class MiniPlayerViewModel: ObservableObject {
     }
 
     func openCurrentSongInBrowser() {
-        guard let songId = nowPlaying?.song.songId,
-              let url = URL(string: "https://radioparadise.com/music/song/\(songId)") else { return }
+        guard let np = nowPlaying,
+              let id = Int(np.song.songId), id > 0,
+              let url = URL(string: "https://radioparadise.com/music/song/\(id)") else { return }
         NSWorkspace.shared.open(url)
     }
 
