@@ -5,6 +5,7 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            supportSection
             audioSection
             notificationsSection
             appearanceSection
@@ -14,6 +15,24 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .frame(width: 480, height: 560)
         .task { await viewModel.start() }
+    }
+
+    private var supportSection: some View {
+        Section {
+            Link(destination: URL(string: "https://radioparadise.com/donate")!) {
+                Label {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Support Radio Paradise")
+                        Text("Opens radioparadise.com in your browser")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } icon: {
+                    Image(systemName: "heart.fill")
+                        .foregroundStyle(.pink)
+                }
+            }
+        }
     }
 
     private var audioSection: some View {

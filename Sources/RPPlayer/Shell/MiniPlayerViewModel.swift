@@ -197,6 +197,16 @@ final class MiniPlayerViewModel: ObservableObject {
         openSettingsAction()
     }
 
+    func openCurrentSongInBrowser() {
+        guard let songId = nowPlaying?.song.songId,
+              let url = URL(string: "https://radioparadise.com/music/song/\(songId)") else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    func openAbout() {
+        NSWorkspace.shared.open(URL(string: "https://github.com/gvajda/rp-player")!)
+    }
+
     func refreshAuthState() {
         isSignedIn = auth.isLoggedIn
     }
