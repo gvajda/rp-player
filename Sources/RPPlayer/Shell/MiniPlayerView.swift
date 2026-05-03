@@ -130,6 +130,7 @@ struct MiniPlayerView: View {
                     Menu {
                         Section("RP Player") {
                             Button("Settings…") { viewModel.openSettings() }
+                            Button("Upcoming Program…") { viewModel.openUpcoming() }
                             Button("Open Song in Browser") { viewModel.openCurrentSongInBrowser() }
                                 .disabled(viewModel.nowPlaying == nil)
                         }

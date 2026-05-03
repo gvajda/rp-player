@@ -39,6 +39,7 @@ final class MiniPlayerViewModel: ObservableObject {
     private var lastSongStartSeconds: Double?
 
     var showPopoverIfNeeded: @MainActor () -> Void = {}
+    var upcomingAction: @MainActor () -> Void = {}
 
     init(
         coordinator: any PlaybackCoordinator,
@@ -261,6 +262,10 @@ final class MiniPlayerViewModel: ObservableObject {
 
     func openAbout() {
         NSWorkspace.shared.open(URL(string: "https://github.com/gvajda/rp-player")!)
+    }
+
+    func openUpcoming() {
+        upcomingAction()
     }
 
     func refreshAuthState() {
