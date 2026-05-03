@@ -39,6 +39,8 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     private var prefetchTask: Task<Void, Never>?
     private var isShutdown = false
     private var errorsContinuation: AsyncStream<String>.Continuation?
+    private var consecutivePlaybackFailures = 0
+    private static let maxConsecutivePlaybackFailures = 3
 
     public var errors: AsyncStream<String>
 
@@ -319,6 +321,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         switch event {
         case .fileLoaded:
             logger.debug("engine fileLoaded")
+            consecutivePlaybackFailures = 0
         case .positionUpdate(let seconds):
             currentPositionSeconds = seconds
             for c in positionContinuations.values { c.yield(seconds) }
@@ -339,7 +342,11 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
                 await swapToPrefetchedBlockIfAvailable()
             }
             if case .error(let code) = reason {
-                await handlePlaybackError(code: code)
+                if Self.isUnplayableBlockCode(code) {
+                    await advancePastUnplayableBlock(failureCode: code)
+                } else {
+                    await handlePlaybackError(code: code)
+                }
             }
         case .error(let message):
             logger.error("player engine reported error: \(message)")
@@ -366,6 +373,73 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             ? "Audio device unavailable. Check System Settings → Sound → Output."
             : "Playback stopped unexpectedly (error \(code))."
         errorsContinuation?.yield(message)
+    }
+
+    // mpv error codes that mean "this specific file/block is unplayable" (bad
+    // container, format-detection failure, empty body, etc.) rather than a
+    // device/system problem. Observed in the wild: -16 NOTHING_TO_PLAY on a
+    // 5 s promo .m4a returned by api/play. Wiping all state on these errors
+    // strands the user on the same channel because the server cursor still
+    // points at the broken block on the next bootstrap.
+    private static func isUnplayableBlockCode(_ code: Int) -> Bool {
+        return code == -13 // LOADING_FAILED
+            || code == -16 // NOTHING_TO_PLAY
+            || code == -17 // UNKNOWN_FORMAT
+            || code == -18 // UNSUPPORTED
+    }
+
+    private func advancePastUnplayableBlock(failureCode: Int) async {
+        consecutivePlaybackFailures += 1
+        guard consecutivePlaybackFailures <= Self.maxConsecutivePlaybackFailures else {
+            logger.error("too many consecutive unplayable blocks (\(consecutivePlaybackFailures)); surfacing error \(failureCode)")
+            await handlePlaybackError(code: failureCode)
+            return
+        }
+        guard let channelId = currentChannelId, let block = currentBlock else {
+            await handlePlaybackError(code: failureCode)
+            return
+        }
+
+        let lastSong = orderedSongs.last
+        let lastEvent: Int = Int(lastSong?.event ?? "") ?? Int(block.endEvent ?? "") ?? 0
+        let audioType = lastSong?.type ?? "M"
+        let sliceNum = lastSong?.sliceNum
+
+        prefetchTask?.cancel()
+        prefetchTask = nil
+        prefetchedBlock = nil
+
+        logger.info("advancing past unplayable block (code \(failureCode)): channel=\(channelId) event=\(lastEvent) audioType=\(audioType) sliceNum=\(sliceNum ?? "null") attempt=\(consecutivePlaybackFailures)/\(Self.maxConsecutivePlaybackFailures)")
+        do {
+            let bitrate = await bitrateProvider()
+            let nextBlock = try await api.play(
+                channel: channelId, bitrate: bitrate, event: lastEvent, action: .play,
+                audioType: audioType, episodeId: 0, sliceNum: sliceNum
+            )
+            let songs = BlockSongs.orderedSongs(from: nextBlock)
+            guard !songs.isEmpty else {
+                await handlePlaybackError(code: failureCode)
+                return
+            }
+            let newStarts = BlockSongs.startsAtSeconds(songs: songs)
+            currentBlock = nextBlock
+            orderedSongs = songs
+            startsAt = newStarts
+            currentSongIndex = 0
+            let startPos = nextBlock.cue > 0 ? Double(nextBlock.cue) / 1000.0 : 0
+            currentPositionSeconds = startPos
+            guard let url = URL(string: nextBlock.url) else {
+                await handlePlaybackError(code: failureCode)
+                return
+            }
+            let startSeconds: Double? = startPos > 0 ? startPos : nil
+            try await engine.play(url: url, startSeconds: startSeconds)
+            emitNowPlaying(forSongIndex: 0)
+            fireSongStartTelemetry(song: songs[0], channelId: channelId, ppm: 1)
+        } catch {
+            logger.error("advance past unplayable block failed: \(error)")
+            await handlePlaybackError(code: failureCode)
+        }
     }
 
     private func emitNowPlaying(forSongIndex idx: Int) {

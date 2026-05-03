@@ -1142,6 +1142,140 @@ extension LivePlaybackCoordinatorTests {
         XCTAssertEqual(errorMessage, "Playback stopped unexpectedly (error -99).")
     }
 
+    func testFileEndedWithUnplayableCodeAdvancesToNextBlock() async throws {
+        let api = MockRpApiClient()
+        let badPromo = makeBlock(
+            url: "https://example.com/bad-promo.m4a",
+            endEvent: "999",
+            prebuiltSongs: [makeSong(id: "promo", duration: 5_000, elapsed: 0, event: "999")]
+        )
+        let recovery = makeBlock(
+            url: "https://example.com/recovery.flac",
+            endEvent: "1000",
+            prebuiltSongs: [makeSong(id: "good", duration: 60_000, elapsed: 0, event: "1000")]
+        )
+        await api.setBlockResponses([badPromo, recovery])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
+        )
+
+        try await coordinator.play(channelId: 0)
+        await engine.fire(.fileEnded(reason: .error(code: -16)))
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        let np = await coordinator.nowPlaying
+        XCTAssertEqual(np?.song.songId, "good", "must advance to recovery block, not wipe state")
+        let engineCalls = await engine.recordedCalls()
+        XCTAssertTrue(engineCalls.contains(.play(url: URL(string: "https://example.com/recovery.flac")!, startSeconds: nil)))
+
+        let calls = await api.calls
+        // Two play calls: bootstrap (event=0,start) + advance (event=999,play,P).
+        XCTAssertEqual(calls.count, 2)
+        guard case let .play(_, _, event, action, audioType, _, _) = calls[1] else {
+            return XCTFail("expected second .play call")
+        }
+        XCTAssertEqual(event, 999)
+        XCTAssertEqual(action, .play)
+        XCTAssertEqual(audioType, "M") // makeSong defaults type=nil → fallback "M"
+    }
+
+    func testFileEndedWithUnplayableCodeSurfacesErrorAfterRepeatedFailures() async throws {
+        let api = MockRpApiClient()
+        let badBlock = makeBlock(
+            endEvent: "100",
+            prebuiltSongs: [makeSong(id: "bad", duration: 5_000, elapsed: 0, event: "100")]
+        )
+        // Bootstrap + 3 successful retry fetches; the 4th -16 trips the cap.
+        await api.setBlockResponses([badBlock, badBlock, badBlock, badBlock])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
+        )
+
+        let errorsStream = await coordinator.errors
+        let collector = Task { () -> String? in
+            for await msg in errorsStream { return msg }
+            return nil
+        }
+
+        try await coordinator.play(channelId: 0)
+        // Each -16 triggers an advance; no fileLoaded between them, so the
+        // failure counter never resets.
+        for _ in 0..<4 {
+            await engine.fire(.fileEnded(reason: .error(code: -16)))
+            try await Task.sleep(nanoseconds: 80_000_000)
+        }
+
+        let np = await coordinator.nowPlaying
+        XCTAssertNil(np, "state must be wiped after exceeding retry cap")
+        await coordinator.shutdown()
+        let message = await collector.value
+        XCTAssertEqual(message, "Playback stopped unexpectedly (error -16).")
+    }
+
+    func testFileLoadedResetsUnplayableFailureCounter() async throws {
+        let api = MockRpApiClient()
+        let bad = makeBlock(
+            endEvent: "1",
+            prebuiltSongs: [makeSong(id: "bad", duration: 5_000, elapsed: 0, event: "1")]
+        )
+        let mid = makeBlock(
+            url: "https://example.com/mid.flac",
+            endEvent: "2",
+            prebuiltSongs: [makeSong(id: "mid", duration: 60_000, elapsed: 0, event: "2")]
+        )
+        let recovery = makeBlock(
+            url: "https://example.com/recovery.flac",
+            endEvent: "3",
+            prebuiltSongs: [makeSong(id: "recovery", duration: 60_000, elapsed: 0, event: "3")]
+        )
+        // Bootstrap + 3 advances to burn the budget → land on mid.
+        // After fileLoaded resets the counter, 3 more advances → land on recovery.
+        await api.setBlockResponses([bad, bad, bad, mid, bad, bad, recovery])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
+        )
+
+        try await coordinator.play(channelId: 0)
+        for _ in 0..<3 {
+            await engine.fire(.fileEnded(reason: .error(code: -16)))
+            try await Task.sleep(nanoseconds: 80_000_000)
+        }
+        let midNp = await coordinator.nowPlaying
+        XCTAssertEqual(midNp?.song.songId, "mid")
+
+        await engine.fire(.fileLoaded)
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        for _ in 0..<3 {
+            await engine.fire(.fileEnded(reason: .error(code: -16)))
+            try await Task.sleep(nanoseconds: 80_000_000)
+        }
+        let np = await coordinator.nowPlaying
+        XCTAssertEqual(np?.song.songId, "recovery", "counter reset by fileLoaded must permit further recovery")
+    }
+
+    func testDeviceErrorCodeStillSurfacesWithoutAdvance() async throws {
+        let api = MockRpApiClient()
+        let block = makeBlock(songs: [("s1", 60_000)])
+        await api.setBlockResponses([block])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 0 }
+        )
+
+        try await coordinator.play(channelId: 0)
+        await engine.fire(.fileEnded(reason: .error(code: -14)))
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        let calls = await api.calls
+        XCTAssertEqual(calls.count, 1, "device errors must not trigger advance")
+        let np = await coordinator.nowPlaying
+        XCTAssertNil(np)
+    }
+
     func testFileEndedWithEofDoesNotYieldError() async throws {
         let api = MockRpApiClient()
         let block = makeBlock(songs: [("s1", 60_000)])
