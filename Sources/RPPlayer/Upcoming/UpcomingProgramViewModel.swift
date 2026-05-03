@@ -20,6 +20,7 @@ final class UpcomingProgramViewModel: ObservableObject {
     @Published private(set) var isLoading = false
     @Published private(set) var lastUpdated: Date?
     @Published private(set) var errorMessage: String?
+    @Published private(set) var skeletonColumnCount: Int = 4
 
     private let api: any RpApiClient
     private let albumArtCache: any AlbumArtCache
@@ -60,6 +61,8 @@ final class UpcomingProgramViewModel: ObservableObject {
             guard let id = Int($0.chan) else { return false }
             return id != 42 && id != 99 && !hiddenIds.contains(id)
         }
+
+        skeletonColumnCount = enabledChannels.count
 
         // Fetch blocks concurrently, accumulating across multiple blocks until rowCount is met.
         let api = self.api

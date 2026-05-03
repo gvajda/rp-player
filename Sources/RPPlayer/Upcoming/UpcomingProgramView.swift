@@ -43,7 +43,7 @@ struct UpcomingSongCardView: View {
                    let value = Int(rating), value > 0 {
                     Text("★ \(value)")
                         .font(.system(size: 10))
-                        .foregroundStyle(.yellow)
+                        .foregroundStyle(.primary)
                 }
             }
             Text(row.song.artist)
@@ -165,8 +165,7 @@ struct UpcomingProgramView: View {
             ScrollView(.horizontal, showsIndicators: true) {
                 HStack(alignment: .top, spacing: 6) {
                     if viewModel.isLoading {
-                        let count = viewModel.columns.isEmpty ? skeletonColumnCount : viewModel.columns.count
-                        ForEach(0..<count, id: \.self) { _ in
+                        ForEach(0..<viewModel.skeletonColumnCount, id: \.self) { _ in
                             SkeletonColumnView(
                                 title: "Loading…",
                                 rowCount: skeletonRowCount
