@@ -78,7 +78,7 @@ final class UpcomingProgramViewModelTests: XCTestCase {
         let api = MockRpApiClient()
         let channels = [makeChannel(id: 0), makeChannel(id: 1)]
         await api.setListChannelsResponse(channels)
-        await api.setGetBlockResponses([makeBlock(songs: 5), makeBlock(songs: 5)])
+        await api.setBlockResponses([makeBlock(songs: 5), makeBlock(songs: 5)])
 
         var settings = AppSettings.default
         settings.upcomingRowCount = 3
@@ -94,7 +94,7 @@ final class UpcomingProgramViewModelTests: XCTestCase {
         let api = MockRpApiClient()
         let channels = [makeChannel(id: 0), makeChannel(id: 1), makeChannel(id: 2)]
         await api.setListChannelsResponse(channels)
-        await api.setGetBlockResponses([makeBlock(), makeBlock()])
+        await api.setBlockResponses([makeBlock(), makeBlock()])
 
         var settings = AppSettings.default
         settings.upcomingHiddenChannelIds = [1]
@@ -109,7 +109,7 @@ final class UpcomingProgramViewModelTests: XCTestCase {
         let api = MockRpApiClient()
         let channels = [makeChannel(id: 0), makeChannel(id: 42), makeChannel(id: 99)]
         await api.setListChannelsResponse(channels)
-        await api.setGetBlockResponses([makeBlock()])
+        await api.setBlockResponses([makeBlock()])
 
         let vm = makeVM(api: api)
         await vm.load()
@@ -121,7 +121,7 @@ final class UpcomingProgramViewModelTests: XCTestCase {
     func testLoadSetsLastUpdated() async throws {
         let api = MockRpApiClient()
         await api.setListChannelsResponse([makeChannel(id: 0)])
-        await api.setGetBlockResponses([makeBlock()])
+        await api.setBlockResponses([makeBlock()])
 
         let vm = makeVM(api: api)
         XCTAssertNil(vm.lastUpdated)
@@ -132,7 +132,7 @@ final class UpcomingProgramViewModelTests: XCTestCase {
     func testLoadIsNotLoadingAfterCompletion() async throws {
         let api = MockRpApiClient()
         await api.setListChannelsResponse([makeChannel(id: 0)])
-        await api.setGetBlockResponses([makeBlock()])
+        await api.setBlockResponses([makeBlock()])
 
         let vm = makeVM(api: api)
         await vm.load()
@@ -143,14 +143,14 @@ final class UpcomingProgramViewModelTests: XCTestCase {
         let api = MockRpApiClient()
         let channels = [makeChannel(id: 0)]
         await api.setListChannelsResponse(channels)
-        await api.setGetBlockResponses([makeBlock(songs: 2)])
+        await api.setBlockResponses([makeBlock(songs: 2)])
 
         let vm = makeVM(api: api)
         await vm.load()
         XCTAssertEqual(vm.columns[0].songs.count, 2)
 
         await api.setListChannelsResponse(channels)
-        await api.setGetBlockResponses([makeBlock(songs: 4)])
+        await api.setBlockResponses([makeBlock(songs: 4)])
         await vm.refresh()
         XCTAssertEqual(vm.columns[0].songs.count, 4)
     }
@@ -160,7 +160,7 @@ final class UpcomingProgramViewModelTests: XCTestCase {
         let channels = [makeChannel(id: 0), makeChannel(id: 1)]
         await api.setListChannelsResponse(channels)
         // Only one response: channel 0 succeeds, channel 1 exhausts the queue and throws
-        await api.setGetBlockResponses([makeBlock(songs: 3)])
+        await api.setBlockResponses([makeBlock(songs: 3)])
 
         let vm = makeVM(api: api)
         await vm.load()
@@ -175,7 +175,7 @@ final class UpcomingProgramViewModelTests: XCTestCase {
     func testLoadCapsRowsAtUpcomingRowCount() async throws {
         let api = MockRpApiClient()
         await api.setListChannelsResponse([makeChannel(id: 0)])
-        await api.setGetBlockResponses([makeBlock(songs: 10)])
+        await api.setBlockResponses([makeBlock(songs: 10)])
 
         var settings = AppSettings.default
         settings.upcomingRowCount = 4
@@ -215,7 +215,7 @@ final class UpcomingProgramViewModelTests: XCTestCase {
             song: ["0": promoSong, "1": musicSong0, "2": musicSong1],
             channel: nil, event: "100", endEvent: nil, type: "M", ext: nil
         )
-        await api.setGetBlockResponses([mixedBlock])
+        await api.setBlockResponses([mixedBlock])
 
         var settings = AppSettings.default
         settings.upcomingRowCount = 3
@@ -231,7 +231,7 @@ final class UpcomingProgramViewModelTests: XCTestCase {
         let api = MockRpApiClient()
         await api.setListChannelsResponse([makeChannel(id: 0)])
         // makeBlock returns endEvent "456", so second fetch uses event=456
-        await api.setGetBlockResponses([makeBlock(songs: 2), makeBlock(songs: 2)])
+        await api.setBlockResponses([makeBlock(songs: 2), makeBlock(songs: 2)])
 
         var settings = AppSettings.default
         settings.upcomingRowCount = 4
@@ -244,7 +244,7 @@ final class UpcomingProgramViewModelTests: XCTestCase {
     func testCurrentChannelAndSongMirrorCoordinator() async throws {
         let api = MockRpApiClient()
         await api.setListChannelsResponse([makeChannel(id: 0)])
-        await api.setGetBlockResponses([makeBlock()])
+        await api.setBlockResponses([makeBlock()])
         let coord = MockPlaybackCoordinator()
         let vm = UpcomingProgramViewModel(
             api: api,

@@ -98,6 +98,10 @@ final class UpcomingProgramViewModel: ObservableObject {
         skeletonColumnCount = enabledChannels.count
 
         // Fetch blocks concurrently, accumulating across multiple blocks until rowCount is met.
+        // Uses api/play (the same endpoint the live coordinator uses) so the
+        // upcoming list matches what will actually play. First call per channel
+        // bootstraps with event=0 / action=start; subsequent calls advance with
+        // action=play + the last song's audio_type and slice_num.
         let api = self.api
         var rowResults: [(Int, Channel, [PlayListSong])] = []
         await withTaskGroup(of: (Int, Channel, [PlayListSong]).self) { group in
@@ -106,16 +110,30 @@ final class UpcomingProgramViewModel: ObservableObject {
                 group.addTask {
                     var songs: [PlayListSong] = []
                     var event = 0
+                    var action: PlayAction = .start
+                    var audioType: String? = nil
+                    var sliceNum: String? = nil
+                    var episodeId: Int? = nil
                     while songs.count < rowCount {
-                        guard let block = try? await api.getBlock(channel: chanId, bitrate: bitrate, event: event) else { break }
-                        let newSongs = BlockSongs.orderedSongs(from: block)
+                        guard let block = try? await api.play(
+                            channel: chanId, bitrate: bitrate, event: event,
+                            action: action, audioType: audioType,
+                            episodeId: episodeId, sliceNum: sliceNum
+                        ) else { break }
+                        let blockSongs = BlockSongs.orderedSongs(from: block)
+                        let visible = blockSongs
                             .filter { $0.type != "P" && $0.songId != "0" }
-                        songs.append(contentsOf: newSongs)
+                        songs.append(contentsOf: visible)
                         guard let endEventStr = block.endEvent,
                               let nextEvent = Int(endEventStr),
                               nextEvent != event,
-                              songs.count < rowCount else { break }
+                              songs.count < rowCount,
+                              let lastSong = blockSongs.last else { break }
                         event = nextEvent
+                        action = .play
+                        audioType = lastSong.type ?? "M"
+                        sliceNum = lastSong.sliceNum
+                        episodeId = 0
                     }
                     return (i, channel, Array(songs.prefix(rowCount)))
                 }
