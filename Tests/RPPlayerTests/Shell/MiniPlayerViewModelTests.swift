@@ -360,4 +360,26 @@ final class MiniPlayerViewModelTests: XCTestCase {
         XCTAssertEqual(sut.songElapsedSeconds, 180, accuracy: 0.001)
         XCTAssertEqual(sut.songDurationSeconds, 180, accuracy: 0.001)
     }
+
+    func testCoordinatorErrorSetsErrorMessageAndCallsShowPopover() async throws {
+        var popoverCallCount = 0
+        sut.showPopoverIfNeeded = { popoverCallCount += 1 }
+        await sut.start()
+
+        await coordinator.errorsContinuation.yield("Audio device lost")
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(sut.errorMessage, "Audio device lost")
+        XCTAssertEqual(popoverCallCount, 1)
+    }
+
+    func testUserActionClearsErrorMessageFromCoordinatorStream() async throws {
+        await coordinator.setNextError(NSError(domain: "test", code: 1))
+        await sut.start()
+        await sut.skipForward()
+        XCTAssertNotNil(sut.errorMessage)
+
+        await sut.togglePlayPause()
+        XCTAssertNil(sut.errorMessage)
+    }
 }

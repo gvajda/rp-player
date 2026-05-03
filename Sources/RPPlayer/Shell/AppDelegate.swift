@@ -38,6 +38,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let statusItemController = StatusItemController(popover: popover)
         self.statusItemController = statusItemController
 
+        container.viewModel.showPopoverIfNeeded = { [weak statusItemController] in
+            statusItemController?.showPopoverIfNeeded()
+        }
+
         if Bundle.main.bundleIdentifier != nil && Bundle.main.bundleURL.pathExtension == "app" {
             let router = NotificationClickRouter(
                 coordinator: container.coordinator,

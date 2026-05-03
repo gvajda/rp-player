@@ -30,6 +30,8 @@ final class MiniPlayerViewModel: ObservableObject {
     private var lastLoadedCoverPath: String?
     private var lastSongStartSeconds: Double?
 
+    var showPopoverIfNeeded: @MainActor () -> Void = {}
+
     init(
         coordinator: any PlaybackCoordinator,
         api: any RpApiClient,
@@ -108,6 +110,15 @@ final class MiniPlayerViewModel: ObservableObject {
                     self.songElapsedSeconds = min(elapsed, duration)
                     self.songDurationSeconds = duration
                 }
+            }
+        }
+
+        let errorsStream = await coordinator.errors
+        Task { [weak self] in
+            for await message in errorsStream {
+                guard let self else { return }
+                self.errorMessage = message
+                self.showPopoverIfNeeded()
             }
         }
     }
