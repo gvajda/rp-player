@@ -57,6 +57,14 @@ final class AppDelegateTests: XCTestCase {
                 albumArtCache: cache,
                 keychainAuth: auth,
                 pastSongPopoverController: PastSongPopoverController(),
+                upcomingWindowController: UpcomingWindowController(
+                    viewModel: UpcomingProgramViewModel(
+                        api: MockRpApiClient(),
+                        albumArtCache: StubAlbumArtCache(),
+                        configStore: StubConfigStore(initial: .default),
+                        paletteExtractor: StubAmbientPaletteExtractor()
+                    )
+                ),
                 coordinatorShutdown: { await coordinator.shutdown() },
                 onLaunchTasks: []
             )
@@ -128,6 +136,14 @@ final class AppDelegateTests: XCTestCase {
                 albumArtCache: cache,
                 keychainAuth: auth,
                 pastSongPopoverController: PastSongPopoverController(),
+                upcomingWindowController: UpcomingWindowController(
+                    viewModel: UpcomingProgramViewModel(
+                        api: MockRpApiClient(),
+                        albumArtCache: StubAlbumArtCache(),
+                        configStore: StubConfigStore(initial: .default),
+                        paletteExtractor: StubAmbientPaletteExtractor()
+                    )
+                ),
                 coordinatorShutdown: { didShutDown.signal() },
                 onLaunchTasks: []
             )

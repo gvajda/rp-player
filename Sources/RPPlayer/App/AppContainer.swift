@@ -16,6 +16,7 @@ final class AppContainer {
     let albumArtCache: any AlbumArtCache
     let keychainAuth: any KeychainAuth
     let pastSongPopoverController: PastSongPopoverController
+    let upcomingWindowController: UpcomingWindowController
 
     private let coordinatorShutdown: @Sendable () async -> Void
     private let onLaunchTasksClosures: [@Sendable () async -> Void]
@@ -32,6 +33,7 @@ final class AppContainer {
         albumArtCache: any AlbumArtCache,
         keychainAuth: any KeychainAuth,
         pastSongPopoverController: PastSongPopoverController,
+        upcomingWindowController: UpcomingWindowController,
         coordinatorShutdown: @escaping @Sendable () async -> Void,
         onLaunchTasks: [@Sendable () async -> Void] = []
     ) {
@@ -46,6 +48,7 @@ final class AppContainer {
         self.albumArtCache = albumArtCache
         self.keychainAuth = keychainAuth
         self.pastSongPopoverController = pastSongPopoverController
+        self.upcomingWindowController = upcomingWindowController
         self.coordinatorShutdown = coordinatorShutdown
         self.onLaunchTasksClosures = onLaunchTasks
     }
@@ -240,6 +243,15 @@ extension AppContainer {
             }
         )
 
+        let upcomingViewModel = UpcomingProgramViewModel(
+            api: api,
+            albumArtCache: cache,
+            configStore: store ?? NoopConfigStore(),
+            paletteExtractor: AmbientPaletteExtractor()
+        )
+        let upcomingWindowController = UpcomingWindowController(viewModel: upcomingViewModel)
+        viewModel.upcomingAction = { [upcomingWindowController] in upcomingWindowController.show() }
+
         let onLaunchTasks: [@Sendable () async -> Void] = [
             { [logger] in
                 do {
@@ -270,6 +282,7 @@ extension AppContainer {
             albumArtCache: cache,
             keychainAuth: keychainAuth,
             pastSongPopoverController: PastSongPopoverController(),
+            upcomingWindowController: upcomingWindowController,
             coordinatorShutdown: { await coordinator.shutdown(); await hogController.release() },
             onLaunchTasks: onLaunchTasks
         )

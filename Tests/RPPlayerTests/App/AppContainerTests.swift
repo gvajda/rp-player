@@ -82,6 +82,14 @@ final class AppContainerTests: XCTestCase {
             albumArtCache: cache,
             keychainAuth: auth,
             pastSongPopoverController: PastSongPopoverController(),
+            upcomingWindowController: UpcomingWindowController(
+                viewModel: UpcomingProgramViewModel(
+                    api: MockRpApiClient(),
+                    albumArtCache: StubAlbumArtCache(),
+                    configStore: StubConfigStore(initial: .default),
+                    paletteExtractor: StubAmbientPaletteExtractor()
+                )
+            ),
             coordinatorShutdown: coordinatorShutdown,
             onLaunchTasks: onLaunchTasks
         )
