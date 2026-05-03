@@ -34,11 +34,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         Task { await container.notificationCoordinator.start() }
 
+        // Start the view model now (rather than lazily from MiniPlayerView.task)
+        // so the menu-bar tooltip and right-click menu reflect live state before
+        // the popover has ever been opened. start() is idempotent.
+        Task { await container.viewModel.start() }
+
         let popover = PopoverController(rootView: AnyView(MiniPlayerView(viewModel: container.viewModel)))
         let statusItemController = StatusItemController(
             popover: popover,
             menuProvider: { [weak container] in
                 ContextMenuBuilder.build(viewModel: container?.viewModel)
+            },
+            remainingSecondsProvider: { [weak container] in
+                container?.viewModel.remainingSecondsForTooltip
             }
         )
         self.statusItemController = statusItemController

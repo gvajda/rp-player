@@ -37,6 +37,13 @@ final class MiniPlayerViewModel: ObservableObject {
     private var inFlightChannelId: Int?
     private var lastLoadedCoverPath: String?
     private var lastSongStartSeconds: Double?
+    private var hasStarted = false
+
+    var remainingSecondsForTooltip: Int? {
+        guard nowPlaying != nil, songDurationSeconds > 0 else { return nil }
+        let remaining = songDurationSeconds - songElapsedSeconds
+        return max(0, Int(remaining.rounded()))
+    }
 
     var showPopoverIfNeeded: @MainActor () -> Void = {}
     var upcomingAction: @MainActor () -> Void = {}
@@ -64,6 +71,8 @@ final class MiniPlayerViewModel: ObservableObject {
     }
 
     func start() async {
+        if hasStarted { return }
+        hasStarted = true
         subscriptionTask?.cancel()
         subscriptionTask = nil
         positionSubscriptionTask?.cancel()
@@ -171,6 +180,7 @@ final class MiniPlayerViewModel: ObservableObject {
         errorsSubscriptionTask?.cancel(); errorsSubscriptionTask = nil
         settingsSubscriptionTask?.cancel(); settingsSubscriptionTask = nil
         paletteTask?.cancel(); paletteTask = nil
+        hasStarted = false
     }
 
     func togglePlayPause() async {

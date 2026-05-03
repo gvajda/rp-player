@@ -409,4 +409,33 @@ final class MiniPlayerViewModelTests: XCTestCase {
         sut.openUpcoming()
         XCTAssertEqual(callCount, 1)
     }
+
+    func testRemainingSecondsForTooltipNilWhenNothingPlaying() {
+        XCTAssertNil(sut.remainingSecondsForTooltip)
+    }
+
+    func testRemainingSecondsForTooltipReflectsPosition() async throws {
+        let np = NowPlaying.fixture(songStartSeconds: 100, songEndSeconds: 280)
+        await coordinator.setNowPlaying(np)
+        await sut.start()
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        await coordinator.firePosition(220)
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        // duration 180, elapsed 120 → remaining 60
+        XCTAssertEqual(sut.remainingSecondsForTooltip, 60)
+    }
+
+    func testRemainingSecondsForTooltipClampedAtZero() async throws {
+        let np = NowPlaying.fixture(songStartSeconds: 100, songEndSeconds: 280)
+        await coordinator.setNowPlaying(np)
+        await sut.start()
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        await coordinator.firePosition(500)
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(sut.remainingSecondsForTooltip, 0)
+    }
 }

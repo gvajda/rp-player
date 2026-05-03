@@ -7,11 +7,18 @@ final class StatusItemController {
     private let showHandler: (NSView) -> Void
     private let closeHandler: () -> Void
     private let menuProvider: (() -> NSMenu)?
+    private let remainingSecondsProvider: (@MainActor () -> Int?)?
+
+    private let tooltipWindow = HoverTooltipWindow()
+    private var hoverTracker: HoverTracker?
+    private var hoverTimer: Timer?
+    private var showWorkItem: DispatchWorkItem?
 
     init(
         statusBar: NSStatusBar = .system,
         popover: PopoverController,
         menuProvider: (() -> NSMenu)? = nil,
+        remainingSecondsProvider: (@MainActor () -> Int?)? = nil,
         show: ((NSView) -> Void)? = nil,
         close: (() -> Void)? = nil
     ) {
@@ -25,17 +32,22 @@ final class StatusItemController {
             fallback?.isTemplate = true
             item.button?.image = fallback
         }
-        item.button?.toolTip = "RP Player"
+        item.button?.setAccessibilityLabel("RP Player")
 
         self.statusItem = item
         self.popover = popover
         self.menuProvider = menuProvider
+        self.remainingSecondsProvider = remainingSecondsProvider
         self.showHandler = show ?? { anchor in popover.show(relativeTo: anchor) }
         self.closeHandler = close ?? { popover.close() }
 
         item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
         item.button?.target = self
         item.button?.action = #selector(buttonClicked(_:))
+
+        if let button = item.button {
+            installHoverTracking(on: button)
+        }
     }
 
     func toggle() {
@@ -58,6 +70,7 @@ final class StatusItemController {
     }
 
     @objc private func buttonClicked(_ sender: NSStatusBarButton) {
+        cancelHover()
         if NSApp.currentEvent?.type == .rightMouseUp {
             showContextMenu(from: sender)
         } else {
@@ -70,5 +83,59 @@ final class StatusItemController {
         statusItem.menu = menu
         button.performClick(nil)
         statusItem.menu = nil
+    }
+
+    private func installHoverTracking(on button: NSStatusBarButton) {
+        let tracker = HoverTracker(
+            onEnter: { [weak self] in self?.handleHoverEnter() },
+            onExit: { [weak self] in self?.handleHoverExit() }
+        )
+        self.hoverTracker = tracker
+        let area = NSTrackingArea(
+            rect: button.bounds,
+            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: tracker,
+            userInfo: nil
+        )
+        button.addTrackingArea(area)
+    }
+
+    private func handleHoverEnter() {
+        showWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.showTooltipNow() }
+        showWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
+    }
+
+    private func handleHoverExit() {
+        cancelHover()
+    }
+
+    private func cancelHover() {
+        showWorkItem?.cancel()
+        showWorkItem = nil
+        hoverTimer?.invalidate()
+        hoverTimer = nil
+        tooltipWindow.hide()
+    }
+
+    private func showTooltipNow() {
+        guard let button = statusItem.button else { return }
+        tooltipWindow.show(text: currentTooltipText(), below: button)
+        let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, let button = self.statusItem.button else { return }
+                self.tooltipWindow.update(text: self.currentTooltipText())
+                self.tooltipWindow.reposition(below: button)
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        hoverTimer = timer
+    }
+
+    private func currentTooltipText() -> String {
+        guard let secs = remainingSecondsProvider?() else { return "RP Player" }
+        let s = max(0, secs)
+        return String(format: "-%d:%02d", s / 60, s % 60)
     }
 }

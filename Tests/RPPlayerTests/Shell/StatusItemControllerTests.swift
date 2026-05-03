@@ -34,11 +34,11 @@ final class StatusItemControllerTests: XCTestCase {
         return controller
     }
 
-    func testButtonImageAndTooltipAreConfigured() {
+    func testButtonImageAndAccessibilityAreConfigured() {
         let controller = makeController()
         let button = controller.statusItem.button
         XCTAssertNotNil(button)
-        XCTAssertEqual(button?.toolTip, "RP Player")
+        XCTAssertEqual(button?.accessibilityLabel(), "RP Player")
         XCTAssertNotNil(button?.image)
     }
 
