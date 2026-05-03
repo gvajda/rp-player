@@ -18,6 +18,11 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var verboseLoggingEnabled: Bool
     /// Stable per-install `rp3_<uuid>` identifier sent as `player_id` URL param to `api/play` (and future telemetry endpoints). Generated lazily by AppContainer on first launch when nil.
     public var playerId: String?
+    /// Number of upcoming songs to display per channel in the Upcoming Program window. Range 3–10.
+    public var upcomingRowCount: Int
+    /// Channel IDs the user has hidden in the Upcoming Program view. Chan 42 and 99 are always
+    /// excluded in the UI regardless of this list.
+    public var upcomingHiddenChannelIds: [Int]
 
     public init(
         selectedChannelId: Int = 0,
@@ -30,7 +35,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         outputDeviceUID: String? = nil,
         logLevel: AppLogger.Level = .info,
         verboseLoggingEnabled: Bool = false,
-        playerId: String? = nil
+        playerId: String? = nil,
+        upcomingRowCount: Int = 5,
+        upcomingHiddenChannelIds: [Int] = []
     ) {
         self.selectedChannelId = selectedChannelId
         self.hogModeEnabled = hogModeEnabled
@@ -43,6 +50,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.logLevel = logLevel
         self.verboseLoggingEnabled = verboseLoggingEnabled
         self.playerId = playerId
+        self.upcomingRowCount = upcomingRowCount
+        self.upcomingHiddenChannelIds = upcomingHiddenChannelIds
     }
 
     public init(from decoder: Decoder) throws {
@@ -58,6 +67,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.logLevel = try c.decodeIfPresent(AppLogger.Level.self, forKey: .logLevel) ?? .info
         self.verboseLoggingEnabled = try c.decodeIfPresent(Bool.self, forKey: .verboseLoggingEnabled) ?? false
         self.playerId = try c.decodeIfPresent(String.self, forKey: .playerId)
+        self.upcomingRowCount = try c.decodeIfPresent(Int.self, forKey: .upcomingRowCount) ?? 5
+        self.upcomingHiddenChannelIds = try c.decodeIfPresent([Int].self, forKey: .upcomingHiddenChannelIds) ?? []
     }
 
     public static let `default` = AppSettings()

@@ -59,4 +59,32 @@ final class AppSettingsCodableTests: XCTestCase {
         let decoded = try JSONDecoder().decode(AppSettings.self, from: json)
         XCTAssertFalse(decoded.ambientBackgroundEnabled)
     }
+
+    func testMissingUpcomingRowCountDecodesAsFive() throws {
+        let json = #"{"selectedChannelId":0}"#.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: json)
+        XCTAssertEqual(decoded.upcomingRowCount, 5)
+    }
+
+    func testMissingUpcomingHiddenChannelIdsDecodesAsEmpty() throws {
+        let json = #"{"selectedChannelId":0}"#.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: json)
+        XCTAssertEqual(decoded.upcomingHiddenChannelIds, [])
+    }
+
+    func testUpcomingRowCountRoundTrips() throws {
+        var settings = AppSettings.default
+        settings.upcomingRowCount = 8
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
+        XCTAssertEqual(decoded.upcomingRowCount, 8)
+    }
+
+    func testUpcomingHiddenChannelIdsRoundTrips() throws {
+        var settings = AppSettings.default
+        settings.upcomingHiddenChannelIds = [1, 3]
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
+        XCTAssertEqual(decoded.upcomingHiddenChannelIds, [1, 3])
+    }
 }
