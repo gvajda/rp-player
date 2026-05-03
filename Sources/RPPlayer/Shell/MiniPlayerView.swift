@@ -25,6 +25,8 @@ struct MiniPlayerView: View {
             .padding(12)
         }
         .frame(width: 342)
+        .background(ambientBackground)
+        .animation(.easeInOut(duration: 0.4), value: viewModel.ambientTopColor)
         .task { await viewModel.start() }
     }
 
@@ -46,6 +48,17 @@ struct MiniPlayerView: View {
                     .background(Color(nsColor: .controlBackgroundColor))
             }
         }
+    }
+
+    private var ambientBackground: some View {
+        LinearGradient(
+            colors: [
+                viewModel.ambientTopColor ?? Color(nsColor: .windowBackgroundColor),
+                Color(nsColor: .windowBackgroundColor)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
     }
 
     private var titleRow: some View {
