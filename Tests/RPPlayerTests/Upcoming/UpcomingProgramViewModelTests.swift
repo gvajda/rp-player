@@ -134,7 +134,7 @@ final class UpcomingProgramViewModelTests: XCTestCase {
 
         await api.setListChannelsResponse(channels)
         await api.setGetBlockResponses([makeBlock(songs: 4)])
-        await vm.load()
+        await vm.refresh()
         XCTAssertEqual(vm.columns[0].songs.count, 4)
     }
 
@@ -142,15 +142,17 @@ final class UpcomingProgramViewModelTests: XCTestCase {
         let api = MockRpApiClient()
         let channels = [makeChannel(id: 0), makeChannel(id: 1)]
         await api.setListChannelsResponse(channels)
-        // Only one block response: channel 0 succeeds, channel 1 gets the error response
-        await api.setGetBlockError(RpApiError.network(URLError(.notConnectedToInternet)))
+        // Only one response: channel 0 succeeds, channel 1 exhausts the queue and throws
+        await api.setGetBlockResponses([makeBlock(songs: 3)])
 
         let vm = makeVM(api: api)
         await vm.load()
 
         XCTAssertNotNil(vm.errorMessage)
-        // All columns present but all empty due to error
-        XCTAssertTrue(vm.columns.allSatisfy { $0.songs.isEmpty })
+        XCTAssertEqual(vm.columns.count, 2)
+        let songCounts = Set(vm.columns.map { $0.songs.count })
+        XCTAssertTrue(songCounts.contains(0), "Expected at least one empty column")
+        XCTAssertTrue(vm.columns.contains { $0.songs.count > 0 }, "Expected at least one populated column")
     }
 
     func testLoadCapsRowsAtUpcomingRowCount() async throws {

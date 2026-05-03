@@ -10,8 +10,8 @@ struct UpcomingColumn: Identifiable, Sendable {
 struct UpcomingSongRow: Identifiable, Sendable {
     let id: String
     let song: PlayListSong
-    var art: NSImage?
-    var ambientColor: Color = Color(nsColor: .windowBackgroundColor)
+    let art: NSImage?
+    let ambientColor: Color
 }
 
 @MainActor
@@ -84,23 +84,26 @@ final class UpcomingProgramViewModel: ObservableObject {
 
         struct ColStub {
             let channel: Channel
-            var rows: [UpcomingSongRow]
+            let chanId: Int
+            let songs: [PlayListSong]
         }
 
-        var stubs: [ColStub] = blockResults.map { _, channel, block in
-            guard let block else { return ColStub(channel: channel, rows: []) }
+        let stubs: [ColStub] = blockResults.compactMap { _, channel, block in
+            guard let chanId = Int(channel.chan) else { return nil }
+            guard let block else { return ColStub(channel: channel, chanId: chanId, songs: []) }
             let songs = Array(BlockSongs.orderedSongs(from: block).prefix(rowCount))
-            let rows = songs.map { UpcomingSongRow(id: $0.songId, song: $0) }
-            return ColStub(channel: channel, rows: rows)
+            return ColStub(channel: channel, chanId: chanId, songs: songs)
         }
 
-        // Load art + ambient palette for every row concurrently.
+        // Collect art + palette results keyed by (colIndex, rowIndex).
         let albumArtCache = self.albumArtCache
         let paletteExtractor = self.paletteExtractor
-        await withTaskGroup(of: (Int, Int, NSImage?, Color).self) { group in
+        var artResults: [String: (NSImage?, Color)] = [:]
+        await withTaskGroup(of: (String, NSImage?, Color).self) { group in
             for (ci, stub) in stubs.enumerated() {
-                for (ri, row) in stub.rows.enumerated() {
-                    guard let cover = row.song.cover, !cover.isEmpty else { continue }
+                for (ri, song) in stub.songs.enumerated() {
+                    guard let cover = song.cover, !cover.isEmpty else { continue }
+                    let key = "\(ci)-\(ri)"
                     group.addTask {
                         let image = await albumArtCache.image(for: cover)
                         var color = Color(nsColor: .windowBackgroundColor)
@@ -108,25 +111,27 @@ final class UpcomingProgramViewModel: ObservableObject {
                            let extracted = await paletteExtractor.extractBottomEdgeColor(from: img) {
                             color = extracted.swiftUIColor
                         }
-                        return (ci, ri, image, color)
+                        return (key, image, color)
                     }
                 }
             }
-            for await (ci, ri, image, color) in group {
-                stubs[ci].rows[ri].art = image
-                stubs[ci].rows[ri].ambientColor = color
+            for await (key, image, color) in group {
+                artResults[key] = (image, color)
             }
         }
 
-        columns = stubs.compactMap { stub in
-            guard let id = Int(stub.channel.chan) else { return nil }
-            return UpcomingColumn(id: id, channel: stub.channel, songs: stub.rows)
+        columns = stubs.enumerated().map { ci, stub in
+            let rows = stub.songs.enumerated().map { ri, song in
+                let (art, color) = artResults["\(ci)-\(ri)"] ?? (nil, Color(nsColor: .windowBackgroundColor))
+                return UpcomingSongRow(id: "\(stub.chanId)-\(song.songId)", song: song, art: art, ambientColor: color)
+            }
+            return UpcomingColumn(id: stub.chanId, channel: stub.channel, songs: rows)
         }
         isLoading = false
         lastUpdated = Date()
     }
 
-    func refresh() {
-        Task { await load() }
+    func refresh() async {
+        await load()
     }
 }
