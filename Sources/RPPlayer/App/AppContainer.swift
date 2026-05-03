@@ -140,6 +140,9 @@ extension AppContainer {
             bitrateProvider: { [store] in
                 guard let store else { return initial.bitrate }
                 return await store.settings.bitrate
+            },
+            prefetchArt: { [cache] cover in
+                Task.detached { _ = await cache.image(for: cover) }
             }
         )
 

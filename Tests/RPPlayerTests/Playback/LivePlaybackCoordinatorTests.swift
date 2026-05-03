@@ -1196,7 +1196,73 @@ extension LivePlaybackCoordinatorTests {
     }
 }
 
+private final class LockedArray<T: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [T] = []
+    func append(_ value: T) {
+        lock.lock(); defer { lock.unlock() }
+        storage.append(value)
+    }
+    var values: [T] {
+        lock.lock(); defer { lock.unlock() }
+        return storage
+    }
+}
+
 extension LivePlaybackCoordinatorTests {
+    fileprivate func makeSongWithCover(id: String, duration: Int, elapsed: Int, cover: String?) -> PlayListSong {
+        PlayListSong(
+            songId: id, artist: "Artist-\(id)", title: "Title-\(id)", album: "Al", duration: duration,
+            event: nil, schedTime: nil, chan: nil, year: nil, asin: nil,
+            rating: nil, userRating: nil, cover: cover, elapsed: elapsed, slideshow: nil,
+            type: nil, sliceNum: nil
+        )
+    }
+
+    func testPlayPrefetchesNextSongCover() async throws {
+        let api = MockRpApiClient()
+        let songs = [
+            makeSongWithCover(id: "s1", duration: 60_000, elapsed: 0,      cover: "covers/l/1.jpg"),
+            makeSongWithCover(id: "s2", duration: 60_000, elapsed: 60_000, cover: "covers/l/2.jpg"),
+        ]
+        let block = makeBlock(prebuiltSongs: songs)
+        await api.setBlockResponses([block])
+        let engine = MockPlayerEngine()
+        let prefetched = LockedArray<String>()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 },
+            prefetchArt: { cover in prefetched.append(cover) }
+        )
+
+        try await coordinator.play(channelId: 0)
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(prefetched.values, ["covers/l/2.jpg"])
+    }
+
+    func testSongBoundaryCrossPrefetchesFollowingSongCover() async throws {
+        let api = MockRpApiClient()
+        let songs = [
+            makeSongWithCover(id: "s1", duration: 60_000,  elapsed: 0,       cover: "covers/l/1.jpg"),
+            makeSongWithCover(id: "s2", duration: 120_000, elapsed: 60_000,  cover: "covers/l/2.jpg"),
+            makeSongWithCover(id: "s3", duration: 90_000,  elapsed: 180_000, cover: "covers/l/3.jpg"),
+        ]
+        let block = makeBlock(prebuiltSongs: songs)
+        await api.setBlockResponses([block])
+        let engine = MockPlayerEngine()
+        let prefetched = LockedArray<String>()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 },
+            prefetchArt: { cover in prefetched.append(cover) }
+        )
+
+        try await coordinator.play(channelId: 0)
+        await engine.fire(.positionUpdate(seconds: 75.0))
+        try await Task.sleep(nanoseconds: 80_000_000)
+
+        XCTAssertEqual(prefetched.values, ["covers/l/2.jpg", "covers/l/3.jpg"])
+    }
+
     func testPlayChannelBootstrapsWithEventZeroAndActionStart() async throws {
         let api = MockRpApiClient()
         let block = makeBlock(songs: [("s1", 60_000), ("s2", 60_000)])

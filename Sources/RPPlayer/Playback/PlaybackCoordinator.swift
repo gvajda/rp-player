@@ -21,6 +21,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     private let logger: any Logging
     private let bitrateProvider: @Sendable () async -> Int
     private let clock: @Sendable () -> Date
+    private let prefetchArt: @Sendable (String) -> Void
     private var pausedAt: Date? = nil
     private var pausePositionMs: Int = 0
 
@@ -46,13 +47,15 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         engine: any PlayerEngine,
         logger: any Logging,
         bitrateProvider: @escaping @Sendable () async -> Int,
-        clock: @escaping @Sendable () -> Date = { Date() }
+        clock: @escaping @Sendable () -> Date = { Date() },
+        prefetchArt: @escaping @Sendable (String) -> Void = { _ in }
     ) {
         self.api = api
         self.engine = engine
         self.logger = logger
         self.bitrateProvider = bitrateProvider
         self.clock = clock
+        self.prefetchArt = prefetchArt
         var cont: AsyncStream<String>.Continuation!
         self.errors = AsyncStream { cont = $0 }
         self.errorsContinuation = cont
@@ -381,6 +384,24 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         )
         current = np
         for c in continuations.values { c.yield(np) }
+        prefetchUpcomingSongArt()
+    }
+
+    // Warm the album-art cache for the song that will play next so the popover
+    // doesn't show a blank tile during the cross-fade. Within a block we know
+    // the next song from orderedSongs; at the end of the block we use the
+    // already-prefetched next block if it has arrived.
+    private func prefetchUpcomingSongArt() {
+        let nextIndex = currentSongIndex + 1
+        if nextIndex < orderedSongs.count {
+            if let cover = orderedSongs[nextIndex].cover, !cover.isEmpty {
+                prefetchArt(cover)
+            }
+        } else if let prefetched = prefetchedBlock,
+                  let cover = BlockSongs.orderedSongs(from: prefetched).first?.cover,
+                  !cover.isEmpty {
+            prefetchArt(cover)
+        }
     }
 
     private func fireSongStartTelemetry(song: PlayListSong, channelId: Int, ppm: Int? = nil) {
@@ -447,6 +468,12 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         if let block = block, BlockSongs.orderedSongs(from: block).isEmpty == false {
             prefetchedBlock = block
             logger.debug("prefetch absorbed: url=\(block.url)")
+            // Cover for the first song of the prefetched block — warm the cache
+            // ahead of the block-boundary swap so the popover doesn't blank.
+            if let cover = BlockSongs.orderedSongs(from: block).first?.cover,
+               !cover.isEmpty {
+                prefetchArt(cover)
+            }
         }
     }
 
