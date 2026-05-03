@@ -26,6 +26,7 @@ actor MockRpApiClient: RpApiClient {
     enum Call: Sendable, Equatable {
         case listChannels
         case play(channel: Int, bitrate: Int, event: Int, action: PlayAction, audioType: String?, episodeId: Int?, sliceNum: String?)
+        case getBlock(channel: Int, bitrate: Int)
         case info(songId: Int)
         case rate(songId: Int, rating: Int)
         case authState
@@ -38,6 +39,8 @@ actor MockRpApiClient: RpApiClient {
 
     var playDelayNanos: UInt64 = 0
     var blockResponses: [GetBlock] = []
+    var getBlockResponses: [GetBlock] = []
+    var getBlockError: Error?
     var listChannelsResponse: [Channel] = []
     var listChannelsError: Error?
     var infoResponse: SongInfo?
@@ -49,6 +52,15 @@ actor MockRpApiClient: RpApiClient {
 
     func setBlockResponses(_ responses: [GetBlock]) {
         self.blockResponses = responses
+    }
+
+    func setGetBlockResponses(_ responses: [GetBlock]) {
+        self.getBlockResponses = responses
+        self.getBlockError = nil
+    }
+
+    func setGetBlockError(_ error: Error) {
+        self.getBlockError = error
     }
 
     func setPlayDelay(nanos: UInt64) {
@@ -85,6 +97,15 @@ actor MockRpApiClient: RpApiClient {
         calls.append(.listChannels)
         if let error = listChannelsError { throw error }
         return listChannelsResponse
+    }
+
+    func getBlock(channel: Int, bitrate: Int) async throws -> GetBlock {
+        calls.append(.getBlock(channel: channel, bitrate: bitrate))
+        if let error = getBlockError { throw error }
+        guard !getBlockResponses.isEmpty else {
+            throw RpApiError.network(URLError(.unknown))
+        }
+        return getBlockResponses.removeFirst()
     }
 
     func play(channel: Int, bitrate: Int, event: Int, action: PlayAction,

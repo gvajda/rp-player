@@ -79,6 +79,22 @@ final class RpApiClientTests: XCTestCase {
         XCTAssertEqual(rating.userRating, 7)
     }
 
+    func testGetBlockBuildsCorrectURL() async throws {
+        var components = URLComponents(
+            url: baseURL.appendingPathComponent("api/get_block"),
+            resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "bitrate", value: "4"),
+            URLQueryItem(name: "chan", value: "2"),
+            URLQueryItem(name: "info", value: "true"),
+        ]
+        StubURLProtocol.register(url: components.url!, body: try loadFixture("get_block"))
+
+        let client = makeClient()
+        let block = try await client.getBlock(channel: 2, bitrate: 4)
+        XCTAssertFalse(block.song.isEmpty)
+    }
+
     func testPlayBootstrapBuildsCorrectURL() async throws {
         var components = URLComponents(url: baseURL.appendingPathComponent("api/play"), resolvingAgainstBaseURL: false)!
         components.queryItems = [
