@@ -43,4 +43,20 @@ final class AppSettingsCodableTests: XCTestCase {
         let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
         XCTAssertEqual(decoded.playerId, "rp3_abcd1234-5678-90ab-cdef-1234567890ab")
     }
+
+    func testRoundTripPreservesAmbientBackgroundEnabled() throws {
+        var settings = AppSettings.default
+        settings.ambientBackgroundEnabled = true
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
+        XCTAssertTrue(decoded.ambientBackgroundEnabled)
+    }
+
+    func testMissingAmbientBackgroundEnabledKeyDecodesAsFalse() throws {
+        let json = """
+        {"selectedChannelId":0}
+        """.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: json)
+        XCTAssertFalse(decoded.ambientBackgroundEnabled)
+    }
 }

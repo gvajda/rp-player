@@ -8,6 +8,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var softwareVolumeEnabled: Bool
     public var notificationsEnabled: Bool
     public var appearance: AppearanceMode
+    public var ambientBackgroundEnabled: Bool
     /// Radio Paradise bitrate code passed to `api/play`.
     /// 0 = 32k aac, 1 = 64k aac, 2 = 128k aac, 3 = 320k aac, 4 = flac, 5 = 128k mp3, 6 = 320k mp3.
     /// Default 4 (FLAC) to honour the project's bit-perfect goal.
@@ -24,6 +25,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         softwareVolumeEnabled: Bool = false,
         notificationsEnabled: Bool = true,
         appearance: AppearanceMode = .system,
+        ambientBackgroundEnabled: Bool = false,
         bitrate: Int = 4,
         outputDeviceUID: String? = nil,
         logLevel: AppLogger.Level = .info,
@@ -35,6 +37,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.softwareVolumeEnabled = softwareVolumeEnabled
         self.notificationsEnabled = notificationsEnabled
         self.appearance = appearance
+        self.ambientBackgroundEnabled = ambientBackgroundEnabled
         self.bitrate = bitrate
         self.outputDeviceUID = outputDeviceUID
         self.logLevel = logLevel
@@ -49,6 +52,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.softwareVolumeEnabled = try c.decodeIfPresent(Bool.self, forKey: .softwareVolumeEnabled) ?? false
         self.notificationsEnabled = try c.decodeIfPresent(Bool.self, forKey: .notificationsEnabled) ?? true
         self.appearance = try c.decodeIfPresent(AppearanceMode.self, forKey: .appearance) ?? .system
+        self.ambientBackgroundEnabled = try c.decodeIfPresent(Bool.self, forKey: .ambientBackgroundEnabled) ?? false
         self.bitrate = try c.decodeIfPresent(Int.self, forKey: .bitrate) ?? 4
         self.outputDeviceUID = try c.decodeIfPresent(String.self, forKey: .outputDeviceUID)
         self.logLevel = try c.decodeIfPresent(AppLogger.Level.self, forKey: .logLevel) ?? .info
