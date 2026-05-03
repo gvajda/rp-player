@@ -15,7 +15,7 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 ## Current state
 
 - Last merged: **PR 18** — ambient background from album art. 287 tests passing on `main`.
-- Upcoming: **PR 19** — TBD.
+- In progress: **PR 19** — Upcoming Program window (read-only multi-column song preview per channel).
 
 ## PR status
 
@@ -41,7 +41,7 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 | 16   | merged to main | ✅      | Popover + Settings UI polish (support link, song-in-browser, hamburger menu, ZStack channel row, title3 song title) |
 | 17   | merged to main | ✅      | Audio device error handling (errors stream, popover auto-open, VM reset)    |
 | 18   | merged to main | ✅      | Ambient background from album art (opt-in; fades on promo/error/disable)    |
-| 19   | pending        | ⬜      | TBD                                                                         |
+| 19   | claude/pr19-upcoming-program | ⬜ | Upcoming Program window (get_block read-only fetch, multi-column card view, settings row count + channel filter) |
 
 ---
 
@@ -215,6 +215,7 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 - After PR 16 UI polish (SettingsView support link, MiniPlayerViewModel URL-open methods, channelRow ZStack + hamburger menu, title3 song title, secondary album color, small picker): 265
 - After PR 17 audio device error handling (errors stream on coordinator, handlePlaybackError, VM showPopoverIfNeeded injection, StatusItemController.showPopoverIfNeeded; 7 new tests): 272
 - After PR 18 ambient background from album art (`AmbientPaletteExtractor` actor, `AppSettings.ambientBackgroundEnabled`, `MiniPlayerViewModel` configStore + paletteExtractor wiring, gradient `.background` + 0.4s ease-in-out animation in `MiniPlayerView`, re-extract on toggle ON mid-playback; 15 new tests): 287
+- After PR 19 upcoming program window (`getBlock` restored, `UpcomingProgramViewModel` + `UpcomingColumn` + `UpcomingSongRow` models, `UpcomingProgramView` card/column/skeleton, `UpcomingWindowController`, `AppSettings.upcomingRowCount` + `upcomingHiddenChannelIds`, Settings "Upcoming Program" section, hamburger menu item, `AlbumArtCache.defaultMaxFiles` bumped to 100; 20 new tests): 307
 
 ---
 
