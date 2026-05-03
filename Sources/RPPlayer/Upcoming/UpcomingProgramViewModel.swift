@@ -61,24 +61,35 @@ final class UpcomingProgramViewModel: ObservableObject {
             return id != 42 && id != 99 && !hiddenIds.contains(id)
         }
 
-        // Fetch all blocks concurrently, preserving channel order.
+        // Fetch blocks concurrently, accumulating across multiple blocks until rowCount is met.
         let api = self.api
-        var blockResults: [(Int, Channel, GetBlock?)] = []
-        await withTaskGroup(of: (Int, Channel, GetBlock?).self) { group in
+        var rowResults: [(Int, Channel, [PlayListSong])] = []
+        await withTaskGroup(of: (Int, Channel, [PlayListSong]).self) { group in
             for (i, channel) in enabledChannels.enumerated() {
                 guard let chanId = Int(channel.chan) else { continue }
                 group.addTask {
-                    let block = try? await api.getBlock(channel: chanId, bitrate: bitrate)
-                    return (i, channel, block)
+                    var songs: [PlayListSong] = []
+                    var event = 0
+                    while songs.count < rowCount {
+                        guard let block = try? await api.getBlock(channel: chanId, bitrate: bitrate, event: event) else { break }
+                        let newSongs = BlockSongs.orderedSongs(from: block)
+                        songs.append(contentsOf: newSongs)
+                        guard let endEventStr = block.endEvent,
+                              let nextEvent = Int(endEventStr),
+                              nextEvent != event,
+                              songs.count < rowCount else { break }
+                        event = nextEvent
+                    }
+                    return (i, channel, Array(songs.prefix(rowCount)))
                 }
             }
             for await result in group {
-                blockResults.append(result)
+                rowResults.append(result)
             }
         }
-        blockResults.sort { $0.0 < $1.0 }
+        rowResults.sort { $0.0 < $1.0 }
 
-        if blockResults.contains(where: { $0.2 == nil }) {
+        if rowResults.contains(where: { $0.2.isEmpty }) {
             errorMessage = "Some channels could not be loaded."
         }
 
@@ -88,10 +99,8 @@ final class UpcomingProgramViewModel: ObservableObject {
             let songs: [PlayListSong]
         }
 
-        let stubs: [ColStub] = blockResults.compactMap { _, channel, block in
+        let stubs: [ColStub] = rowResults.compactMap { _, channel, songs in
             guard let chanId = Int(channel.chan) else { return nil }
-            guard let block else { return ColStub(channel: channel, chanId: chanId, songs: []) }
-            let songs = Array(BlockSongs.orderedSongs(from: block).prefix(rowCount))
             return ColStub(channel: channel, chanId: chanId, songs: songs)
         }
 

@@ -86,12 +86,13 @@ final class RpApiClientTests: XCTestCase {
         components.queryItems = [
             URLQueryItem(name: "bitrate", value: "4"),
             URLQueryItem(name: "chan", value: "2"),
+            URLQueryItem(name: "event", value: "0"),
             URLQueryItem(name: "info", value: "true"),
         ]
         StubURLProtocol.register(url: components.url!, body: try loadFixture("get_block"))
 
         let client = makeClient()
-        let block = try await client.getBlock(channel: 2, bitrate: 4)
+        let block = try await client.getBlock(channel: 2, bitrate: 4, event: 0)
         XCTAssertFalse(block.song.isEmpty)
     }
 

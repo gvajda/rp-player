@@ -12,6 +12,7 @@ struct UpcomingSongCardView: View {
             textArea
         }
         .frame(height: 68)
+        .frame(maxWidth: .infinity)
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
@@ -169,7 +170,7 @@ struct UpcomingProgramView: View {
             toolbar
             Divider()
             ScrollView(.horizontal, showsIndicators: true) {
-                LazyHStack(alignment: .top, spacing: 6) {
+                HStack(alignment: .top, spacing: 6) {
                     if viewModel.isLoading {
                         ForEach(0..<skeletonColumnCount, id: \.self) { _ in
                             SkeletonColumnView(
