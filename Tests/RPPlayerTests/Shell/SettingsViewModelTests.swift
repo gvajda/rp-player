@@ -286,7 +286,7 @@ final class SettingsViewModelTests: XCTestCase {
         await vm.start()
         let deadline = Date().addingTimeInterval(2)
         while vm.upcomingChannels.isEmpty && Date() < deadline {
-            await Task.yield()
+            try await Task.sleep(nanoseconds: 10_000_000)
         }
         XCTAssertEqual(vm.upcomingChannels.count, 2)
         XCTAssertFalse(vm.upcomingChannels.contains { $0.chan == "42" })
