@@ -12,7 +12,7 @@ public extension AlbumArtCache {
 }
 
 public actor LiveAlbumArtCache: AlbumArtCache {
-    public static let defaultMaxFiles = 20
+    public static let defaultMaxFiles = 100
     public static let defaultMaxBytes = 10 * 1024 * 1024
 
     private let directory: URL
