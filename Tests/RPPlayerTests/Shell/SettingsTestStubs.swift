@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 @testable import RPPlayer
 
@@ -45,6 +46,23 @@ final class StubAudioDeviceCatalog: AudioDeviceCatalog {
     func setDevices(_ devices: [AudioDevice]) {
         current = devices
         continuations.forEach { $0.yield(devices) }
+    }
+}
+
+@MainActor
+final class StubAmbientPaletteExtractor: AmbientPaletteExtracting {
+    var nextResult: ExtractedColor?
+    var calls: [NSImage] = []
+
+    init(nextResult: ExtractedColor? = nil) {
+        self.nextResult = nextResult
+    }
+
+    nonisolated func extractBottomEdgeColor(from image: NSImage) async -> ExtractedColor? {
+        await MainActor.run {
+            calls.append(image)
+            return nextResult
+        }
     }
 }
 

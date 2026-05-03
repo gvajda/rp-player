@@ -14,6 +14,8 @@ final class MiniPlayerViewTests: XCTestCase {
             initialChannelId: 0,
             albumArtCache: StubAlbumArtCache(),
             auth: StubKeychainAuth(),
+            configStore: StubConfigStore(initial: .default),
+            paletteExtractor: StubAmbientPaletteExtractor(),
             openSettings: { }
         )
         let host = NSHostingController(rootView: MiniPlayerView(viewModel: viewModel))

@@ -230,6 +230,8 @@ extension AppContainer {
             initialChannelId: initial.selectedChannelId,
             albumArtCache: cache,
             auth: keychainAuth,
+            configStore: store ?? NoopConfigStore(),
+            paletteExtractor: AmbientPaletteExtractor(),
             openSettings: { [settingsWindowController] in settingsWindowController.show() },
             persistChannelId: { id in
                 guard let store else { return }

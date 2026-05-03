@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import Foundation
+import SwiftUI
 
 @MainActor
 final class MiniPlayerViewModel: ObservableObject {
@@ -15,6 +16,8 @@ final class MiniPlayerViewModel: ObservableObject {
     @Published private(set) var currentBitrateLabel: String?
     @Published private(set) var songElapsedSeconds: Double = 0
     @Published private(set) var songDurationSeconds: Double = 0
+    @Published private(set) var ambientTopColor: Color?
+    @Published private(set) var ambientEnabled: Bool = false
 
     typealias PersistChannelId = @Sendable (Int) async -> Void
 
@@ -22,11 +25,15 @@ final class MiniPlayerViewModel: ObservableObject {
     private let api: any RpApiClient
     private let albumArtCache: any AlbumArtCache
     private let auth: any KeychainAuth
+    private let configStore: any ConfigStore
+    private let paletteExtractor: any AmbientPaletteExtracting
     private let openSettingsAction: @MainActor () -> Void
     private let persistChannelId: PersistChannelId
     private var subscriptionTask: Task<Void, Never>?
     private var positionSubscriptionTask: Task<Void, Never>?
     private var errorsSubscriptionTask: Task<Void, Never>?
+    private var settingsSubscriptionTask: Task<Void, Never>?
+    private var paletteTask: Task<Void, Never>?
     private var inFlightChannelId: Int?
     private var lastLoadedCoverPath: String?
     private var lastSongStartSeconds: Double?
@@ -39,6 +46,8 @@ final class MiniPlayerViewModel: ObservableObject {
         initialChannelId: Int,
         albumArtCache: any AlbumArtCache,
         auth: any KeychainAuth,
+        configStore: any ConfigStore,
+        paletteExtractor: any AmbientPaletteExtracting,
         openSettings: @escaping @MainActor () -> Void,
         persistChannelId: @escaping PersistChannelId = { _ in }
     ) {
@@ -46,6 +55,8 @@ final class MiniPlayerViewModel: ObservableObject {
         self.api = api
         self.albumArtCache = albumArtCache
         self.auth = auth
+        self.configStore = configStore
+        self.paletteExtractor = paletteExtractor
         self.openSettingsAction = openSettings
         self.selectedChannelId = initialChannelId
         self.persistChannelId = persistChannelId
@@ -58,6 +69,10 @@ final class MiniPlayerViewModel: ObservableObject {
         positionSubscriptionTask = nil
         errorsSubscriptionTask?.cancel()
         errorsSubscriptionTask = nil
+        settingsSubscriptionTask?.cancel()
+        settingsSubscriptionTask = nil
+        paletteTask?.cancel()
+        paletteTask = nil
         do {
             self.channels = try await api.listChannels()
             self.errorMessage = nil
@@ -87,6 +102,9 @@ final class MiniPlayerViewModel: ObservableObject {
                         self.songDurationSeconds = newDuration
                     } else {
                         self.songDurationSeconds = newDuration
+                    }
+                    if np.song.songId == "0" {
+                        self.ambientTopColor = nil
                     }
                     let newCover = np.song.cover
                     if newCover != self.lastLoadedCoverPath {
@@ -123,7 +141,22 @@ final class MiniPlayerViewModel: ObservableObject {
                 self.errorMessage = message
                 self.isPlaying = false
                 self.nowPlaying = nil
+                self.ambientTopColor = nil
                 self.showPopoverIfNeeded()
+            }
+        }
+
+        let settingsStream = await configStore.changes
+        settingsSubscriptionTask = Task { [weak self] in
+            for await snapshot in settingsStream {
+                guard let self else { return }
+                await MainActor.run {
+                    let wasEnabled = self.ambientEnabled
+                    self.ambientEnabled = snapshot.ambientBackgroundEnabled
+                    if wasEnabled, !snapshot.ambientBackgroundEnabled {
+                        self.ambientTopColor = nil
+                    }
+                }
             }
         }
     }
@@ -132,6 +165,8 @@ final class MiniPlayerViewModel: ObservableObject {
         subscriptionTask?.cancel(); subscriptionTask = nil
         positionSubscriptionTask?.cancel(); positionSubscriptionTask = nil
         errorsSubscriptionTask?.cancel(); errorsSubscriptionTask = nil
+        settingsSubscriptionTask?.cancel(); settingsSubscriptionTask = nil
+        paletteTask?.cancel(); paletteTask = nil
     }
 
     func togglePlayPause() async {
@@ -240,6 +275,19 @@ final class MiniPlayerViewModel: ObservableObject {
             return
         }
         let image = await albumArtCache.image(for: cover)
-        await MainActor.run { self.currentArt = image }
+        await MainActor.run {
+            self.currentArt = image
+        }
+        guard let image, ambientEnabled else { return }
+        let coverAtKickoff = cover
+        paletteTask?.cancel()
+        paletteTask = Task { [weak self, paletteExtractor] in
+            let extracted = await paletteExtractor.extractBottomEdgeColor(from: image)
+            guard let self else { return }
+            await MainActor.run {
+                guard self.lastLoadedCoverPath == coverAtKickoff else { return }
+                self.ambientTopColor = extracted?.swiftUIColor
+            }
+        }
     }
 }

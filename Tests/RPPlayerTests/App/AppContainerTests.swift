@@ -52,7 +52,10 @@ final class AppContainerTests: XCTestCase {
         let deviceCatalog = StubAudioDeviceCatalog(initial: [])
         let viewModel = MiniPlayerViewModel(
             coordinator: coordinator, api: api, initialChannelId: 0,
-            albumArtCache: cache, auth: auth, openSettings: { }
+            albumArtCache: cache, auth: auth,
+            configStore: configStore,
+            paletteExtractor: StubAmbientPaletteExtractor(),
+            openSettings: { }
         )
         let notificationCoordinator = NotificationCoordinator(
             coordinator: coordinator, cache: cache, service: service,

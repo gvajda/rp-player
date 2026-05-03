@@ -21,6 +21,8 @@ final class MiniPlayerViewModelTests: XCTestCase {
             initialChannelId: 0,
             albumArtCache: StubAlbumArtCache(),
             auth: auth,
+            configStore: StubConfigStore(initial: .default),
+            paletteExtractor: StubAmbientPaletteExtractor(),
             openSettings: { [unowned self] in self.openSettingsCalls += 1 }
         )
     }
@@ -104,6 +106,8 @@ final class MiniPlayerViewModelTests: XCTestCase {
             initialChannelId: 0,
             albumArtCache: StubAlbumArtCache(),
             auth: StubKeychainAuth(),
+            configStore: StubConfigStore(initial: .default),
+            paletteExtractor: StubAmbientPaletteExtractor(),
             openSettings: { },
             persistChannelId: { id in await capture.record(id) }
         )
@@ -140,6 +144,8 @@ final class MiniPlayerViewModelTests: XCTestCase {
             initialChannelId: 0,
             albumArtCache: cache,
             auth: StubKeychainAuth(),
+            configStore: StubConfigStore(initial: .default),
+            paletteExtractor: StubAmbientPaletteExtractor(),
             openSettings: { }
         )
         await model.start()
@@ -158,6 +164,8 @@ final class MiniPlayerViewModelTests: XCTestCase {
             initialChannelId: 0,
             albumArtCache: cache,
             auth: StubKeychainAuth(),
+            configStore: StubConfigStore(initial: .default),
+            paletteExtractor: StubAmbientPaletteExtractor(),
             openSettings: { }
         )
         await model.start()
@@ -238,7 +246,10 @@ final class MiniPlayerViewModelTests: XCTestCase {
         cache.imageByPath["covers/l/a.jpg"] = NSImage(size: NSSize(width: 1, height: 1))
         sut = MiniPlayerViewModel(
             coordinator: coordinator, api: api, initialChannelId: 0,
-            albumArtCache: cache, auth: auth, openSettings: { }
+            albumArtCache: cache, auth: auth,
+            configStore: StubConfigStore(initial: .default),
+            paletteExtractor: StubAmbientPaletteExtractor(),
+            openSettings: { }
         )
         await sut.start()
         await coordinator.setNowPlaying(NowPlaying.fixture(cover: "covers/l/a.jpg"))
@@ -271,7 +282,10 @@ final class MiniPlayerViewModelTests: XCTestCase {
         cache.imageByPath["covers/l/stable.jpg"] = stableImage
         sut = MiniPlayerViewModel(
             coordinator: coordinator, api: api, initialChannelId: 0,
-            albumArtCache: cache, auth: auth, openSettings: { }
+            albumArtCache: cache, auth: auth,
+            configStore: StubConfigStore(initial: .default),
+            paletteExtractor: StubAmbientPaletteExtractor(),
+            openSettings: { }
         )
         auth.loggedIn = false
         await sut.start()
@@ -302,7 +316,10 @@ final class MiniPlayerViewModelTests: XCTestCase {
         cache.imageByPath["covers/l/b.jpg"] = imageB
         sut = MiniPlayerViewModel(
             coordinator: coordinator, api: api, initialChannelId: 0,
-            albumArtCache: cache, auth: auth, openSettings: { }
+            albumArtCache: cache, auth: auth,
+            configStore: StubConfigStore(initial: .default),
+            paletteExtractor: StubAmbientPaletteExtractor(),
+            openSettings: { }
         )
         auth.loggedIn = false
         await sut.start()
