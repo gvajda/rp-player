@@ -115,6 +115,7 @@ struct UpcomingColumnView: View {
     var isCurrentChannel: Bool = false
     var currentSongId: String?
     var onSelectChannel: (() -> Void)? = nil
+    @State private var isHoveringHeader = false
 
     var body: some View {
         VStack(alignment: .center, spacing: 6) {
@@ -129,12 +130,25 @@ struct UpcomingColumnView: View {
                     .padding(.vertical, 3)
                     .background(
                         RoundedRectangle(cornerRadius: 6)
-                            .fill(isCurrentChannel ? Color.accentColor.opacity(0.18) : .clear)
+                            .fill(headerBackground)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(headerBorder, lineWidth: 1)
                     )
                     .shadow(color: isCurrentChannel ? Color.accentColor.opacity(0.7) : .clear, radius: 6)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .help("Switch to \(column.channel.title)")
+            .onHover { hovering in
+                isHoveringHeader = hovering
+                if hovering {
+                    NSCursor.pointingHand.push()
+                } else {
+                    NSCursor.pop()
+                }
+            }
             VStack(spacing: 4) {
                 ForEach(column.songs) { row in
                     UpcomingSongCardView(
@@ -150,6 +164,18 @@ struct UpcomingColumnView: View {
             RoundedRectangle(cornerRadius: 10)
                 .fill(isCurrentChannel ? Color.accentColor.opacity(0.08) : .clear)
         )
+    }
+
+    private var headerBackground: Color {
+        if isCurrentChannel { return Color.accentColor.opacity(0.18) }
+        if isHoveringHeader { return Color.accentColor.opacity(0.10) }
+        return .clear
+    }
+
+    private var headerBorder: Color {
+        if isCurrentChannel { return .clear }
+        if isHoveringHeader { return Color.accentColor.opacity(0.55) }
+        return Color.accentColor.opacity(0.22)
     }
 }
 
