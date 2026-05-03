@@ -1,5 +1,4 @@
 import AppKit
-import CoreGraphics
 import SwiftUI
 
 protocol AmbientPaletteExtracting: Sendable {

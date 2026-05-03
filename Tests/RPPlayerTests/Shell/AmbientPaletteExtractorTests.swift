@@ -42,8 +42,6 @@ final class AmbientPaletteExtractorTests: XCTestCase {
         XCTAssertNil(result)
     }
 
-    // MARK: - Helpers
-
     private func makeSolidColorImage(red: CGFloat, green: CGFloat, blue: CGFloat, size: Int) -> NSImage {
         let rep = NSBitmapImageRep(
             bitmapDataPlanes: nil,
