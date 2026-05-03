@@ -998,21 +998,22 @@ extension LivePlaybackCoordinatorTests {
         await engine.fire(.positionUpdate(seconds: 10.0))
         try await Task.sleep(nanoseconds: 20_000_000)
         try await coord.pause()
-        try await coord.resume()
         try await Task.sleep(nanoseconds: 50_000_000)
         let pauseCalls = await api.updatePauseCalls
-        let historyCalls = await api.updateHistoryCalls
         XCTAssertEqual(pauseCalls.count, 1)
         XCTAssertEqual(pauseCalls.first?.songId, "55464")
-        XCTAssertGreaterThanOrEqual(pauseCalls.first?.pauseDurationMillis ?? -1, 0)
+        XCTAssertEqual(pauseCalls.first?.playPositionMillis, 10_000)
         XCTAssertEqual(pauseCalls.first?.chan, 0)
+        try await coord.resume()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let historyCalls = await api.updateHistoryCalls
         let resumeHistory = historyCalls.last(where: { $0.pauseFlag })
         XCTAssertNotNil(resumeHistory)
         XCTAssertEqual(resumeHistory?.songId, "55464")
         XCTAssertEqual(resumeHistory?.pauseFlag, true)
     }
 
-    func testPauseDurationMillisIsCorrect() async throws {
+    func testPausePositionMillisIsCorrect() async throws {
         final class MutableClock: @unchecked Sendable {
             var date = Date(timeIntervalSince1970: 1_000)
         }
@@ -1020,18 +1021,22 @@ extension LivePlaybackCoordinatorTests {
         let api = MockRpApiClient()
         let block = makeBlock(songs: [("s1", 120_000)])
         await api.setBlockResponses([block])
+        let engine = MockPlayerEngine()
         let coord = LivePlaybackCoordinator(
-            api: api, engine: MockPlayerEngine(), logger: silentLogger(),
+            api: api, engine: engine, logger: silentLogger(),
             bitrateProvider: { 0 }, clock: { clockState.date }
         )
         try await coord.play(channelId: 0)
         try await Task.sleep(nanoseconds: 20_000_000)
-        try await coord.pause()                                    // pausedAt = t=1000
-        clockState.date = Date(timeIntervalSince1970: 1_005)       // advance clock 5s
+        await engine.fire(.positionUpdate(seconds: 10.0))
+        try await Task.sleep(nanoseconds: 20_000_000)
+        try await coord.pause()                                    // position captured: 10_000 ms
+        clockState.date = Date(timeIntervalSince1970: 1_005)       // advance clock 5s (would have been duration)
         try await coord.resume()
         try await Task.sleep(nanoseconds: 50_000_000)
         let pauseCalls = await api.updatePauseCalls
-        XCTAssertEqual(pauseCalls.first?.pauseDurationMillis, 5_000)
+        // pause sends play position in ms (not pause duration); 10s = 10_000 ms, not 5_000
+        XCTAssertEqual(pauseCalls.first?.playPositionMillis, 10_000)
     }
 
     func testResumeWithoutPriorPauseDoesNotFireTelemetry() async throws {

@@ -19,7 +19,7 @@ public protocol RpApiClient: Sendable {
     ) async throws
     func updatePause(
         songId: String, chan: Int, event: String, audioType: String,
-        sliceNum: String?, pauseDurationMillis: Int, playtimeSecs: Int
+        sliceNum: String?, playPositionMillis: Int, playtimeSecs: Int
     ) async throws
 }
 
@@ -113,14 +113,14 @@ public struct LiveRpApiClient: RpApiClient {
 
     public func updatePause(
         songId: String, chan: Int, event: String, audioType: String,
-        sliceNum: String?, pauseDurationMillis: Int, playtimeSecs: Int
+        sliceNum: String?, playPositionMillis: Int, playtimeSecs: Int
     ) async throws {
         var query: [String: String] = [
             "chan": String(chan),
             "episode_id": "0",
             "event": event,
             "event_num": "undefined",
-            "pause": String(pauseDurationMillis),
+            "pause": String(playPositionMillis),
             "playtime_secs": String(playtimeSecs),
             "slice_num": sliceNum ?? "null",
             "song_id": songId,

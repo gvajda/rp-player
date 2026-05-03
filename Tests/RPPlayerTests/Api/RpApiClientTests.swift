@@ -230,7 +230,7 @@ final class RpApiClientTests: XCTestCase {
         let client = makeClient(playerId: "rp3_test-player")
         try await client.updatePause(
             songId: "55464", chan: 0, event: "2869397", audioType: "M",
-            sliceNum: "6", pauseDurationMillis: 21233, playtimeSecs: 1777746899
+            sliceNum: "6", playPositionMillis: 21233, playtimeSecs: 1777746899
         )
     }
 

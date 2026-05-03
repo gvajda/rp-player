@@ -18,7 +18,7 @@ struct UpdatePauseArgs: Sendable, Equatable {
     let event: String
     let audioType: String
     let sliceNum: String?
-    let pauseDurationMillis: Int
+    let playPositionMillis: Int
     let playtimeSecs: Int
 }
 
@@ -137,11 +137,11 @@ actor MockRpApiClient: RpApiClient {
 
     func updatePause(
         songId: String, chan: Int, event: String, audioType: String,
-        sliceNum: String?, pauseDurationMillis: Int, playtimeSecs: Int
+        sliceNum: String?, playPositionMillis: Int, playtimeSecs: Int
     ) async throws {
         updatePauseCalls.append(UpdatePauseArgs(
             songId: songId, chan: chan, event: event, audioType: audioType,
-            sliceNum: sliceNum, pauseDurationMillis: pauseDurationMillis,
+            sliceNum: sliceNum, playPositionMillis: playPositionMillis,
             playtimeSecs: playtimeSecs
         ))
     }

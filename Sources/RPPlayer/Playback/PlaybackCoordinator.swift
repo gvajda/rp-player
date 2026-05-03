@@ -122,6 +122,23 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         if currentSongIndex < startsAt.count {
             pausePositionMs = max(1, Int((currentPositionSeconds - startsAt[currentSongIndex]) * 1000))
         }
+        guard currentSongIndex < orderedSongs.count,
+              let channelId = currentChannelId else { return }
+        let song = orderedSongs[currentSongIndex]
+        guard song.type != "P" else { return }
+        let ppm = pausePositionMs
+        let ts = Int(clock().timeIntervalSince1970)
+        let songId = song.songId
+        let event = song.event ?? ""
+        let audioType = song.type ?? "M"
+        let sliceNum = song.sliceNum
+        let api = self.api
+        Task.detached {
+            try? await api.updatePause(
+                songId: songId, chan: channelId, event: event, audioType: audioType,
+                sliceNum: sliceNum, playPositionMillis: ppm, playtimeSecs: ts
+            )
+        }
     }
 
     public func resume() async throws {
@@ -138,7 +155,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         }
         logger.debug("resume: block fresh, engine.resume()")
         do { try await engine.resume() } catch { throw PlaybackCoordinatorError.engineError(message: String(describing: error)) }
-        guard let at = pausedAt, let channelId = currentChannelId,
+        guard pausedAt != nil, let channelId = currentChannelId,
               currentSongIndex < orderedSongs.count else { return }
         let song = orderedSongs[currentSongIndex]
         guard song.type != "P" else {
@@ -146,7 +163,6 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             pausePositionMs = 0
             return
         }
-        let durationMs = Int(clock().timeIntervalSince(at) * 1000)
         let ppm = pausePositionMs
         let ts = Int(clock().timeIntervalSince1970)
         let songId = song.songId
@@ -157,10 +173,6 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         pausedAt = nil
         pausePositionMs = 0
         Task.detached {
-            try? await api.updatePause(
-                songId: songId, chan: channelId, event: event, audioType: audioType,
-                sliceNum: sliceNum, pauseDurationMillis: durationMs, playtimeSecs: ts
-            )
             try? await api.updateHistory(
                 songId: songId, chan: channelId, event: event, audioType: audioType,
                 sliceNum: sliceNum, playPositionMillis: ppm, playtimeSecs: ts,
