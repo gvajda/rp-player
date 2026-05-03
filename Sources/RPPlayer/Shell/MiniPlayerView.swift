@@ -221,17 +221,17 @@ private struct AmbientProgressStyle: ProgressViewStyle {
             ZStack(alignment: .leading) {
                 Capsule()
                     .fill(fillColor.opacity(0.18))
-                    .frame(height: 4)
+                    .frame(height: 8)
                 Capsule()
                     .fill(fillColor)
                     .frame(
                         width: max(0, geo.size.width * CGFloat(configuration.fractionCompleted ?? 0)),
-                        height: 4
+                        height: 8
                     )
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(height: 12)
+        .frame(height: 20)
     }
 }
 
