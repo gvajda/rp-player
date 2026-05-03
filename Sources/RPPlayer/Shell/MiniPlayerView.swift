@@ -3,6 +3,7 @@ import SwiftUI
 
 struct MiniPlayerView: View {
     @ObservedObject var viewModel: MiniPlayerViewModel
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(spacing: 0) {
@@ -94,11 +95,19 @@ struct MiniPlayerView: View {
 
     private var progressRow: some View {
         VStack(spacing: 2) {
-            ProgressView(
-                value: viewModel.songElapsedSeconds,
-                total: max(viewModel.songDurationSeconds, 0.001)
-            )
-            .progressViewStyle(.linear)
+            if colorScheme == .light && viewModel.ambientTopColor != nil {
+                ProgressView(
+                    value: viewModel.songElapsedSeconds,
+                    total: max(viewModel.songDurationSeconds, 0.001)
+                )
+                .progressViewStyle(AmbientProgressStyle(fillColor: .black))
+            } else {
+                ProgressView(
+                    value: viewModel.songElapsedSeconds,
+                    total: max(viewModel.songDurationSeconds, 0.001)
+                )
+                .progressViewStyle(.linear)
+            }
             HStack {
                 Text(formatTime(viewModel.songElapsedSeconds))
                 Spacer()
@@ -201,6 +210,28 @@ struct MiniPlayerView: View {
         guard seconds.isFinite, seconds >= 0 else { return "0:00" }
         let s = Int(seconds.rounded(.down))
         return String(format: "%d:%02d", s / 60, s % 60)
+    }
+}
+
+private struct AmbientProgressStyle: ProgressViewStyle {
+    let fillColor: Color
+
+    func makeBody(configuration: Configuration) -> some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(fillColor.opacity(0.18))
+                    .frame(height: 4)
+                Capsule()
+                    .fill(fillColor)
+                    .frame(
+                        width: max(0, geo.size.width * CGFloat(configuration.fractionCompleted ?? 0)),
+                        height: 4
+                    )
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .frame(height: 12)
     }
 }
 
