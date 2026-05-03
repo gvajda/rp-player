@@ -14,8 +14,8 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 
 ## Current state
 
-- Last merged: **PR 17** — audio device error handling. 272 tests passing on `main`.
-- Upcoming: **PR 18** — TBD.
+- Last merged: **PR 18** — ambient background from album art. 286 tests passing on `main`.
+- Upcoming: **PR 19** — TBD.
 
 ## PR status
 
@@ -39,8 +39,9 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 | 14   | merged to main | ✅      | Telemetry endpoints (update_history, update_pause) for cross-session resume |
 | 15   | merged to main | ✅      | GitHub Actions: swift test on push; universal .app bundle on tag push       |
 | 16   | merged to main | ✅      | Popover + Settings UI polish (support link, song-in-browser, hamburger menu, ZStack channel row, title3 song title) |
-| 17   | merged to main | ✅      | Audio device error handling (errors stream, popover auto-open, VM reset)  |
-| 18   | pending        | ⬜      | TBD                                                                         |
+| 17   | merged to main | ✅      | Audio device error handling (errors stream, popover auto-open, VM reset)    |
+| 18   | merged to main | ✅      | Ambient background from album art (opt-in; fades on promo/error/disable)    |
+| 19   | pending        | ⬜      | TBD                                                                         |
 
 ---
 
@@ -126,6 +127,7 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 - `SettingsView` has a `supportSection` as its first `Form` section: a `Link` to `https://radioparadise.com/donate` with a `heart.fill` icon (`.pink`) and a two-line label ("Support Radio Paradise" + "Opens radioparadise.com in your browser" caption). `Link` renders with macOS's external-arrow affordance.
 - `AppSettings.appearance: AppearanceMode` (`.system` / `.light` / `.dark`, default `.system`). `AppContainer.live()` runs a dedicated `@MainActor` settings binder Task that translates each value to `NSApp.appearance` (`nil`, `.aqua`, `.darkAqua` respectively). Persisted JSON without the `appearance` key decodes as `.system` for backwards compatibility.
 - `StatusItemController.showPopoverIfNeeded()` guards `!popover.isShown` then calls the same `showHandler(button)` path as the status-item button click. This replaced the identically-bodied `toggleIfHidden()` (removed in PR 17). It is called from: AppDelegate (error-recovery path via `MiniPlayerViewModel.showPopoverIfNeeded` closure) and `NotificationClickRouter` (notification-click path). **Never add a second show-only method** — route all "show if not visible" callers here.
+- **Ambient background.** Opt-in (`AppSettings.ambientBackgroundEnabled`, default false; toggle in Settings → Appearance below the picker). When ON, `MiniPlayerView.body` paints a vertical 2-stop `LinearGradient` background: top stop = `viewModel.ambientTopColor` (sampled from the album-art's bottom 5% strip via `AmbientPaletteExtractor` actor — bottom-edge `CGImage.cropping` → 1×1 `CGContext.draw` with `.high` interpolation → RGB doubles → `Color`). Bottom stop = `Color(nsColor: .windowBackgroundColor)`, so the gradient fades into the panel's existing system-colored base and Light/Dark mode still works underneath. Animation: SwiftUI `.animation(.easeInOut(duration: 0.4), value: ambientTopColor)`. Sticky behavior: VM only clears `ambientTopColor` on (a) promo block (`song.songId == "0"`), (b) engine error (errors-stream subscription), or (c) ambient toggle OFF. During mid-track art loading the previous color persists until the new extraction completes. Stale-guard: extraction tasks check `lastLoadedCoverPath == coverAtKickoff` before publishing — if the user skipped to a different cover, the result is dropped. `MiniPlayerViewModel.init` therefore takes both `configStore: any ConfigStore` (subscribes to `ambientBackgroundEnabled`; initial value is read SYNCHRONOUSLY at `start()` via `await configStore.settings.ambientBackgroundEnabled` to avoid the race where the first `loadArt` runs before the settings stream's first emission) and `paletteExtractor: any AmbientPaletteExtracting` (production = `AmbientPaletteExtractor()`; tests use `StubAmbientPaletteExtractor` with an optional `delayNanoseconds` knob for deterministic sticky-test timing).
 
 ### View models
 
@@ -212,6 +214,7 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 - After PR 14 telemetry (update_history + update_pause; 5 trigger sites; clock injection; promo/favorites guards): 265
 - After PR 16 UI polish (SettingsView support link, MiniPlayerViewModel URL-open methods, channelRow ZStack + hamburger menu, title3 song title, secondary album color, small picker): 265
 - After PR 17 audio device error handling (errors stream on coordinator, handlePlaybackError, VM showPopoverIfNeeded injection, StatusItemController.showPopoverIfNeeded; 7 new tests): 272
+- After PR 18 ambient background from album art (`AmbientPaletteExtractor` actor, `AppSettings.ambientBackgroundEnabled`, `MiniPlayerViewModel` configStore + paletteExtractor wiring, gradient `.background` + 0.4s ease-in-out animation in `MiniPlayerView`; 14 new tests): 286
 
 ---
 
