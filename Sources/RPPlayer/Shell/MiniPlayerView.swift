@@ -98,44 +98,45 @@ struct MiniPlayerView: View {
     }
 
     private var channelRow: some View {
-        HStack(spacing: 8) {
-            Spacer()
-                .frame(maxWidth: .infinity)
-
+        ZStack {
             channelPicker
                 .fixedSize()
-
-            HStack(spacing: 4) {
-                if let label = viewModel.currentBitrateLabel {
-                    Text(label)
-                        .font(.caption2)
-                        .monospacedDigit()
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+            HStack {
+                Text("RP Player")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                Spacer()
+                HStack(spacing: 4) {
+                    if let label = viewModel.currentBitrateLabel {
+                        Text(label)
+                            .font(.caption2)
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    Menu {
+                        Section("RP Player") {
+                            Button("Settings…") { viewModel.openSettings() }
+                            Button("Open in Browser") { viewModel.openCurrentSongInBrowser() }
+                                .disabled(viewModel.nowPlaying == nil)
+                        }
+                        Section {
+                            Button("About RP Player") { viewModel.openAbout() }
+                        }
+                        Section {
+                            Button("Quit RP Player") { NSApp.terminate(nil) }
+                        }
+                    } label: {
+                        Image(systemName: "line.3.horizontal")
+                            .font(.system(size: 14, weight: .regular))
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .frame(width: 22, height: 22)
+                    .accessibilityLabel("Menu")
                 }
-                Menu {
-                    Section("RP Player") {
-                        Button("Settings…") { viewModel.openSettings() }
-                        Button("Open in Browser") { viewModel.openCurrentSongInBrowser() }
-                            .disabled(viewModel.nowPlaying == nil)
-                    }
-                    Section {
-                        Button("About RP Player") { viewModel.openAbout() }
-                    }
-                    Section {
-                        Button("Quit RP Player") { NSApp.terminate(nil) }
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .font(.system(size: 14, weight: .regular))
-                }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .fixedSize()
-                .frame(width: 22, height: 22)
-                .accessibilityLabel("Menu")
             }
-            .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .frame(width: 318)
     }
