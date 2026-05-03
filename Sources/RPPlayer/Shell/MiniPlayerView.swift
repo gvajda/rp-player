@@ -19,8 +19,8 @@ struct MiniPlayerView: View {
             VStack(spacing: 12) {
                 titleRow
                 progressRow
-                channelRow
                 transport
+                channelRow
             }
             .padding(12)
         }
@@ -99,41 +99,41 @@ struct MiniPlayerView: View {
 
     private var channelRow: some View {
         HStack(spacing: 8) {
+            Spacer()
+                .frame(maxWidth: .infinity)
+
+            channelPicker
+                .fixedSize()
+
             HStack(spacing: 4) {
-                Spacer()
                 if let label = viewModel.currentBitrateLabel {
                     Text(label)
                         .font(.caption2)
                         .monospacedDigit()
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
-                    Text("@")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
                 }
-            }
-            .frame(maxWidth: .infinity)
-
-            channelPicker
-                .fixedSize()
-
-            HStack(spacing: 6) {
-                Text("RP Player")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
                 Menu {
-                    Button("Settings…") { viewModel.openSettings() }
-                    Divider()
-                    Button("Quit RP Player") { NSApp.terminate(nil) }
+                    Section("RP Player") {
+                        Button("Settings…") { viewModel.openSettings() }
+                        Button("Open in Browser") { viewModel.openCurrentSongInBrowser() }
+                            .disabled(viewModel.nowPlaying == nil)
+                    }
+                    Section {
+                        Button("About RP Player") { viewModel.openAbout() }
+                    }
+                    Section {
+                        Button("Quit RP Player") { NSApp.terminate(nil) }
+                    }
                 } label: {
-                    Image(systemName: "gearshape")
+                    Image(systemName: "ellipsis.circle")
                         .font(.system(size: 14, weight: .regular))
                 }
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
                 .fixedSize()
                 .frame(width: 22, height: 22)
-                .accessibilityLabel("Settings and Quit")
+                .accessibilityLabel("Menu")
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
         }
