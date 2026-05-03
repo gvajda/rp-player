@@ -353,6 +353,10 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         currentBlock = nil
         orderedSongs = []
         startsAt = []
+        currentSongIndex = 0
+        currentPositionSeconds = 0
+        pausedAt = nil
+        pausePositionMs = 0
         current = nil
         let message = code == -14
             ? "Audio device unavailable. Check System Settings → Sound → Output."

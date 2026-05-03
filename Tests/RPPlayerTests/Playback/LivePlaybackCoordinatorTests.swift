@@ -1142,7 +1142,6 @@ extension LivePlaybackCoordinatorTests {
             api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 0 }
         )
 
-        var errorReceived = false
         let errorsStream = await coordinator.errors
         let collector = Task { () -> Bool in
             for await _ in errorsStream { return true }
@@ -1154,7 +1153,7 @@ extension LivePlaybackCoordinatorTests {
         try await Task.sleep(nanoseconds: 100_000_000)
 
         await coordinator.shutdown()
-        errorReceived = await collector.value
+        let errorReceived = await collector.value
         XCTAssertFalse(errorReceived, "eof must not yield an error")
     }
 
