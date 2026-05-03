@@ -12,8 +12,8 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 
 ## Current state
 
-- Last merged: **PR 14** — telemetry endpoints (`update_history`, `update_pause`; 5 trigger sites; clock injection; promo/favorites guards). 265 tests passing on `main`.
-- Upcoming: **PR 15** — distribution CI workflow + `.app` bundling.
+- Last merged: **PR 15** — distribution CI workflow + `.app` bundling (CI test on push; universal arm64+x86_64 `.app` on tag push via GitHub Actions). 265 tests passing on `main`.
+- Upcoming: **PR 16** — TBD.
 
 ## PR status
 
@@ -35,7 +35,8 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 | 12.5 | merged to main | ✅      | Event-cursor block resume (drops now_playing API; per-channel cursor)       |
 | 13   | merged to main | ✅      | api/play migration (replaces get_block; supports favorites chan=99)         |
 | 14   | merged to main | ✅      | Telemetry endpoints (update_history, update_pause) for cross-session resume |
-| 15   | pending        | ⬜      | Distribution CI workflow + `.app` bundling                                  |
+| 15   | merged to main | ✅      | GitHub Actions: swift test on push; universal .app bundle on tag push       |
+| 16   | pending        | ⬜      | TBD                                                                         |
 
 ---
 
