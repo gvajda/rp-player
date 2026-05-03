@@ -84,7 +84,7 @@ public extension PlayListSong {
     }
 }
 
-public struct GetBlock: Codable, Sendable, Equatable {
+public struct GetBlock: Encodable, Sendable, Equatable {
     public let url: String
     /// The live API returns `chan` as a String (e.g. "0"), not an integer.
     /// Deviated from spec (Int) to match fixture shape.
@@ -102,6 +102,36 @@ public struct GetBlock: Codable, Sendable, Equatable {
     public let endEvent: String?
     public let type: String?
     public let ext: String?
+
+    enum CodingKeys: String, CodingKey {
+        case url, chan, bitrate, cue, expiration, length, imageBase, song, channel, event, endEvent, type, ext
+    }
+}
+
+extension GetBlock: Decodable {
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        url = try c.decode(String.self, forKey: .url)
+        chan = try c.decode(String.self, forKey: .chan)
+        bitrate = try c.decodeIfPresent(String.self, forKey: .bitrate)
+        // cue may be Int or String depending on server version.
+        if let i = try? c.decode(Int.self, forKey: .cue) {
+            cue = i
+        } else if let s = try? c.decode(String.self, forKey: .cue), let i = Int(s) {
+            cue = i
+        } else {
+            cue = 0
+        }
+        expiration = try c.decode(Int.self, forKey: .expiration)
+        length = try c.decodeIfPresent(String.self, forKey: .length)
+        imageBase = try c.decode(String.self, forKey: .imageBase)
+        song = try c.decode([String: PlayListSong].self, forKey: .song)
+        channel = try c.decodeIfPresent(Channel.self, forKey: .channel)
+        event = try c.decodeIfPresent(String.self, forKey: .event)
+        endEvent = try c.decodeIfPresent(String.self, forKey: .endEvent)
+        type = try c.decodeIfPresent(String.self, forKey: .type)
+        ext = try c.decodeIfPresent(String.self, forKey: .ext)
+    }
 }
 
 public struct SongInfo: Codable, Sendable, Equatable {
