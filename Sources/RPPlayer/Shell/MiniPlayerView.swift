@@ -100,6 +100,7 @@ struct MiniPlayerView: View {
     private var channelRow: some View {
         HStack(spacing: 8) {
             Spacer()
+                .frame(maxWidth: .infinity)
 
             channelPicker
                 .fixedSize()
