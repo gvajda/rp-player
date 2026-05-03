@@ -14,8 +14,8 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 
 ## Current state
 
-- Last merged: **PR 16** — popover + Settings UI polish. 265 tests passing on `main`.
-- Upcoming: **PR 17** — TBD.
+- Last merged: **PR 17** — audio device error handling. 272 tests passing on `main`.
+- Upcoming: **PR 18** — TBD.
 
 ## PR status
 
@@ -39,7 +39,8 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 | 14   | merged to main | ✅      | Telemetry endpoints (update_history, update_pause) for cross-session resume |
 | 15   | merged to main | ✅      | GitHub Actions: swift test on push; universal .app bundle on tag push       |
 | 16   | merged to main | ✅      | Popover + Settings UI polish (support link, song-in-browser, hamburger menu, ZStack channel row, title3 song title) |
-| 17   | pending        | ⬜      | TBD                                                                         |
+| 17   | merged to main | ✅      | Audio device error handling (errors stream, popover auto-open, VM reset)  |
+| 18   | pending        | ⬜      | TBD                                                                         |
 
 ---
 
@@ -70,6 +71,8 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 - **Cue handling:**`loadfile <url> replace start=<seconds>`, NOT a post-`fileLoaded` `engine.seek(to:)`. mpv reports `time-pos = cue` immediately on seek for HTTP streams while the audio buffer hasn't caught up — UI saw the cue position before audio reached it. Public engine API is `play(url:startSeconds:)`; a default-arg `play(url:)` shim preserves back-compat for tests that don't care about cue. `LivePlaybackCoordinator.play(channelId:)` always seeds `currentSongIndex = 0` and seeks to `block.cue / 1000.0` if non-zero — the server (via `api/play`) returns the block whose first listed song is what should play next, so song[0] is always correct.
 - **Block audio file ≠ first listed song.** Each block has one continuous audio file with content before song "0" (typically 4–5 min). The API encodes the true offset on each song's `elapsed` field (absolute ms from file start). `block.cue` is the user's tune-in point in the same reference frame. `BlockSongs.startsAtSeconds` reads `elapsed / 1000` per song (NOT cumulative `duration` sum from 0); `BlockSongs.totalDurationSeconds` returns `last.elapsed + last.duration` (file end). All seeks use this absolute-file-offset frame.
 - **No engine-side hog fallback.** `LivePlaybackCoordinator.handleEngineEvent` just logs `.error(message:)` from mpv. The earlier `isHogModeAcquisitionFailure` heuristic + `engine.setHogMode(false)` retry was a vestige of the libmpv-owned hog era and is gone. If `HogModeController.acquire` itself returns false (CoreAudio status non-zero), surfacing that to the UI is a follow-up.
+- **Device-unplug (and all engine errors) are handled via `fileEnded(reason: .error(code:))`.** `handlePlaybackError(code:)` cancels prefetch, clears all block/song/position/channel state (`currentBlock`, `orderedSongs`, `startsAt`, `currentSongIndex`, `currentPositionSeconds`, `pausedAt`, `pausePositionMs`, `currentChannelId`), and yields a message to `errors: AsyncStream<String>`. Code -14 (`MPV_ERROR_AO_INIT_FAILED`) → `"Audio device unavailable. Check System Settings → Sound → Output."` Any other code → `"Playback stopped unexpectedly (error \(code))."` The preceding `.error(message:)` log events remain log-only. The `errors` stream is single-subscriber (one continuation, finished in `shutdown()`); the VM is the sole subscriber.
+- **`MiniPlayerViewModel.showPopoverIfNeeded`** is a public settable `@MainActor () -> Void` closure (default noop). `AppDelegate` sets it to `statusItemController?.showPopoverIfNeeded()` after both objects are created — this late-binding pattern breaks the `StatusItemController → PopoverController → MiniPlayerView → MiniPlayerViewModel` dependency cycle. The VM's errors subscription task sets `errorMessage`, `isPlaying = false`, `nowPlaying = nil`, then calls this closure on every error.
 - **Bitrate label in the popover comes from `block.bitrate` (the API field), not mpv.** mpv's `audio-bitrate` observer reported the decoded stream's running average — confusing because it lagged settings changes (still showed "AAC" after switching to FLAC). The whole observer pipeline is gone: no `mpv_observe_property("audio-bitrate", …)`, no `StreamFormat`, no `PlayerEvent.streamFormatChanged`. The coordinator threads `currentBlock?.bitrate` through `NowPlaying.blockBitrate` and `BlockBitrateLabel.display(_:)` surfaces it verbatim (trim + uppercase only). Confirmed integer→label mapping (exhaustive, from manual API enumeration): 0 → "32k aac", 1 → "64k aac", 2 → "128k aac", 3 → "320k aac", 4 → "flac", 5 → "128k mp3", 6 → "320k mp3". Display is still verbatim (trim + uppercase) — no switch table — so any future server-side renames appear automatically. `MiniPlayerView` renders `viewModel.currentBitrateLabel`.
 
 ### libmpv vendoring + linkage
@@ -122,6 +125,7 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 - Song title uses `.title3`; artist uses `.subheadline` + `.secondary`; album uses `.caption` + `.secondary` (previously `.tertiary`, which was unreadable in light mode). Both transport buttons keep `PressOpacityButtonStyle`.
 - `SettingsView` has a `supportSection` as its first `Form` section: a `Link` to `https://radioparadise.com/donate` with a `heart.fill` icon (`.pink`) and a two-line label ("Support Radio Paradise" + "Opens radioparadise.com in your browser" caption). `Link` renders with macOS's external-arrow affordance.
 - `AppSettings.appearance: AppearanceMode` (`.system` / `.light` / `.dark`, default `.system`). `AppContainer.live()` runs a dedicated `@MainActor` settings binder Task that translates each value to `NSApp.appearance` (`nil`, `.aqua`, `.darkAqua` respectively). Persisted JSON without the `appearance` key decodes as `.system` for backwards compatibility.
+- `StatusItemController.showPopoverIfNeeded()` guards `!popover.isShown` then calls the same `showHandler(button)` path as the status-item button click. This replaced the identically-bodied `toggleIfHidden()` (removed in PR 17). It is called from: AppDelegate (error-recovery path via `MiniPlayerViewModel.showPopoverIfNeeded` closure) and `NotificationClickRouter` (notification-click path). **Never add a second show-only method** — route all "show if not visible" callers here.
 
 ### View models
 
@@ -207,6 +211,7 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 - After PR 13 api/play migration (drops getBlock + channelCursors; per-install rp3\_ player_id; drops GetBlock.filename; supports favorites chan=99): 251
 - After PR 14 telemetry (update_history + update_pause; 5 trigger sites; clock injection; promo/favorites guards): 265
 - After PR 16 UI polish (SettingsView support link, MiniPlayerViewModel URL-open methods, channelRow ZStack + hamburger menu, title3 song title, secondary album color, small picker): 265
+- After PR 17 audio device error handling (errors stream on coordinator, handlePlaybackError, VM showPopoverIfNeeded injection, StatusItemController.showPopoverIfNeeded; 7 new tests): 272
 
 ---
 
