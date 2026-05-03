@@ -26,6 +26,7 @@ final class MiniPlayerViewModel: ObservableObject {
     private let persistChannelId: PersistChannelId
     private var subscriptionTask: Task<Void, Never>?
     private var positionSubscriptionTask: Task<Void, Never>?
+    private var errorsSubscriptionTask: Task<Void, Never>?
     private var inFlightChannelId: Int?
     private var lastLoadedCoverPath: String?
     private var lastSongStartSeconds: Double?
@@ -55,6 +56,8 @@ final class MiniPlayerViewModel: ObservableObject {
         subscriptionTask = nil
         positionSubscriptionTask?.cancel()
         positionSubscriptionTask = nil
+        errorsSubscriptionTask?.cancel()
+        errorsSubscriptionTask = nil
         do {
             self.channels = try await api.listChannels()
             self.errorMessage = nil
@@ -114,7 +117,7 @@ final class MiniPlayerViewModel: ObservableObject {
         }
 
         let errorsStream = await coordinator.errors
-        Task { [weak self] in
+        errorsSubscriptionTask = Task { [weak self] in
             for await message in errorsStream {
                 guard let self else { return }
                 self.errorMessage = message
@@ -126,6 +129,7 @@ final class MiniPlayerViewModel: ObservableObject {
     func stop() async {
         subscriptionTask?.cancel(); subscriptionTask = nil
         positionSubscriptionTask?.cancel(); positionSubscriptionTask = nil
+        errorsSubscriptionTask?.cancel(); errorsSubscriptionTask = nil
     }
 
     func togglePlayPause() async {

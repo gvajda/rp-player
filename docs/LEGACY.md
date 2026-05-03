@@ -18,4 +18,4 @@ This project supersedes [RP_Notify](https://github.com/gvajda/radio-paradise-son
 
 ## Source of truth
 
-[`DESIGN.md`](DESIGN.md) is the source of truth for the new project. The legacy code in [`legacy/`](legacy/) is reference material only — do not port the C# line-by-line.
+[`DESIGN.md`](DESIGN.md) is the source of truth for the new project. The legacy code in `legacy/` is reference material only — do not port the C# line-by-line.

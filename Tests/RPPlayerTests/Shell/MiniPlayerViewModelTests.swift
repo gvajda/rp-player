@@ -374,10 +374,11 @@ final class MiniPlayerViewModelTests: XCTestCase {
     }
 
     func testUserActionClearsErrorMessageFromCoordinatorStream() async throws {
-        await coordinator.setNextError(NSError(domain: "test", code: 1))
         await sut.start()
-        await sut.skipForward()
-        XCTAssertNotNil(sut.errorMessage)
+
+        await coordinator.errorsContinuation.yield("some error")
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(sut.errorMessage, "some error")
 
         await sut.togglePlayPause()
         XCTAssertNil(sut.errorMessage)

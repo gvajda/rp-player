@@ -49,7 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 api: container.api,
                 mainPresenter: { [weak statusItemController, container] in
                     container.pastSongPopoverController.close()
-                    statusItemController?.toggleIfHidden()
+                    statusItemController?.showPopoverIfNeeded()
                 },
                 pastSongPresenter: { [weak statusItemController, container] song in
                     statusItemController?.closeIfShown()
