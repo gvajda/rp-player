@@ -1119,8 +1119,14 @@ extension LivePlaybackCoordinatorTests {
         }
 
         try await coordinator.play(channelId: 0)
+        let npBefore = await coordinator.nowPlaying
+        XCTAssertNotNil(npBefore)
+
         await engine.fire(.fileEnded(reason: .error(code: -99)))
         try await Task.sleep(nanoseconds: 100_000_000)
+
+        let npAfter = await coordinator.nowPlaying
+        XCTAssertNil(npAfter)
 
         await coordinator.shutdown()
         let errorMessage = await collector.value
