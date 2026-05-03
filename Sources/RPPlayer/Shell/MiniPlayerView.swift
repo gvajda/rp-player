@@ -3,6 +3,7 @@ import SwiftUI
 
 struct MiniPlayerView: View {
     @ObservedObject var viewModel: MiniPlayerViewModel
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(spacing: 0) {
@@ -99,7 +100,7 @@ struct MiniPlayerView: View {
                 total: max(viewModel.songDurationSeconds, 0.001)
             )
             .progressViewStyle(.linear)
-            .tint(.primary)
+            .tint(colorScheme == .light && viewModel.ambientTopColor != nil ? Color.black : .primary)
             HStack {
                 Text(formatTime(viewModel.songElapsedSeconds))
                 Spacer()
