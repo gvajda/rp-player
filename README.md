@@ -1,5 +1,8 @@
 # RP Player
 
+[![CI](https://github.com/gvajda/rp-player/actions/workflows/ci.yml/badge.svg)](https://github.com/gvajda/rp-player/actions/workflows/ci.yml)
+[![Release](https://github.com/gvajda/rp-player/actions/workflows/release.yml/badge.svg)](https://github.com/gvajda/rp-player/actions/workflows/release.yml)
+
 Bit-perfect Radio Paradise player for macOS — menu-bar app with desktop notifications and in-app song rating.
 
 ## Download
