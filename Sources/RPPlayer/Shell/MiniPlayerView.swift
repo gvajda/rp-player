@@ -3,7 +3,6 @@ import SwiftUI
 
 struct MiniPlayerView: View {
     @ObservedObject var viewModel: MiniPlayerViewModel
-    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(spacing: 0) {
@@ -99,9 +98,7 @@ struct MiniPlayerView: View {
                 value: viewModel.songElapsedSeconds,
                 total: max(viewModel.songDurationSeconds, 0.001)
             )
-            .progressViewStyle(AmbientProgressStyle(
-                fillColor: colorScheme == .light && viewModel.ambientTopColor != nil ? .black : Color(nsColor: .labelColor)
-            ))
+            .progressViewStyle(.linear)
             HStack {
                 Text(formatTime(viewModel.songElapsedSeconds))
                 Spacer()
@@ -207,20 +204,3 @@ struct MiniPlayerView: View {
     }
 }
 
-private struct AmbientProgressStyle: ProgressViewStyle {
-    let fillColor: Color
-
-    func makeBody(configuration: Configuration) -> some View {
-        GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(fillColor.opacity(0.2))
-                    .frame(height: 4)
-                Capsule()
-                    .fill(fillColor)
-                    .frame(width: geo.size.width * CGFloat(configuration.fractionCompleted ?? 0), height: 4)
-            }
-        }
-        .frame(height: 4)
-    }
-}
