@@ -6,33 +6,19 @@ on:
       - 'v*'
 
 jobs:
-  build-binary:
-    runs-on: macos-13
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Build
-        run: swift build -c release
-
-      - name: Upload binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: binary-x86_64
-          path: .build/release/RPPlayer
-
   package-and-release:
-    needs: build-binary
-    runs-on: macos-14
+    runs-on: macos-15
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download x86_64 binary
-        uses: actions/download-artifact@v4
-        with:
-          name: binary-x86_64
-          path: artifacts/x86_64
+      - name: Select latest Xcode 16
+        run: |
+          XCODE=$(ls -d /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -1)
+          echo "Using: $XCODE"
+          sudo xcode-select -s "$XCODE/Contents/Developer"
+          swift --version
 
       - name: Extract version from tag
         id: ver
@@ -44,11 +30,17 @@ jobs:
           SIGN_IDENTITY: "-"
         run: ./scripts/make-app.sh release
 
+      - name: Build x86_64 binary
+        run: |
+          swift build -c release --triple x86_64-apple-macosx14.0
+          install_name_tool -add_rpath "@loader_path/../Frameworks" \
+            .build/x86_64-apple-macosx/release/RPPlayer
+
       - name: Merge to universal binary
         run: |
           APP="build/RP Player.app"
           BIN="$APP/Contents/MacOS/RP Player"
-          lipo -create "$BIN" artifacts/x86_64/RPPlayer -output "$BIN.universal"
+          lipo -create "$BIN" .build/x86_64-apple-macosx/release/RPPlayer -output "$BIN.universal"
           mv "$BIN.universal" "$BIN"
           codesign --force --options runtime \
             --entitlements scripts/entitlements.plist \
