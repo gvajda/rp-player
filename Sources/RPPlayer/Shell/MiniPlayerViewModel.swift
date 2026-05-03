@@ -73,6 +73,7 @@ final class MiniPlayerViewModel: ObservableObject {
         settingsSubscriptionTask = nil
         paletteTask?.cancel()
         paletteTask = nil
+        self.ambientEnabled = await configStore.settings.ambientBackgroundEnabled
         do {
             self.channels = try await api.listChannels()
             self.errorMessage = nil
@@ -150,12 +151,10 @@ final class MiniPlayerViewModel: ObservableObject {
         settingsSubscriptionTask = Task { [weak self] in
             for await snapshot in settingsStream {
                 guard let self else { return }
-                await MainActor.run {
-                    let wasEnabled = self.ambientEnabled
-                    self.ambientEnabled = snapshot.ambientBackgroundEnabled
-                    if wasEnabled, !snapshot.ambientBackgroundEnabled {
-                        self.ambientTopColor = nil
-                    }
+                let wasEnabled = self.ambientEnabled
+                self.ambientEnabled = snapshot.ambientBackgroundEnabled
+                if wasEnabled, !snapshot.ambientBackgroundEnabled {
+                    self.ambientTopColor = nil
                 }
             }
         }

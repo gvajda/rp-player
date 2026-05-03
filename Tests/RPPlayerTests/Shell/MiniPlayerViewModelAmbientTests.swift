@@ -18,9 +18,6 @@ final class MiniPlayerViewModelAmbientTests: XCTestCase {
         auth = StubKeychainAuth()
         cache = StubAlbumArtCache()
         extractor = StubAmbientPaletteExtractor()
-        var initial = AppSettings.default
-        initial.ambientBackgroundEnabled = true
-        store = StubConfigStore(initial: initial)
     }
 
     private func makeSUT(ambientEnabled: Bool = true) -> MiniPlayerViewModel {
@@ -87,11 +84,12 @@ final class MiniPlayerViewModelAmbientTests: XCTestCase {
         let firstColor = sut.ambientTopColor
         XCTAssertNotNil(firstColor)
 
+        extractor.delayNanoseconds = 200_000_000
         await coordinator.setNowPlaying(NowPlaying.fixture(cover: "covers/l/b.jpg", songId: "2"))
-        try await Task.sleep(nanoseconds: 5_000_000)
+        try await Task.sleep(nanoseconds: 30_000_000)
         XCTAssertEqual(sut.ambientTopColor, firstColor, "ambient color must remain sticky during track-art-load")
 
-        try await Task.sleep(nanoseconds: 120_000_000)
+        try await Task.sleep(nanoseconds: 250_000_000)
         XCTAssertNotNil(sut.ambientTopColor, "ambient color should be set once new art loads")
         await sut.stop()
     }

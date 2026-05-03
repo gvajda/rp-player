@@ -53,13 +53,19 @@ final class StubAudioDeviceCatalog: AudioDeviceCatalog {
 final class StubAmbientPaletteExtractor: AmbientPaletteExtracting {
     var nextResult: ExtractedColor?
     var calls: [NSImage] = []
+    var delayNanoseconds: UInt64
 
-    init(nextResult: ExtractedColor? = nil) {
+    init(nextResult: ExtractedColor? = nil, delayNanoseconds: UInt64 = 0) {
         self.nextResult = nextResult
+        self.delayNanoseconds = delayNanoseconds
     }
 
     nonisolated func extractBottomEdgeColor(from image: NSImage) async -> ExtractedColor? {
-        await MainActor.run {
+        let delay = await MainActor.run { delayNanoseconds }
+        if delay > 0 {
+            try? await Task.sleep(nanoseconds: delay)
+        }
+        return await MainActor.run {
             calls.append(image)
             return nextResult
         }
