@@ -99,8 +99,9 @@ struct MiniPlayerView: View {
                 value: viewModel.songElapsedSeconds,
                 total: max(viewModel.songDurationSeconds, 0.001)
             )
-            .progressViewStyle(.linear)
-            .tint(colorScheme == .light && viewModel.ambientTopColor != nil ? Color.black : .primary)
+            .progressViewStyle(AmbientProgressStyle(
+                fillColor: colorScheme == .light && viewModel.ambientTopColor != nil ? .black : Color(nsColor: .labelColor)
+            ))
             HStack {
                 Text(formatTime(viewModel.songElapsedSeconds))
                 Spacer()
@@ -203,5 +204,23 @@ struct MiniPlayerView: View {
         guard seconds.isFinite, seconds >= 0 else { return "0:00" }
         let s = Int(seconds.rounded(.down))
         return String(format: "%d:%02d", s / 60, s % 60)
+    }
+}
+
+private struct AmbientProgressStyle: ProgressViewStyle {
+    let fillColor: Color
+
+    func makeBody(configuration: Configuration) -> some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(fillColor.opacity(0.2))
+                    .frame(height: 4)
+                Capsule()
+                    .fill(fillColor)
+                    .frame(width: geo.size.width * CGFloat(configuration.fractionCompleted ?? 0), height: 4)
+            }
+        }
+        .frame(height: 4)
     }
 }
