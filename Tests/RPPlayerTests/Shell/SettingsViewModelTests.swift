@@ -161,4 +161,37 @@ final class SettingsViewModelTests: XCTestCase {
         XCTAssertEqual(configStore.settings.appearance, .dark)
         XCTAssertEqual(sut.appearance, .dark)
     }
+
+    func testAmbientBackgroundEnabledDefaultsToFalse() async {
+        let store = StubConfigStore(initial: .default)
+        let catalog = StubAudioDeviceCatalog(initial: [])
+        let auth = StubKeychainAuth()
+        let sut = SettingsViewModel(
+            configStore: store,
+            deviceCatalog: catalog,
+            auth: auth,
+            openLoginWindow: { },
+            openApplicationData: { }
+        )
+        XCTAssertFalse(sut.ambientBackgroundEnabled)
+    }
+
+    func testSetAmbientBackgroundEnabledPersistsAndUpdatesViewModel() async throws {
+        let store = StubConfigStore(initial: .default)
+        let catalog = StubAudioDeviceCatalog(initial: [])
+        let auth = StubKeychainAuth()
+        let sut = SettingsViewModel(
+            configStore: store,
+            deviceCatalog: catalog,
+            auth: auth,
+            openLoginWindow: { },
+            openApplicationData: { }
+        )
+        await sut.start()
+        await sut.setAmbientBackgroundEnabled(true)
+        try await Task.sleep(nanoseconds: 30_000_000)
+        XCTAssertTrue(sut.ambientBackgroundEnabled)
+        XCTAssertTrue(store.current.ambientBackgroundEnabled)
+        await sut.stop()
+    }
 }
