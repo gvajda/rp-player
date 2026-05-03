@@ -13,6 +13,7 @@ final class StatusItemController {
     private var hoverTracker: HoverTracker?
     private var hoverTimer: Timer?
     private var showWorkItem: DispatchWorkItem?
+    private var tooltipAnchor: NSPoint = .zero
 
     init(
         statusBar: NSStatusBar = .system,
@@ -104,7 +105,7 @@ final class StatusItemController {
         showWorkItem?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.showTooltipNow() }
         showWorkItem = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.30, execute: work)
     }
 
     private func handleHoverExit() {
@@ -120,13 +121,13 @@ final class StatusItemController {
     }
 
     private func showTooltipNow() {
-        guard let button = statusItem.button else { return }
-        tooltipWindow.show(text: currentTooltipText(), below: button)
+        tooltipAnchor = NSEvent.mouseLocation
+        tooltipWindow.show(text: currentTooltipText(), anchoredAt: tooltipAnchor)
         let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
-                guard let self, let button = self.statusItem.button else { return }
+                guard let self else { return }
                 self.tooltipWindow.update(text: self.currentTooltipText())
-                self.tooltipWindow.reposition(below: button)
+                self.tooltipWindow.reposition(anchoredAt: self.tooltipAnchor)
             }
         }
         RunLoop.main.add(timer, forMode: .common)

@@ -44,9 +44,9 @@ final class HoverTooltipWindow {
         panel.contentView = container
     }
 
-    func show(text: String, below button: NSStatusBarButton) {
+    func show(text: String, anchoredAt point: NSPoint) {
         update(text: text)
-        repositionBelow(button)
+        positionBelow(point: point)
         panel.orderFront(nil)
     }
 
@@ -58,21 +58,20 @@ final class HoverTooltipWindow {
         panel.setFrame(NSRect(origin: origin, size: panelSize), display: true)
     }
 
-    func reposition(below button: NSStatusBarButton) {
-        repositionBelow(button)
+    func reposition(anchoredAt point: NSPoint) {
+        positionBelow(point: point)
     }
 
     func hide() {
         panel.orderOut(nil)
     }
 
-    private func repositionBelow(_ button: NSStatusBarButton) {
-        guard let buttonWindow = button.window else { return }
-        let buttonInWindow = button.convert(button.bounds, to: nil)
-        let buttonInScreen = buttonWindow.convertToScreen(buttonInWindow)
+    // The cursor hotspot is the given point; the arrow extends ~16pt down-right.
+    // Offset the panel below the arrow so it doesn't sit under the cursor.
+    private func positionBelow(point: NSPoint) {
         let panelSize = panel.frame.size
-        let x = buttonInScreen.midX - panelSize.width / 2
-        let y = buttonInScreen.minY - panelSize.height - 4
+        let x = point.x - panelSize.width / 2
+        let y = point.y - panelSize.height - 20
         panel.setFrameOrigin(NSPoint(x: x, y: y))
     }
 }
