@@ -13,14 +13,7 @@ struct UpcomingSongCardView: View {
         }
         .frame(height: 68)
         .frame(maxWidth: .infinity)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .overlay(
-            LinearGradient(
-                colors: [row.ambientColor.opacity(0.28), .clear],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
-        )
+        .background(row.ambientColor.opacity(0.28))
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
