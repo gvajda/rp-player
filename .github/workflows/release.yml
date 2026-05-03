@@ -1,0 +1,90 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-binary:
+    strategy:
+      matrix:
+        include:
+          - runner: macos-14
+            arch: arm64
+          - runner: macos-13
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: swift build -c release
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.arch }}
+          path: .build/release/RPPlayer
+
+  package-and-release:
+    needs: build-binary
+    runs-on: macos-14
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download x86_64 binary
+        uses: actions/download-artifact@v4
+        with:
+          name: binary-x86_64
+          path: artifacts/x86_64
+
+      - name: Extract version from tag
+        id: ver
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build arm64 .app
+        env:
+          VERSION: ${{ steps.ver.outputs.VERSION }}
+          SIGN_IDENTITY: "-"
+        run: ./scripts/make-app.sh release
+
+      - name: Merge to universal binary
+        run: |
+          APP="build/RP Player.app"
+          BIN="$APP/Contents/MacOS/RP Player"
+          lipo -create "$BIN" artifacts/x86_64/RPPlayer -output "$BIN.universal"
+          mv "$BIN.universal" "$BIN"
+          codesign --force --options runtime \
+            --entitlements scripts/entitlements.plist \
+            --sign "-" "$BIN"
+          codesign --force --options runtime \
+            --entitlements scripts/entitlements.plist \
+            --sign "-" "$APP"
+
+      - name: Verify codesigning
+        run: codesign --verify --verbose "build/RP Player.app"
+
+      - name: Verify universal binary
+        run: lipo -info "build/RP Player.app/Contents/MacOS/RP Player"
+
+      - name: Zip
+        run: |
+          cd build
+          zip -r "RP Player-${GITHUB_REF_NAME}.zip" "RP Player.app"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PRERELEASE_FLAG=""
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            $PRERELEASE_FLAG \
+            "build/RP Player-${GITHUB_REF_NAME}.zip"
