@@ -18,10 +18,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var verboseLoggingEnabled: Bool
     /// Stable per-install `rp3_<uuid>` identifier sent as `player_id` URL param to `api/play` (and future telemetry endpoints). Generated lazily by AppContainer on first launch when nil.
     public var playerId: String?
-    /// Number of upcoming songs to display per channel in the Upcoming Program window. Range 3–10.
     public var upcomingRowCount: Int
-    /// Channel IDs the user has hidden in the Upcoming Program view. Chan 42 and 99 are always
-    /// excluded in the UI regardless of this list.
+    // Chan 42 and 99 are always excluded from the Upcoming Program view regardless of this list.
     public var upcomingHiddenChannelIds: [Int]
 
     public init(
