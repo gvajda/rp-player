@@ -123,4 +123,19 @@ final class MiniPlayerViewModelAmbientTests: XCTestCase {
         XCTAssertNil(sut.ambientTopColor, "disabling ambient must clear current color")
         await sut.stop()
     }
+
+    func testAmbientTopColorAppearsWhenToggledOnMidPlayback() async throws {
+        cache.imageByPath["covers/l/a.jpg"] = NSImage(size: NSSize(width: 4, height: 4))
+        extractor.nextResult = ExtractedColor(red: 0.9, green: 0.1, blue: 0.1)
+        let sut = makeSUT(ambientEnabled: false)
+        await sut.start()
+        await coordinator.setNowPlaying(NowPlaying.fixture(cover: "covers/l/a.jpg", songId: "1"))
+        try await Task.sleep(nanoseconds: 120_000_000)
+        XCTAssertNil(sut.ambientTopColor, "ambient OFF — should be nil even though art is loaded")
+
+        try await store.update { $0.ambientBackgroundEnabled = true }
+        try await Task.sleep(nanoseconds: 120_000_000)
+        XCTAssertNotNil(sut.ambientTopColor, "toggling ambient ON mid-playback should produce a color from the already-loaded art")
+        await sut.stop()
+    }
 }

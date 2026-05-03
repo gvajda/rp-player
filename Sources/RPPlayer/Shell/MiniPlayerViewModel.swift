@@ -17,7 +17,7 @@ final class MiniPlayerViewModel: ObservableObject {
     @Published private(set) var songElapsedSeconds: Double = 0
     @Published private(set) var songDurationSeconds: Double = 0
     @Published private(set) var ambientTopColor: Color?
-    @Published private(set) var ambientEnabled: Bool = false
+    private var ambientEnabled: Bool = false
 
     typealias PersistChannelId = @Sendable (Int) async -> Void
 
@@ -155,6 +155,10 @@ final class MiniPlayerViewModel: ObservableObject {
                 self.ambientEnabled = snapshot.ambientBackgroundEnabled
                 if wasEnabled, !snapshot.ambientBackgroundEnabled {
                     self.ambientTopColor = nil
+                } else if !wasEnabled, snapshot.ambientBackgroundEnabled,
+                          let image = self.currentArt,
+                          let cover = self.lastLoadedCoverPath {
+                    self.extractPalette(from: image, coverPath: cover)
                 }
             }
         }
@@ -278,13 +282,16 @@ final class MiniPlayerViewModel: ObservableObject {
             self.currentArt = image
         }
         guard let image, ambientEnabled else { return }
-        let coverAtKickoff = cover
+        extractPalette(from: image, coverPath: cover)
+    }
+
+    private func extractPalette(from image: NSImage, coverPath: String) {
         paletteTask?.cancel()
         paletteTask = Task { [weak self, paletteExtractor] in
             let extracted = await paletteExtractor.extractBottomEdgeColor(from: image)
             guard let self else { return }
             await MainActor.run {
-                guard self.lastLoadedCoverPath == coverAtKickoff else { return }
+                guard self.lastLoadedCoverPath == coverPath else { return }
                 self.ambientTopColor = extracted?.swiftUIColor
             }
         }

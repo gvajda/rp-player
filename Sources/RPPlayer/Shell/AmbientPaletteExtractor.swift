@@ -27,7 +27,7 @@ actor AmbientPaletteExtractor: AmbientPaletteExtracting {
 
         var bitmap = [UInt8](repeating: 0, count: 4)
         let colorSpace = CGColorSpaceCreateDeviceRGB()
-        let bitmapInfo = CGImageAlphaInfo.premultipliedLast.rawValue
+        let bitmapInfo = CGImageAlphaInfo.noneSkipLast.rawValue
         guard let ctx = CGContext(
             data: &bitmap,
             width: 1, height: 1,
