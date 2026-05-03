@@ -1056,6 +1056,133 @@ extension LivePlaybackCoordinatorTests {
 }
 
 extension LivePlaybackCoordinatorTests {
+    func testFileEndedWithErrorCodeMinusFourteenYieldsDeviceUnavailableError() async throws {
+        let api = MockRpApiClient()
+        let block = makeBlock(songs: [("s1", 60_000), ("s2", 60_000)])
+        await api.setBlockResponses([block])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 0 }
+        )
+
+        let errorsStream = await coordinator.errors
+        let collector = Task { () -> String? in
+            for await msg in errorsStream { return msg }
+            return nil
+        }
+
+        try await coordinator.play(channelId: 0)
+        await engine.fire(.fileEnded(reason: .error(code: -14)))
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        let np = await coordinator.nowPlaying
+        XCTAssertNil(np, "nowPlaying must be nil after device error")
+
+        await coordinator.shutdown()
+        let errorMessage = await collector.value
+        XCTAssertEqual(errorMessage, "Audio device unavailable. Check System Settings → Sound → Output.")
+    }
+
+    func testFileEndedWithErrorCodeMinusFourteenClearsBlockState() async throws {
+        let api = MockRpApiClient()
+        let block = makeBlock(songs: [("s1", 60_000), ("s2", 60_000)])
+        await api.setBlockResponses([block])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 0 }
+        )
+
+        try await coordinator.play(channelId: 0)
+        let npBefore = await coordinator.nowPlaying
+        XCTAssertNotNil(npBefore)
+
+        await engine.fire(.fileEnded(reason: .error(code: -14)))
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        let npAfter = await coordinator.nowPlaying
+        XCTAssertNil(npAfter)
+    }
+
+    func testFileEndedWithArbitraryErrorCodeYieldsGenericError() async throws {
+        let api = MockRpApiClient()
+        let block = makeBlock(songs: [("s1", 60_000)])
+        await api.setBlockResponses([block])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 0 }
+        )
+
+        let errorsStream = await coordinator.errors
+        let collector = Task { () -> String? in
+            for await msg in errorsStream { return msg }
+            return nil
+        }
+
+        try await coordinator.play(channelId: 0)
+        await engine.fire(.fileEnded(reason: .error(code: -99)))
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        await coordinator.shutdown()
+        let errorMessage = await collector.value
+        XCTAssertEqual(errorMessage, "Playback stopped unexpectedly (error -99).")
+    }
+
+    func testFileEndedWithEofDoesNotYieldError() async throws {
+        let api = MockRpApiClient()
+        let block = makeBlock(songs: [("s1", 60_000)])
+        await api.setBlockResponses([block])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 0 }
+        )
+
+        var errorReceived = false
+        let errorsStream = await coordinator.errors
+        let collector = Task { () -> Bool in
+            for await _ in errorsStream { return true }
+            return false
+        }
+
+        try await coordinator.play(channelId: 0)
+        await engine.fire(.fileEnded(reason: .eof))
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        await coordinator.shutdown()
+        errorReceived = await collector.value
+        XCTAssertFalse(errorReceived, "eof must not yield an error")
+    }
+
+    func testFileEndedWithErrorCancelsPrefetchTask() async throws {
+        let api = MockRpApiClient()
+        let firstBlock = makeBlock(
+            endEvent: "500",
+            prebuiltSongs: [makeSong(id: "1", duration: 11_000, elapsed: 0, event: "500")]
+        )
+        let secondBlock = makeBlock(songs: [("s2", 60_000)])
+        await api.setBlockResponses([firstBlock, secondBlock])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 0 }
+        )
+
+        try await coordinator.play(channelId: 0)
+        // Put a slow delay on the api so the prefetch remains in-flight.
+        await api.setPlayDelay(nanos: 2_000_000_000)
+        await engine.fire(.positionUpdate(seconds: 2.0))
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        await api.setPlayDelay(nanos: 0)
+        await engine.fire(.fileEnded(reason: .error(code: -14)))
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        let cancellations = await api.playCancellations
+        XCTAssertEqual(cancellations, 1, "in-flight prefetch must be cancelled on playback error")
+        let np = await coordinator.nowPlaying
+        XCTAssertNil(np)
+    }
+}
+
+extension LivePlaybackCoordinatorTests {
     func testPlayChannelBootstrapsWithEventZeroAndActionStart() async throws {
         let api = MockRpApiClient()
         let block = makeBlock(songs: [("s1", 60_000), ("s2", 60_000)])

@@ -4,6 +4,7 @@ public protocol PlaybackCoordinator: Sendable {
     var nowPlaying: NowPlaying? { get async }
     var nowPlayingUpdates: AsyncStream<NowPlaying> { get async }
     var positionUpdates: AsyncStream<Double> { get async }
+    var errors: AsyncStream<String> { get async }
 
     func play(channelId: Int) async throws
     func pause() async throws
@@ -36,6 +37,9 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     private var prefetchedBlock: GetBlock?
     private var prefetchTask: Task<Void, Never>?
     private var isShutdown = false
+    private var errorsContinuation: AsyncStream<String>.Continuation?
+
+    public var errors: AsyncStream<String>
 
     public init(
         api: any RpApiClient,
@@ -49,6 +53,9 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         self.logger = logger
         self.bitrateProvider = bitrateProvider
         self.clock = clock
+        var cont: AsyncStream<String>.Continuation!
+        self.errors = AsyncStream { cont = $0 }
+        self.errorsContinuation = cont
     }
 
     public var nowPlaying: NowPlaying? { current }
@@ -287,6 +294,8 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         continuations.removeAll()
         for c in positionContinuations.values { c.finish() }
         positionContinuations.removeAll()
+        errorsContinuation?.finish()
+        errorsContinuation = nil
     }
 
     // Idempotent. Awaited from inside actor isolation, so by the time it returns
@@ -326,11 +335,29 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             if case .eof = reason {
                 await swapToPrefetchedBlockIfAvailable()
             }
+            if case .error(let code) = reason {
+                await handlePlaybackError(code: code)
+            }
         case .error(let message):
             logger.error("player engine reported error: \(message)")
         case .outputDeviceChanged, .shutdown:
             break
         }
+    }
+
+    private func handlePlaybackError(code: Int) async {
+        logger.error("engine fileEnded with error code \(code)")
+        prefetchTask?.cancel()
+        prefetchTask = nil
+        prefetchedBlock = nil
+        currentBlock = nil
+        orderedSongs = []
+        startsAt = []
+        current = nil
+        let message = code == -14
+            ? "Audio device unavailable. Check System Settings → Sound → Output."
+            : "Playback stopped unexpectedly (error \(code))."
+        errorsContinuation?.yield(message)
     }
 
     private func emitNowPlaying(forSongIndex idx: Int) {

@@ -18,6 +18,14 @@ actor MockPlaybackCoordinator: PlaybackCoordinator {
     private var positionContinuations: [UUID: AsyncStream<Double>.Continuation] = [:]
     private var lastPosition: Double = 0
     private var nextError: Error?
+    private(set) var errorsContinuation: AsyncStream<String>.Continuation!
+    var errors: AsyncStream<String>
+
+    init() {
+        var cont: AsyncStream<String>.Continuation!
+        errors = AsyncStream { cont = $0 }
+        errorsContinuation = cont
+    }
 
     func setNextError(_ error: Error) { nextError = error }
     func setNowPlaying(_ value: NowPlaying?) {
@@ -81,5 +89,6 @@ actor MockPlaybackCoordinator: PlaybackCoordinator {
         continuations.removeAll()
         for c in positionContinuations.values { c.finish() }
         positionContinuations.removeAll()
+        errorsContinuation.finish()
     }
 }
