@@ -14,14 +14,9 @@ PR 13 will replace this with a CI-built artifact.
 
 ### One-time setup: self-signed certificate (required for notifications)
 
-`UNUserNotificationCenter.requestAuthorization` returns
-`UNErrorDomain Code=1 "Notifications are not allowed for this application"`
-when the app is ad-hoc signed (the default). The notification daemon
-(`usernoted`) requires a **stable code-signing identity** before it will
-register the bundle and show the permission prompt.
+`UNUserNotificationCenter.requestAuthorization` returns `UNErrorDomain Code=1 "Notifications are not allowed for this application"` when the app is ad-hoc signed (the default). The notification daemon (`usernoted`) requires a **stable code-signing identity** before it will register the bundle and show the permission prompt.
 
-Create a self-signed cert named `RP Player Dev` once. The script auto-detects
-it on next build.
+Create a self-signed cert named `RP Player Dev` once. The script auto-detects it on next build.
 
 1. Open **Keychain Access** (`open -a "Keychain Access"`).
 2. Menu: **Keychain Access → Certificate Assistant → Create a Certificate…**
@@ -39,6 +34,7 @@ security find-identity -v -p codesigning | grep "RP Player Dev"
 ```
 
 Should print something like:
+
 ```
 1) ABCD...EFGH "RP Player Dev"
 ```
@@ -49,9 +45,7 @@ Now rebuild the app:
 ./scripts/make-app.sh
 ```
 
-The script's `==> codesign` step should print `using identity: RP Player Dev`
-instead of `using ad-hoc`. Move the rebuilt `.app` to `/Applications/` and
-launch — the notification prompt should now appear on first request.
+The script's `==> codesign` step should print `using identity: RP Player Dev` instead of `using ad-hoc`. Move the rebuilt `.app` to `/Applications/` and launch — the notification prompt should now appear on first request.
 
 ### Reset notification state for testing
 
