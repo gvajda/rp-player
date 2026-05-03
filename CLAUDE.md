@@ -14,8 +14,8 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 
 ## Current state
 
-- Last merged: **PR 15** — distribution CI workflow + `.app` bundling (CI test on push; universal arm64+x86_64 `.app` on tag push via GitHub Actions). 265 tests passing on `main`.
-- Upcoming: **PR 16** — TBD.
+- Last merged: **PR 16** — popover + Settings UI polish. 265 tests passing on `main`.
+- Upcoming: **PR 17** — TBD.
 
 ## PR status
 
@@ -38,7 +38,8 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 | 13   | merged to main | ✅      | api/play migration (replaces get_block; supports favorites chan=99)         |
 | 14   | merged to main | ✅      | Telemetry endpoints (update_history, update_pause) for cross-session resume |
 | 15   | merged to main | ✅      | GitHub Actions: swift test on push; universal .app bundle on tag push       |
-| 16   | pending        | ⬜      | TBD                                                                         |
+| 16   | merged to main | ✅      | Popover + Settings UI polish (support link, song-in-browser, hamburger menu, ZStack channel row, title3 song title) |
+| 17   | pending        | ⬜      | TBD                                                                         |
 
 ---
 
@@ -113,17 +114,19 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 - Activation policy is `.accessory` set at runtime (not `LSUIElement` in an Info.plist) because SPM executable targets do not ship an Info.plist. PR 15's `.app` bundle may move this into `LSUIElement`.
 - `PopoverController` is a non-`final` class only so tests can override `isShown`. The shell otherwise has no protocol abstractions — `AppContainer.init(...)` parameters are the test seam. `PopoverController(rootView:)` takes an `AnyView`; generic propagation buys nothing while complicating the call site.
 - Popover installs a global mouse-down monitor (outside-click dismissal) and a local key-down monitor (Esc, keycode 53) on `show(relativeTo:)`. The local monitor is process-wide — if a future text field outside the popover needs Esc, gate on `event.window === panel`.
-- The settings gear in `channelRow` is a SwiftUI `Menu` exposing `Settings…` and `Quit RP Player`. Quit calls `NSApp.terminate(nil)`; `AppDelegate.applicationWillTerminate` already handles the graceful coordinator shutdown.
-- Transport buttons (play/pause + skip) use `PressOpacityButtonStyle` instead of `.buttonStyle(.plain)`. Plain style flashed the system blue on press; the custom style dims to 0.55 opacity with no background. The gear `Menu` itself uses `.menuStyle(.borderlessButton)` and does not need the custom style.
+- The hamburger `Menu` in `channelRow` (`line.3.horizontal` icon, `.borderlessButton` style, `.menuIndicator(.hidden)`) has four entries in three `Section` groups: `Section("RP Player")` (non-interactive header) contains `Settings…` and `Open Song in Browser` (disabled when `nowPlaying == nil`); an untitled section has `About RP Player` (opens GitHub); an untitled section has `Quit RP Player`. `openCurrentSongInBrowser()` guards `Int(songId) > 0` to skip promo blocks (`songId == "0"`). `openAbout()` opens `https://github.com/gvajda/rp-player`. Both call `NSWorkspace.shared.open(_:)`.
+- Transport buttons (play/pause + skip) use `PressOpacityButtonStyle` instead of `.buttonStyle(.plain)`. Plain style flashed the system blue on press; the custom style dims to 0.55 opacity with no background. The hamburger `Menu` uses `.menuStyle(.borderlessButton)` and does not need the custom style.
 - `MiniPlayerView` body is `VStack(spacing: 0)` with the album art at full popover width (342×342, `scaledToFill+clipped`) and the inner stack carrying its own 12pt padding. The popover's existing 10pt corner radius + `masksToBounds` clips the top of the art so the popover appears as an extension of the artwork.
 - `RatingMenu` replaces the previous full-width `RatingRow`. Narrow dropdown sitting in the title row right-aligned; label is `★ <n>` when rated, `☆` when unrated; disabled when signed out.
-- Channel row layout uses a `ZStack` so `channelPicker` is geometrically centered. Outer `HStack` holds the leading bitrate group (`<bitrate> @`) and the trailing `RP Player` text + gear group. The previous bottom "RP Player" footer line is gone — the channel-row layout absorbs it.
-- Play button uses the SF Symbol outline variants (`play.circle` / `pause.circle`); skip stays filled (`forward.end.fill`). Both transport buttons keep `PressOpacityButtonStyle`.
+- Channel row layout uses a `ZStack` so `channelPicker` is geometrically centered. The overlay `HStack` has `Text("RP Player")` leading and a trailing `HStack` with the bitrate label + hamburger menu. Picker uses `.controlSize(.small)` to reduce its visual weight relative to the song title. No `@` separator. Inner VStack order: `titleRow`, `progressRow`, `transport`, `channelRow` (transport above channel picker).
+- Song title uses `.title3`; artist uses `.subheadline` + `.secondary`; album uses `.caption` + `.secondary` (previously `.tertiary`, which was unreadable in light mode). Both transport buttons keep `PressOpacityButtonStyle`.
+- `SettingsView` has a `supportSection` as its first `Form` section: a `Link` to `https://radioparadise.com/donate` with a `heart.fill` icon (`.pink`) and a two-line label ("Support Radio Paradise" + "Opens radioparadise.com in your browser" caption). `Link` renders with macOS's external-arrow affordance.
 - `AppSettings.appearance: AppearanceMode` (`.system` / `.light` / `.dark`, default `.system`). `AppContainer.live()` runs a dedicated `@MainActor` settings binder Task that translates each value to `NSApp.appearance` (`nil`, `.aqua`, `.darkAqua` respectively). Persisted JSON without the `appearance` key decodes as `.system` for backwards compatibility.
 
 ### View models
 
 - `MiniPlayerViewModel` is `@MainActor final class: ObservableObject`, NOT `@Observable`. Spawns the coordinator-subscription `Task` from `start()` (called by `MiniPlayerView`'s `.task` modifier on first appear), not from `init` — same Swift-6.2 rule that constrains the engine pump bootstrap.
+- `MiniPlayerViewModel.openCurrentSongInBrowser()` and `openAbout()` call `NSWorkspace.shared.open(_:)` directly (no injected closure). `openCurrentSongInBrowser` constructs `https://radioparadise.com/music/song/<id>` from `nowPlaying.song.songId` after `Int(songId) > 0` guard (promo blocks have `songId == "0"`).
 - `MiniPlayerViewModel.selectChannel(_:)` guards rapid double-calls with an `inFlightChannelId` token: if a second `selectChannel` lands before the first awaited `coordinator.changeChannel(to:)` resolves, the late completion short-circuits and the second selection wins. Tested via `testSelectChannelSecondCallSupersedesFirst`.
 - `NotificationCoordinator` is `@MainActor final class` (not an actor) because it bridges `nowPlayingUpdates` to AppKit / UserNotifications types that are main-thread anchored. Configuration (notifications-enabled flag, channel title, on-disk file URL) is injected as `@Sendable` async closures.
 
@@ -203,6 +206,7 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 - After notification click → past-song popover (SongRegistry + identifier suffix + NotificationClickRouter + PastSongView + PastSongPopoverController + PlayListSong(from: SongInfo); review fixes: bidirectional mutual exclusion + restored cancellation comment + registry-record test): 246
 - After PR 13 api/play migration (drops getBlock + channelCursors; per-install rp3\_ player_id; drops GetBlock.filename; supports favorites chan=99): 251
 - After PR 14 telemetry (update_history + update_pause; 5 trigger sites; clock injection; promo/favorites guards): 265
+- After PR 16 UI polish (SettingsView support link, MiniPlayerViewModel URL-open methods, channelRow ZStack + hamburger menu, title3 song title, secondary album color, small picker): 265
 
 ---
 
