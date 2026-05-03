@@ -4,7 +4,7 @@ Bit-perfect Radio Paradise player for macOS — menu-bar app with desktop notifi
 
 ## Download
 
-Grab the latest `RP Player-<version>.zip` from [Releases](../../releases). Unzip and drag `RP Player.app` to `/Applications`.
+Grab the latest `RP Player-<version>.zip` from [Releases](releases). Unzip and drag `RP Player.app` to `/Applications`.
 
 **First launch:** macOS blocks apps that are not notarized. Right-click `RP Player.app` in Finder and choose **Open**, then confirm.
 

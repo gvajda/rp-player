@@ -7,14 +7,7 @@ on:
 
 jobs:
   build-binary:
-    strategy:
-      matrix:
-        include:
-          - runner: macos-14
-            arch: arm64
-          - runner: macos-13
-            arch: x86_64
-    runs-on: ${{ matrix.runner }}
+    runs-on: macos-13
     steps:
       - uses: actions/checkout@v4
 
@@ -24,7 +17,7 @@ jobs:
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
-          name: binary-${{ matrix.arch }}
+          name: binary-x86_64
           path: .build/release/RPPlayer
 
   package-and-release:
@@ -65,7 +58,7 @@ jobs:
             --sign "-" "$APP"
 
       - name: Verify codesigning
-        run: codesign --verify --verbose "build/RP Player.app"
+        run: codesign --verify --deep --verbose "build/RP Player.app"
 
       - name: Verify universal binary
         run: lipo -info "build/RP Player.app/Contents/MacOS/RP Player"

@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# Local-only .app wrapper for testing notifications and other bundled-process
-# behavior. Unsigned, ad-hoc, throwaway. PR 13 will replace this with a proper
-# CI-built artifact.
+# Local .app wrapper for testing notifications and other bundled-process
+# behavior. The CI release workflow (release.yml) uses this script too.
 #
 # Usage: ./scripts/make-app.sh [debug|release]   (default: release)
 
