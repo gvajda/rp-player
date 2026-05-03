@@ -12,8 +12,7 @@ struct UpcomingSongCardView: View {
             textArea
         }
         .frame(height: 68)
-        .cornerRadius(8)
-        .clipped()
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     @ViewBuilder
@@ -95,8 +94,7 @@ private struct SkeletonCardView: View {
             .padding(.horizontal, 10)
         }
         .frame(height: 68)
-        .cornerRadius(8)
-        .clipped()
+        .clipShape(RoundedRectangle(cornerRadius: 8))
         .opacity(opacity)
         .onAppear {
             withAnimation(
@@ -173,7 +171,7 @@ struct UpcomingProgramView: View {
             ScrollView(.horizontal, showsIndicators: true) {
                 LazyHStack(alignment: .top, spacing: 6) {
                     if viewModel.isLoading {
-                        ForEach(0..<skeletonColumnCount, id: \.self) { i in
+                        ForEach(0..<skeletonColumnCount, id: \.self) { _ in
                             SkeletonColumnView(
                                 title: "Loading…",
                                 rowCount: skeletonRowCount

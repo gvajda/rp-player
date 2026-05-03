@@ -20,8 +20,10 @@ final class UpcomingWindowController {
             w.setContentSize(NSSize(width: 720, height: 480))
             w.minSize = NSSize(width: 480, height: 300)
             w.setFrameAutosaveName("UpcomingProgram")
+            w.isReleasedWhenClosed = false
             window = w
         }
         window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 }
