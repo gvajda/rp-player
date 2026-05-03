@@ -13,10 +13,10 @@ struct UpcomingSongCardView: View {
         }
         .frame(height: 68)
         .frame(maxWidth: .infinity)
-        .background(
+        .background(Color(nsColor: .controlBackgroundColor))
+        .overlay(
             LinearGradient(
-                colors: [row.ambientColor.opacity(0.28),
-                         Color(nsColor: .windowBackgroundColor)],
+                colors: [row.ambientColor.opacity(0.28), .clear],
                 startPoint: .leading,
                 endPoint: .trailing
             )
@@ -172,7 +172,8 @@ struct UpcomingProgramView: View {
             ScrollView(.horizontal, showsIndicators: true) {
                 HStack(alignment: .top, spacing: 6) {
                     if viewModel.isLoading {
-                        ForEach(0..<skeletonColumnCount, id: \.self) { _ in
+                        let count = viewModel.columns.isEmpty ? skeletonColumnCount : viewModel.columns.count
+                        ForEach(0..<count, id: \.self) { _ in
                             SkeletonColumnView(
                                 title: "Loading…",
                                 rowCount: skeletonRowCount

@@ -54,7 +54,7 @@ struct MiniPlayerView: View {
         LinearGradient(
             colors: [
                 viewModel.ambientTopColor ?? Color(nsColor: .windowBackgroundColor),
-                Color(nsColor: .windowBackgroundColor)
+                (viewModel.ambientTopColor ?? Color(nsColor: .windowBackgroundColor)).opacity(0.08)
             ],
             startPoint: .top,
             endPoint: .bottom
