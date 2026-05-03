@@ -402,4 +402,11 @@ final class MiniPlayerViewModelTests: XCTestCase {
         await sut.togglePlayPause()
         XCTAssertNil(sut.errorMessage)
     }
+
+    func testOpenUpcomingInvokesUpcomingAction() async {
+        var callCount = 0
+        sut.upcomingAction = { callCount += 1 }
+        sut.openUpcoming()
+        XCTAssertEqual(callCount, 1)
+    }
 }

@@ -194,4 +194,103 @@ final class SettingsViewModelTests: XCTestCase {
         XCTAssertTrue(store.current.ambientBackgroundEnabled)
         await sut.stop()
     }
+
+    func testUpcomingRowCountDefaultsToFive() async throws {
+        await sut.start()
+        XCTAssertEqual(sut.upcomingRowCount, 5)
+    }
+
+    func testSetUpcomingRowCountPersists() async throws {
+        let store = StubConfigStore(initial: .default)
+        let vm = SettingsViewModel(
+            configStore: store,
+            deviceCatalog: deviceCatalog,
+            auth: auth,
+            openLoginWindow: { },
+            openApplicationData: { }
+        )
+        await vm.start()
+        await vm.setUpcomingRowCount(7)
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(store.settings.upcomingRowCount, 7)
+        await vm.stop()
+    }
+
+    func testSetChannelHiddenAddsToList() async throws {
+        let store = StubConfigStore(initial: .default)
+        let vm = SettingsViewModel(
+            configStore: store,
+            deviceCatalog: deviceCatalog,
+            auth: auth,
+            openLoginWindow: { },
+            openApplicationData: { }
+        )
+        await vm.start()
+        await vm.setChannelHidden(3, true)
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertTrue(store.settings.upcomingHiddenChannelIds.contains(3))
+        await vm.stop()
+    }
+
+    func testSetChannelHiddenRemovesFromList() async throws {
+        var settings = AppSettings.default
+        settings.upcomingHiddenChannelIds = [3, 5]
+        let store = StubConfigStore(initial: settings)
+        let vm = SettingsViewModel(
+            configStore: store,
+            deviceCatalog: deviceCatalog,
+            auth: auth,
+            openLoginWindow: { },
+            openApplicationData: { }
+        )
+        await vm.start()
+        await vm.setChannelHidden(3, false)
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertFalse(store.settings.upcomingHiddenChannelIds.contains(3))
+        XCTAssertTrue(store.settings.upcomingHiddenChannelIds.contains(5))
+        await vm.stop()
+    }
+
+    func testSetChannelHiddenIsIdempotent() async throws {
+        let store = StubConfigStore(initial: .default)
+        let vm = SettingsViewModel(
+            configStore: store,
+            deviceCatalog: deviceCatalog,
+            auth: auth,
+            openLoginWindow: { },
+            openApplicationData: { }
+        )
+        await vm.start()
+        await vm.setChannelHidden(3, true)
+        await vm.setChannelHidden(3, true)
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(store.settings.upcomingHiddenChannelIds.filter { $0 == 3 }.count, 1)
+        await vm.stop()
+    }
+
+    func testStartLoadsChannelsFiltering42And99() async throws {
+        let channels: [Channel] = [
+            Channel(chan: "0", title: "RP", streamName: nil, bannerUrl: nil, slug: nil, image: nil),
+            Channel(chan: "1", title: "Mellow", streamName: nil, bannerUrl: nil, slug: nil, image: nil),
+            Channel(chan: "42", title: "KINK", streamName: nil, bannerUrl: nil, slug: nil, image: nil),
+            Channel(chan: "99", title: "Favorites", streamName: nil, bannerUrl: nil, slug: nil, image: nil),
+        ]
+        let vm = SettingsViewModel(
+            configStore: configStore,
+            deviceCatalog: deviceCatalog,
+            auth: auth,
+            openLoginWindow: { },
+            openApplicationData: { },
+            listChannels: { channels }
+        )
+        await vm.start()
+        let deadline = Date().addingTimeInterval(2)
+        while vm.upcomingChannels.isEmpty && Date() < deadline {
+            await Task.yield()
+        }
+        XCTAssertEqual(vm.upcomingChannels.count, 2)
+        XCTAssertFalse(vm.upcomingChannels.contains { $0.chan == "42" })
+        XCTAssertFalse(vm.upcomingChannels.contains { $0.chan == "99" })
+        await vm.stop()
+    }
 }
