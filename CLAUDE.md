@@ -8,6 +8,8 @@
 
 macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Paradise streams in bit-perfect mode (CoreAudio hog mode acquired directly via `kAudioDevicePropertyHogMode`; libmpv handles decode and shared-mode CoreAudio output). Source of truth: `docs/DESIGN.md`.
 
+**GitHub:** <https://github.com/gvajda/rp-player>
+
 ---
 
 ## Current state
