@@ -11,6 +11,23 @@ final class UpcomingProgramViewModelTests: XCTestCase {
                 bannerUrl: nil, slug: nil, image: nil)
     }
 
+    private func makePromoBlock() -> GetBlock {
+        let promo = PlayListSong(
+            songId: "0", artist: "Commercial-free", title: "Listener-supported",
+            album: nil, duration: 5_000, event: nil,
+            schedTime: nil, chan: nil, year: nil, asin: nil,
+            rating: nil, userRating: nil, cover: nil,
+            elapsed: 0, slideshow: nil, type: "P", sliceNum: nil
+        )
+        return GetBlock(
+            url: "https://stream.example.com/stream",
+            chan: "0", bitrate: "flac", cue: 0, expiration: 9_999_999_999,
+            length: nil, imageBase: "https://img.radioparadise.com/",
+            song: ["0": promo], channel: nil,
+            event: "200", endEvent: "201", type: "P", ext: nil
+        )
+    }
+
     private func makeBlock(songs: Int = 3) -> GetBlock {
         let songDict: [String: PlayListSong] = Dictionary(
             uniqueKeysWithValues: (0..<songs).map { i in
@@ -166,6 +183,47 @@ final class UpcomingProgramViewModelTests: XCTestCase {
         await vm.load()
 
         XCTAssertEqual(vm.columns[0].songs.count, 4)
+    }
+
+    func testLoadFiltersOutPromoSongs() async throws {
+        let api = MockRpApiClient()
+        await api.setListChannelsResponse([makeChannel(id: 0)])
+        // Block with 2 music songs + 1 promo; only 2 music songs should appear
+        let promoSong = PlayListSong(
+            songId: "0", artist: "Commercial-free", title: "Listener-supported",
+            album: nil, duration: 5_000, event: nil,
+            schedTime: nil, chan: nil, year: nil, asin: nil,
+            rating: nil, userRating: nil, cover: nil,
+            elapsed: 0, slideshow: nil, type: "P", sliceNum: nil
+        )
+        let musicSong0 = PlayListSong(
+            songId: "song0", artist: "A", title: "T0", album: "Al", duration: 60_000,
+            event: nil, schedTime: nil, chan: nil, year: nil, asin: nil,
+            rating: nil, userRating: nil, cover: nil, elapsed: 0,
+            slideshow: nil, type: "M", sliceNum: nil
+        )
+        let musicSong1 = PlayListSong(
+            songId: "song1", artist: "B", title: "T1", album: "Al", duration: 60_000,
+            event: nil, schedTime: nil, chan: nil, year: nil, asin: nil,
+            rating: nil, userRating: nil, cover: nil, elapsed: 60_000,
+            slideshow: nil, type: "M", sliceNum: nil
+        )
+        let mixedBlock = GetBlock(
+            url: "https://stream.example.com/stream",
+            chan: "0", bitrate: "flac", cue: 0, expiration: 9_999_999_999,
+            length: nil, imageBase: "https://img.radioparadise.com/",
+            song: ["0": promoSong, "1": musicSong0, "2": musicSong1],
+            channel: nil, event: "100", endEvent: nil, type: "M", ext: nil
+        )
+        await api.setGetBlockResponses([mixedBlock])
+
+        var settings = AppSettings.default
+        settings.upcomingRowCount = 3
+        let vm = makeVM(api: api, configStore: StubConfigStore(initial: settings))
+        await vm.load()
+
+        XCTAssertEqual(vm.columns[0].songs.count, 2)
+        XCTAssertFalse(vm.columns[0].songs.contains { $0.song.songId == "0" })
     }
 
     func testLoadFetchesNextBlockWhenInsufficientSongs() async throws {

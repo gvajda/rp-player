@@ -73,6 +73,7 @@ final class UpcomingProgramViewModel: ObservableObject {
                     while songs.count < rowCount {
                         guard let block = try? await api.getBlock(channel: chanId, bitrate: bitrate, event: event) else { break }
                         let newSongs = BlockSongs.orderedSongs(from: block)
+                            .filter { $0.type != "P" && $0.songId != "0" }
                         songs.append(contentsOf: newSongs)
                         guard let endEventStr = block.endEvent,
                               let nextEvent = Int(endEventStr),

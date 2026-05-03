@@ -13,6 +13,14 @@ struct UpcomingSongCardView: View {
         }
         .frame(height: 68)
         .frame(maxWidth: .infinity)
+        .background(
+            LinearGradient(
+                colors: [row.ambientColor.opacity(0.28),
+                         Color(nsColor: .windowBackgroundColor)],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+        )
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
@@ -60,14 +68,6 @@ struct UpcomingSongCardView: View {
         }
         .padding(.horizontal, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            LinearGradient(
-                colors: [row.ambientColor.opacity(0.28),
-                         Color(nsColor: .windowBackgroundColor)],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
-        )
     }
 }
 
