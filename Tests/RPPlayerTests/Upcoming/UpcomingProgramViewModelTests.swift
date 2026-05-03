@@ -167,4 +167,19 @@ final class UpcomingProgramViewModelTests: XCTestCase {
 
         XCTAssertEqual(vm.columns[0].songs.count, 4)
     }
+
+    func testLoadFetchesNextBlockWhenInsufficientSongs() async throws {
+        // rowCount=4, each block has 2 songs → expects 2 getBlock calls, 4 songs total
+        let api = MockRpApiClient()
+        await api.setListChannelsResponse([makeChannel(id: 0)])
+        // makeBlock returns endEvent "456", so second fetch uses event=456
+        await api.setGetBlockResponses([makeBlock(songs: 2), makeBlock(songs: 2)])
+
+        var settings = AppSettings.default
+        settings.upcomingRowCount = 4
+        let vm = makeVM(api: api, configStore: StubConfigStore(initial: settings))
+        await vm.load()
+
+        XCTAssertEqual(vm.columns[0].songs.count, 4)
+    }
 }
