@@ -14,7 +14,7 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 
 ## Current state
 
-- Last merged: **PR 18** — ambient background from album art. 286 tests passing on `main`.
+- Last merged: **PR 18** — ambient background from album art. 287 tests passing on `main`.
 - Upcoming: **PR 19** — TBD.
 
 ## PR status
@@ -214,7 +214,7 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 - After PR 14 telemetry (update_history + update_pause; 5 trigger sites; clock injection; promo/favorites guards): 265
 - After PR 16 UI polish (SettingsView support link, MiniPlayerViewModel URL-open methods, channelRow ZStack + hamburger menu, title3 song title, secondary album color, small picker): 265
 - After PR 17 audio device error handling (errors stream on coordinator, handlePlaybackError, VM showPopoverIfNeeded injection, StatusItemController.showPopoverIfNeeded; 7 new tests): 272
-- After PR 18 ambient background from album art (`AmbientPaletteExtractor` actor, `AppSettings.ambientBackgroundEnabled`, `MiniPlayerViewModel` configStore + paletteExtractor wiring, gradient `.background` + 0.4s ease-in-out animation in `MiniPlayerView`; 14 new tests): 286
+- After PR 18 ambient background from album art (`AmbientPaletteExtractor` actor, `AppSettings.ambientBackgroundEnabled`, `MiniPlayerViewModel` configStore + paletteExtractor wiring, gradient `.background` + 0.4s ease-in-out animation in `MiniPlayerView`, re-extract on toggle ON mid-playback; 15 new tests): 287
 
 ---
 
