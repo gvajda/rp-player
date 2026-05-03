@@ -5,6 +5,7 @@ import SwiftUI
 
 struct UpcomingSongCardView: View {
     let row: UpcomingSongRow
+    var isCurrent: Bool = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -15,6 +16,11 @@ struct UpcomingSongCardView: View {
         .frame(maxWidth: .infinity)
         .background(row.ambientColor.opacity(0.28))
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(isCurrent ? Color.accentColor : .clear, lineWidth: 2)
+        )
+        .shadow(color: isCurrent ? Color.accentColor.opacity(0.6) : .clear, radius: 6)
     }
 
     @ViewBuilder
@@ -106,20 +112,44 @@ private struct SkeletonCardView: View {
 
 struct UpcomingColumnView: View {
     let column: UpcomingColumn
+    var isCurrentChannel: Bool = false
+    var currentSongId: String?
+    var onSelectChannel: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .center, spacing: 6) {
-            Text(column.channel.title)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Color.accentColor)
-                .frame(maxWidth: .infinity, alignment: .center)
+            Button {
+                onSelectChannel?()
+            } label: {
+                Text(column.channel.title)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(isCurrentChannel ? Color.accentColor.opacity(0.18) : .clear)
+                    )
+                    .shadow(color: isCurrentChannel ? Color.accentColor.opacity(0.7) : .clear, radius: 6)
+            }
+            .buttonStyle(.plain)
+            .help("Switch to \(column.channel.title)")
             VStack(spacing: 4) {
                 ForEach(column.songs) { row in
-                    UpcomingSongCardView(row: row)
+                    UpcomingSongCardView(
+                        row: row,
+                        isCurrent: isCurrentChannel && row.song.songId == currentSongId
+                    )
                 }
             }
         }
         .frame(width: 226)
+        .padding(6)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(isCurrentChannel ? Color.accentColor.opacity(0.08) : .clear)
+        )
     }
 }
 
@@ -173,7 +203,12 @@ struct UpcomingProgramView: View {
                         }
                     } else {
                         ForEach(viewModel.columns) { column in
-                            UpcomingColumnView(column: column)
+                            UpcomingColumnView(
+                                column: column,
+                                isCurrentChannel: column.id == viewModel.currentChannelId,
+                                currentSongId: viewModel.currentSongId,
+                                onSelectChannel: { viewModel.selectChannel(column.id) }
+                            )
                         }
                     }
                 }

@@ -240,4 +240,82 @@ final class UpcomingProgramViewModelTests: XCTestCase {
 
         XCTAssertEqual(vm.columns[0].songs.count, 4)
     }
+
+    func testCurrentChannelAndSongMirrorCoordinator() async throws {
+        let api = MockRpApiClient()
+        await api.setListChannelsResponse([makeChannel(id: 0)])
+        await api.setGetBlockResponses([makeBlock()])
+        let coord = MockPlaybackCoordinator()
+        let vm = UpcomingProgramViewModel(
+            api: api,
+            albumArtCache: StubAlbumArtCache(),
+            configStore: StubConfigStore(initial: .default),
+            paletteExtractor: StubAmbientPaletteExtractor(),
+            coordinator: coord
+        )
+
+        let np = makeNowPlaying(channelId: 7, songId: "abc-123")
+        await coord.setNowPlaying(np)
+        await vm.load()
+        try await Task.sleep(nanoseconds: 80_000_000)
+
+        XCTAssertEqual(vm.currentChannelId, 7)
+        XCTAssertEqual(vm.currentSongId, "abc-123")
+
+        let next = makeNowPlaying(channelId: 3, songId: "xyz-9")
+        await coord.setNowPlaying(next)
+        try await Task.sleep(nanoseconds: 80_000_000)
+        XCTAssertEqual(vm.currentChannelId, 3)
+        XCTAssertEqual(vm.currentSongId, "xyz-9")
+    }
+
+    func testSelectChannelInvokesHandler() async throws {
+        let api = MockRpApiClient()
+        await api.setListChannelsResponse([makeChannel(id: 0)])
+        let received = LockedArray<Int>()
+        let vm = UpcomingProgramViewModel(
+            api: api,
+            albumArtCache: StubAlbumArtCache(),
+            configStore: StubConfigStore(initial: .default),
+            paletteExtractor: StubAmbientPaletteExtractor(),
+            selectChannelHandler: { id in received.append(id) }
+        )
+
+        vm.selectChannel(2)
+        vm.selectChannel(5)
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(received.values, [2, 5])
+    }
+}
+
+@MainActor
+private func makeNowPlaying(channelId: Int, songId: String) -> NowPlaying {
+    NowPlaying(
+        channelId: channelId,
+        song: PlayListSong(
+            songId: songId, artist: "A", title: "T", album: "Al",
+            duration: 180_000, event: nil, schedTime: nil, chan: nil,
+            year: nil, asin: nil, rating: nil, userRating: nil,
+            cover: nil, elapsed: 0, slideshow: nil, type: "M", sliceNum: nil
+        ),
+        songIndexInBlock: 0,
+        blockDurationSeconds: 180,
+        songStartSeconds: 0,
+        songEndSeconds: 180,
+        blockBitrate: nil
+    )
+}
+
+private final class LockedArray<T: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [T] = []
+    func append(_ value: T) {
+        lock.lock(); defer { lock.unlock() }
+        storage.append(value)
+    }
+    var values: [T] {
+        lock.lock(); defer { lock.unlock() }
+        return storage
+    }
 }

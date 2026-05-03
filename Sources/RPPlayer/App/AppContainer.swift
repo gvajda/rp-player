@@ -253,7 +253,9 @@ extension AppContainer {
             api: api,
             albumArtCache: cache,
             configStore: store ?? NoopConfigStore(),
-            paletteExtractor: AmbientPaletteExtractor()
+            paletteExtractor: AmbientPaletteExtractor(),
+            coordinator: coordinator,
+            selectChannelHandler: { [viewModel] id in await viewModel.selectChannel(id) }
         )
         let upcomingWindowController = UpcomingWindowController(viewModel: upcomingViewModel)
         viewModel.upcomingAction = { [upcomingWindowController] in upcomingWindowController.show() }

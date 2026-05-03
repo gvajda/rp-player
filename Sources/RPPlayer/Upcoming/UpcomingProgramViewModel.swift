@@ -21,25 +21,58 @@ final class UpcomingProgramViewModel: ObservableObject {
     @Published private(set) var lastUpdated: Date?
     @Published private(set) var errorMessage: String?
     @Published private(set) var skeletonColumnCount: Int = 4
+    @Published private(set) var currentChannelId: Int?
+    @Published private(set) var currentSongId: String?
 
     private let api: any RpApiClient
     private let albumArtCache: any AlbumArtCache
     private let configStore: any ConfigStore
     private let paletteExtractor: any AmbientPaletteExtracting
+    private let coordinator: (any PlaybackCoordinator)?
+    private let selectChannelHandler: (@MainActor (Int) async -> Void)?
+    private var nowPlayingTask: Task<Void, Never>?
 
     init(
         api: any RpApiClient,
         albumArtCache: any AlbumArtCache,
         configStore: any ConfigStore,
-        paletteExtractor: any AmbientPaletteExtracting
+        paletteExtractor: any AmbientPaletteExtracting,
+        coordinator: (any PlaybackCoordinator)? = nil,
+        selectChannelHandler: (@MainActor (Int) async -> Void)? = nil
     ) {
         self.api = api
         self.albumArtCache = albumArtCache
         self.configStore = configStore
         self.paletteExtractor = paletteExtractor
+        self.coordinator = coordinator
+        self.selectChannelHandler = selectChannelHandler
+    }
+
+    deinit { nowPlayingTask?.cancel() }
+
+    private func ensureNowPlayingSubscription() async {
+        guard nowPlayingTask == nil, let coordinator else { return }
+        if let snapshot = await coordinator.nowPlaying {
+            currentChannelId = snapshot.channelId
+            currentSongId = snapshot.song.songId
+        }
+        let stream = await coordinator.nowPlayingUpdates
+        nowPlayingTask = Task { [weak self] in
+            for await np in stream {
+                guard let self else { return }
+                self.currentChannelId = np.channelId
+                self.currentSongId = np.song.songId
+            }
+        }
+    }
+
+    func selectChannel(_ id: Int) {
+        guard let handler = selectChannelHandler else { return }
+        Task { await handler(id) }
     }
 
     func load() async {
+        await ensureNowPlayingSubscription()
         isLoading = true
         errorMessage = nil
 
