@@ -12,6 +12,9 @@ final class SettingsViewModel: ObservableObject {
     @Published private(set) var verboseLoggingEnabled: Bool
     @Published private(set) var appearance: AppearanceMode
     @Published private(set) var ambientBackgroundEnabled: Bool
+    @Published private(set) var upcomingRowCount: Int
+    @Published private(set) var upcomingHiddenChannelIds: [Int]
+    @Published private(set) var upcomingChannels: [Channel] = []
     @Published private(set) var devices: [AudioDevice] = []
     @Published private(set) var isSignedIn: Bool = false
     @Published private(set) var currentUsername: String?
@@ -21,6 +24,7 @@ final class SettingsViewModel: ObservableObject {
     private let auth: any KeychainAuth
     private let openLoginWindowAction: @MainActor () -> Void
     private let openApplicationDataAction: @MainActor () -> Void
+    private let listChannels: @Sendable () async throws -> [Channel]
 
     private var configTask: Task<Void, Never>?
     private var deviceTask: Task<Void, Never>?
@@ -30,13 +34,15 @@ final class SettingsViewModel: ObservableObject {
         deviceCatalog: any AudioDeviceCatalog,
         auth: any KeychainAuth,
         openLoginWindow: @escaping @MainActor () -> Void,
-        openApplicationData: @escaping @MainActor () -> Void
+        openApplicationData: @escaping @MainActor () -> Void,
+        listChannels: @Sendable @escaping () async throws -> [Channel] = { [] }
     ) {
         self.configStore = configStore
         self.deviceCatalog = deviceCatalog
         self.auth = auth
         self.openLoginWindowAction = openLoginWindow
         self.openApplicationDataAction = openApplicationData
+        self.listChannels = listChannels
 
         let snapshot = AppSettings.default
         self.selectedChannelId = snapshot.selectedChannelId
@@ -48,6 +54,8 @@ final class SettingsViewModel: ObservableObject {
         self.verboseLoggingEnabled = snapshot.verboseLoggingEnabled
         self.appearance = snapshot.appearance
         self.ambientBackgroundEnabled = snapshot.ambientBackgroundEnabled
+        self.upcomingRowCount = snapshot.upcomingRowCount
+        self.upcomingHiddenChannelIds = snapshot.upcomingHiddenChannelIds
     }
 
     func start() async {
@@ -67,6 +75,8 @@ final class SettingsViewModel: ObservableObject {
                     self.verboseLoggingEnabled = snapshot.verboseLoggingEnabled
                     self.appearance = snapshot.appearance
                     self.ambientBackgroundEnabled = snapshot.ambientBackgroundEnabled
+                    self.upcomingRowCount = snapshot.upcomingRowCount
+                    self.upcomingHiddenChannelIds = snapshot.upcomingHiddenChannelIds
                 }
             }
         }
@@ -79,6 +89,15 @@ final class SettingsViewModel: ObservableObject {
             }
         }
         refreshAuthState()
+        Task { [weak self] in
+            guard let self else { return }
+            let channels = (try? await listChannels()) ?? []
+            let filtered = channels.filter {
+                guard let id = Int($0.chan) else { return false }
+                return id != 42 && id != 99
+            }
+            await MainActor.run { self.upcomingChannels = filtered }
+        }
     }
 
     func stop() async {
@@ -118,6 +137,22 @@ final class SettingsViewModel: ObservableObject {
 
     func setAmbientBackgroundEnabled(_ value: Bool) async {
         await update { $0.ambientBackgroundEnabled = value }
+    }
+
+    func setUpcomingRowCount(_ value: Int) async {
+        await update { $0.upcomingRowCount = value }
+    }
+
+    func setChannelHidden(_ channelId: Int, _ hidden: Bool) async {
+        await update { settings in
+            if hidden {
+                if !settings.upcomingHiddenChannelIds.contains(channelId) {
+                    settings.upcomingHiddenChannelIds.append(channelId)
+                }
+            } else {
+                settings.upcomingHiddenChannelIds.removeAll { $0 == channelId }
+            }
+        }
     }
 
     func signOut() async {

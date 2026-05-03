@@ -219,7 +219,8 @@ extension AppContainer {
                     at: ConfigPaths.applicationSupportRoot, withIntermediateDirectories: true
                 )
                 NSWorkspace.shared.open(ConfigPaths.applicationSupportRoot)
-            }
+            },
+            listChannels: { [api] in try await api.listChannels() }
         )
 
         let settingsWindowController = SettingsWindowController(viewModel: settingsViewModel)

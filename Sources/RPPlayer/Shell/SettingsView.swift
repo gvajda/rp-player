@@ -9,6 +9,7 @@ struct SettingsView: View {
             audioSection
             notificationsSection
             appearanceSection
+            upcomingProgramSection
             accountSection
             dataSection
         }
@@ -72,6 +73,31 @@ struct SettingsView: View {
             }
             .pickerStyle(.menu)
             Toggle("Ambient background from album art", isOn: ambientBackgroundBinding)
+        }
+    }
+
+    private var upcomingProgramSection: some View {
+        Section("Upcoming Program") {
+            Stepper("Rows: \(viewModel.upcomingRowCount)",
+                    value: Binding(
+                        get: { viewModel.upcomingRowCount },
+                        set: { v in Task { await viewModel.setUpcomingRowCount(v) } }
+                    ),
+                    in: 3...10)
+            if !viewModel.upcomingChannels.isEmpty {
+                ForEach(viewModel.upcomingChannels, id: \.chan) { channel in
+                    let chanId = Int(channel.chan) ?? -1
+                    Toggle(
+                        channel.title,
+                        isOn: Binding(
+                            get: { !viewModel.upcomingHiddenChannelIds.contains(chanId) },
+                            set: { visible in
+                                Task { await viewModel.setChannelHidden(chanId, !visible) }
+                            }
+                        )
+                    )
+                }
+            }
         }
     }
 
