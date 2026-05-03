@@ -54,7 +54,7 @@ struct MiniPlayerView: View {
         LinearGradient(
             colors: [
                 viewModel.ambientTopColor ?? Color(nsColor: .windowBackgroundColor),
-                (viewModel.ambientTopColor ?? Color(nsColor: .windowBackgroundColor)).opacity(0.08)
+                (viewModel.ambientTopColor ?? Color(nsColor: .windowBackgroundColor)).opacity(0.4)
             ],
             startPoint: .top,
             endPoint: .bottom
@@ -69,14 +69,14 @@ struct MiniPlayerView: View {
                     .lineLimit(1)
                 Text(viewModel.nowPlaying?.song.artist ?? "")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.primary)
                     .lineLimit(1)
                 if let song = viewModel.nowPlaying?.song,
                    let album = song.album,
                    !album.isEmpty {
                     Text(album)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.primary)
                         .lineLimit(1)
                 }
             }
@@ -99,13 +99,14 @@ struct MiniPlayerView: View {
                 total: max(viewModel.songDurationSeconds, 0.001)
             )
             .progressViewStyle(.linear)
+            .tint(.primary)
             HStack {
                 Text(formatTime(viewModel.songElapsedSeconds))
                 Spacer()
                 Text(formatTime(viewModel.songDurationSeconds))
             }
             .font(.caption2.monospacedDigit())
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.primary)
         }
         .frame(width: 318)
     }
@@ -117,14 +118,14 @@ struct MiniPlayerView: View {
             HStack {
                 Text("RP Player")
                     .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.primary)
                 Spacer()
                 HStack(spacing: 4) {
                     if let label = viewModel.currentBitrateLabel {
                         Text(label)
                             .font(.caption2)
                             .monospacedDigit()
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.primary)
                             .lineLimit(1)
                     }
                     Menu {
