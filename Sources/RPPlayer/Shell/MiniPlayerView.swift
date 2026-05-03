@@ -52,7 +52,7 @@ struct MiniPlayerView: View {
         HStack(alignment: .center, spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(viewModel.nowPlaying?.song.title ?? "—")
-                    .font(.headline)
+                    .font(.title3)
                     .lineLimit(1)
                 Text(viewModel.nowPlaying?.song.artist ?? "")
                     .font(.subheadline)
@@ -63,7 +63,7 @@ struct MiniPlayerView: View {
                    !album.isEmpty {
                     Text(album)
                         .font(.caption)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
             }
@@ -117,7 +117,7 @@ struct MiniPlayerView: View {
                     Menu {
                         Section("RP Player") {
                             Button("Settings…") { viewModel.openSettings() }
-                            Button("Open in Browser") { viewModel.openCurrentSongInBrowser() }
+                            Button("Open Song in Browser") { viewModel.openCurrentSongInBrowser() }
                                 .disabled(viewModel.nowPlaying == nil)
                         }
                         Section {
@@ -156,6 +156,7 @@ struct MiniPlayerView: View {
         }
         .labelsHidden()
         .pickerStyle(.menu)
+        .controlSize(.small)
     }
 
     private var transport: some View {
