@@ -13,7 +13,6 @@ final class StatusItemController {
     private var hoverTracker: HoverTracker?
     private var hoverTimer: Timer?
     private var showWorkItem: DispatchWorkItem?
-    private var tooltipAnchor: NSPoint = .zero
 
     init(
         statusBar: NSStatusBar = .system,
@@ -121,21 +120,21 @@ final class StatusItemController {
     }
 
     private func showTooltipNow() {
-        tooltipAnchor = NSEvent.mouseLocation
-        tooltipWindow.show(text: currentTooltipText(), anchoredAt: tooltipAnchor)
+        guard let button = statusItem.button else { return }
+        tooltipWindow.show(detail: currentDetailText(), below: button)
         let timer = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
-                guard let self else { return }
-                self.tooltipWindow.update(text: self.currentTooltipText())
-                self.tooltipWindow.reposition(anchoredAt: self.tooltipAnchor)
+                guard let self, let button = self.statusItem.button else { return }
+                self.tooltipWindow.update(detail: self.currentDetailText())
+                self.tooltipWindow.reposition(below: button)
             }
         }
         RunLoop.main.add(timer, forMode: .common)
         hoverTimer = timer
     }
 
-    private func currentTooltipText() -> String {
-        guard let secs = remainingSecondsProvider?() else { return "RP Player" }
+    private func currentDetailText() -> String? {
+        guard let secs = remainingSecondsProvider?() else { return nil }
         let s = max(0, secs)
         return String(format: "-%d:%02d", s / 60, s % 60)
     }

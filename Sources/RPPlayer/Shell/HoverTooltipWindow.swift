@@ -3,17 +3,31 @@ import AppKit
 @MainActor
 final class HoverTooltipWindow {
     private let panel: NSPanel
-    private let label: NSTextField
+    private let titleLabel: NSTextField
+    private let detailLabel: NSTextField
+    private let stack: NSStackView
     private let container: NSView
 
     init() {
-        label = NSTextField(labelWithString: "")
-        label.font = .systemFont(ofSize: 11)
-        label.textColor = .labelColor
-        label.alignment = .center
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.backgroundColor = .clear
-        label.drawsBackground = false
+        titleLabel = NSTextField(labelWithString: "RP Player")
+        titleLabel.font = .systemFont(ofSize: 11)
+        titleLabel.textColor = .labelColor
+        titleLabel.alignment = .center
+        titleLabel.backgroundColor = .clear
+        titleLabel.drawsBackground = false
+
+        detailLabel = NSTextField(labelWithString: "")
+        detailLabel.font = .systemFont(ofSize: 11)
+        detailLabel.textColor = .labelColor
+        detailLabel.alignment = .center
+        detailLabel.backgroundColor = .clear
+        detailLabel.drawsBackground = false
+
+        stack = NSStackView(views: [titleLabel, detailLabel])
+        stack.orientation = .vertical
+        stack.alignment = .centerX
+        stack.spacing = 0
+        stack.translatesAutoresizingMaskIntoConstraints = false
 
         container = NSView()
         container.wantsLayer = true
@@ -21,17 +35,17 @@ final class HoverTooltipWindow {
         container.layer?.cornerRadius = 4
         container.layer?.borderWidth = 0.5
         container.layer?.borderColor = NSColor.separatorColor.cgColor
-        container.addSubview(label)
+        container.addSubview(stack)
 
         NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 6),
-            label.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -6),
-            label.topAnchor.constraint(equalTo: container.topAnchor, constant: 3),
-            label.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -3),
+            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 6),
+            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -6),
+            stack.topAnchor.constraint(equalTo: container.topAnchor, constant: 3),
+            stack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -3),
         ])
 
         panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 60, height: 20),
+            contentRect: NSRect(x: 0, y: 0, width: 80, height: 32),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -44,34 +58,41 @@ final class HoverTooltipWindow {
         panel.contentView = container
     }
 
-    func show(text: String, anchoredAt point: NSPoint) {
-        update(text: text)
-        positionBelow(point: point)
+    func show(detail: String?, below button: NSStatusBarButton) {
+        update(detail: detail)
+        repositionBelow(button)
         panel.orderFront(nil)
     }
 
-    func update(text: String) {
-        label.stringValue = text
-        let labelSize = label.intrinsicContentSize
-        let panelSize = NSSize(width: ceil(labelSize.width) + 12, height: ceil(labelSize.height) + 6)
+    func update(detail: String?) {
+        if let d = detail, !d.isEmpty {
+            detailLabel.stringValue = d
+            detailLabel.isHidden = false
+        } else {
+            detailLabel.isHidden = true
+        }
+        stack.layoutSubtreeIfNeeded()
+        let stackSize = stack.fittingSize
+        let panelSize = NSSize(width: ceil(stackSize.width) + 12, height: ceil(stackSize.height) + 6)
         let origin = panel.frame.origin
         panel.setFrame(NSRect(origin: origin, size: panelSize), display: true)
     }
 
-    func reposition(anchoredAt point: NSPoint) {
-        positionBelow(point: point)
+    func reposition(below button: NSStatusBarButton) {
+        repositionBelow(button)
     }
 
     func hide() {
         panel.orderOut(nil)
     }
 
-    // The cursor hotspot is the given point; the arrow extends ~16pt down-right.
-    // Offset the panel below the arrow so it doesn't sit under the cursor.
-    private func positionBelow(point: NSPoint) {
+    private func repositionBelow(_ button: NSStatusBarButton) {
+        guard let buttonWindow = button.window else { return }
+        let buttonInWindow = button.convert(button.bounds, to: nil)
+        let buttonInScreen = buttonWindow.convertToScreen(buttonInWindow)
         let panelSize = panel.frame.size
-        let x = point.x - panelSize.width / 2
-        let y = point.y - panelSize.height - 20
+        let x = buttonInScreen.midX - panelSize.width / 2
+        let y = buttonInScreen.minY - panelSize.height - 4
         panel.setFrameOrigin(NSPoint(x: x, y: y))
     }
 }
