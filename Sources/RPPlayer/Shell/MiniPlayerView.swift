@@ -136,27 +136,17 @@ struct MiniPlayerView: View {
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                     }
-                    Menu {
-                        Section("RP Player") {
-                            Button("Settings…") { viewModel.openSettings() }
-                            Button("Upcoming Program…") { viewModel.openUpcoming() }
-                            Button("Open Song in Browser") { viewModel.openCurrentSongInBrowser() }
-                                .disabled(viewModel.nowPlaying == nil)
-                        }
-                        Section {
-                            Button("About RP Player") { viewModel.openAbout() }
-                        }
-                        Section {
-                            Button("Quit RP Player") { NSApp.terminate(nil) }
+                    Button {
+                        let menu = ContextMenuBuilder.build(viewModel: viewModel)
+                        if let event = NSApp.currentEvent, let contentView = event.window?.contentView {
+                            NSMenu.popUpContextMenu(menu, with: event, for: contentView)
                         }
                     } label: {
                         Image(systemName: "line.3.horizontal")
                             .font(.system(size: 14, weight: .regular))
+                            .frame(width: 22, height: 22)
                     }
-                    .menuStyle(.borderlessButton)
-                    .menuIndicator(.hidden)
-                    .fixedSize()
-                    .frame(width: 22, height: 22)
+                    .buttonStyle(PressOpacityButtonStyle())
                     .accessibilityLabel("Menu")
                 }
             }

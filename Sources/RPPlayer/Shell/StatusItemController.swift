@@ -6,10 +6,12 @@ final class StatusItemController {
     private let popover: PopoverController
     private let showHandler: (NSView) -> Void
     private let closeHandler: () -> Void
+    private let menuProvider: (() -> NSMenu)?
 
     init(
         statusBar: NSStatusBar = .system,
         popover: PopoverController,
+        menuProvider: (() -> NSMenu)? = nil,
         show: ((NSView) -> Void)? = nil,
         close: (() -> Void)? = nil
     ) {
@@ -27,9 +29,11 @@ final class StatusItemController {
 
         self.statusItem = item
         self.popover = popover
+        self.menuProvider = menuProvider
         self.showHandler = show ?? { anchor in popover.show(relativeTo: anchor) }
         self.closeHandler = close ?? { popover.close() }
 
+        item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
         item.button?.target = self
         item.button?.action = #selector(buttonClicked(_:))
     }
@@ -54,6 +58,17 @@ final class StatusItemController {
     }
 
     @objc private func buttonClicked(_ sender: NSStatusBarButton) {
-        toggle()
+        if NSApp.currentEvent?.type == .rightMouseUp {
+            showContextMenu(from: sender)
+        } else {
+            toggle()
+        }
+    }
+
+    private func showContextMenu(from button: NSStatusBarButton) {
+        guard let menu = menuProvider?() else { return }
+        statusItem.menu = menu
+        button.performClick(nil)
+        statusItem.menu = nil
     }
 }

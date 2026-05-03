@@ -35,7 +35,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { await container.notificationCoordinator.start() }
 
         let popover = PopoverController(rootView: AnyView(MiniPlayerView(viewModel: container.viewModel)))
-        let statusItemController = StatusItemController(popover: popover)
+        let statusItemController = StatusItemController(
+            popover: popover,
+            menuProvider: { [weak container] in
+                ContextMenuBuilder.build(viewModel: container?.viewModel)
+            }
+        )
         self.statusItemController = statusItemController
 
         container.viewModel.showPopoverIfNeeded = { [weak statusItemController] in
