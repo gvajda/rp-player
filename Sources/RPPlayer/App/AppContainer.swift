@@ -17,6 +17,7 @@ final class AppContainer {
     let keychainAuth: any KeychainAuth
     let pastSongPopoverController: PastSongPopoverController
     let upcomingWindowController: UpcomingWindowController
+    let configStore: any ConfigStore
 
     private let coordinatorShutdown: @Sendable () async -> Void
     private let onLaunchTasksClosures: [@Sendable () async -> Void]
@@ -34,6 +35,7 @@ final class AppContainer {
         keychainAuth: any KeychainAuth,
         pastSongPopoverController: PastSongPopoverController,
         upcomingWindowController: UpcomingWindowController,
+        configStore: any ConfigStore,
         coordinatorShutdown: @escaping @Sendable () async -> Void,
         onLaunchTasks: [@Sendable () async -> Void] = []
     ) {
@@ -49,6 +51,7 @@ final class AppContainer {
         self.keychainAuth = keychainAuth
         self.pastSongPopoverController = pastSongPopoverController
         self.upcomingWindowController = upcomingWindowController
+        self.configStore = configStore
         self.coordinatorShutdown = coordinatorShutdown
         self.onLaunchTasksClosures = onLaunchTasks
     }
@@ -286,6 +289,7 @@ extension AppContainer {
             keychainAuth: keychainAuth,
             pastSongPopoverController: PastSongPopoverController(),
             upcomingWindowController: upcomingWindowController,
+            configStore: store ?? NoopConfigStore(),
             coordinatorShutdown: { await coordinator.shutdown(); await hogController.release() },
             onLaunchTasks: onLaunchTasks
         )

@@ -90,6 +90,7 @@ final class AppContainerTests: XCTestCase {
                     paletteExtractor: StubAmbientPaletteExtractor()
                 )
             ),
+            configStore: configStore,
             coordinatorShutdown: coordinatorShutdown,
             onLaunchTasks: onLaunchTasks
         )

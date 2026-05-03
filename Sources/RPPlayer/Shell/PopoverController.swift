@@ -9,6 +9,7 @@ class PopoverController {
     let panel: NSPanel
     private var globalClickMonitor: Any?
     private var localKeyMonitor: Any?
+    private var floatingMode: Bool = false
 
     init(rootView: AnyView) {
         let wrapped = AnyView(
@@ -39,15 +40,57 @@ class PopoverController {
     }
 
     var isShown: Bool { panel.isVisible }
+    var isFloating: Bool { floatingMode }
 
     func show(relativeTo anchor: NSView) {
+        if floatingMode {
+            // First show in floating mode anchors to the icon for visual
+            // continuity; subsequent shows reuse whatever position the user
+            // dragged the panel to.
+            if !panel.isVisible {
+                positionAnchored(to: anchor)
+            }
+            panel.orderFrontRegardless()
+            return
+        }
+        positionAnchored(to: anchor)
+        // Activate so the panel comes to the foreground; otherwise the global
+        // monitor never sees the user's outside clicks until they activate the app.
+        NSApp.activate(ignoringOtherApps: true)
+        panel.orderFrontRegardless()
+        installMonitors()
+    }
+
+    func close() {
+        removeMonitors()
+        panel.orderOut(nil)
+    }
+
+    func setFloatingMode(_ enabled: Bool) {
+        guard enabled != floatingMode else { return }
+        floatingMode = enabled
+        if enabled {
+            removeMonitors()
+            panel.level = .floating
+            panel.isMovableByWindowBackground = true
+            panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        } else {
+            panel.level = .statusBar
+            panel.isMovableByWindowBackground = false
+            panel.collectionBehavior = []
+            // Per spec: toggling off closes the panel; next status-icon click
+            // re-shows it anchored as normal.
+            if panel.isVisible {
+                close()
+            }
+        }
+    }
+
+    private func positionAnchored(to anchor: NSView) {
         guard let buttonWindow = anchor.window else { return }
         let buttonRectInScreen = buttonWindow.convertToScreen(
             anchor.convert(anchor.bounds, to: nil)
         )
-        // Activate so the panel comes to the foreground; otherwise the global
-        // monitor never sees the user's outside clicks until they activate the app.
-        NSApp.activate(ignoringOtherApps: true)
         // Panel top sits flush with the menu-bar bottom (= the status item
         // window's minY); using the button's bounds.minY would leave a 2-3 px
         // gap because the button is shorter than its window.
@@ -57,13 +100,6 @@ class PopoverController {
             y: buttonWindow.frame.minY - panelSize.height
         )
         panel.setFrameOrigin(origin)
-        panel.orderFrontRegardless()
-        installMonitors()
-    }
-
-    func close() {
-        removeMonitors()
-        panel.orderOut(nil)
     }
 
     private func installMonitors() {

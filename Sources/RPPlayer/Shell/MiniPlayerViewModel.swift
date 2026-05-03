@@ -17,6 +17,7 @@ final class MiniPlayerViewModel: ObservableObject {
     @Published private(set) var songElapsedSeconds: Double = 0
     @Published private(set) var songDurationSeconds: Double = 0
     @Published private(set) var ambientTopColor: Color?
+    @Published private(set) var popoverFloatingEnabled: Bool = false
     private var ambientEnabled: Bool = false
 
     typealias PersistChannelId = @Sendable (Int) async -> Void
@@ -84,6 +85,7 @@ final class MiniPlayerViewModel: ObservableObject {
         paletteTask?.cancel()
         paletteTask = nil
         self.ambientEnabled = await configStore.settings.ambientBackgroundEnabled
+        self.popoverFloatingEnabled = await configStore.settings.popoverFloating
         do {
             self.channels = try await api.listChannels()
             self.errorMessage = nil
@@ -163,6 +165,7 @@ final class MiniPlayerViewModel: ObservableObject {
                 guard let self else { return }
                 let wasEnabled = self.ambientEnabled
                 self.ambientEnabled = snapshot.ambientBackgroundEnabled
+                self.popoverFloatingEnabled = snapshot.popoverFloating
                 if wasEnabled, !snapshot.ambientBackgroundEnabled {
                     self.ambientTopColor = nil
                 } else if !wasEnabled, snapshot.ambientBackgroundEnabled,
@@ -171,6 +174,13 @@ final class MiniPlayerViewModel: ObservableObject {
                     self.extractPalette(from: image, coverPath: cover)
                 }
             }
+        }
+    }
+
+    func togglePopoverFloating() {
+        let store = configStore
+        Task {
+            try? await store.update { $0.popoverFloating.toggle() }
         }
     }
 

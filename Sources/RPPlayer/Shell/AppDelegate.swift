@@ -8,6 +8,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let containerFactory: @MainActor () throws -> AppContainer
     private(set) var container: AppContainer?
     private(set) var statusItemController: StatusItemController?
+    private(set) var popover: PopoverController?
+    private var floatingModeBinderTask: Task<Void, Never>?
     // delegate is weak so AppDelegate holds a strong ref
     private(set) var notificationClickRouter: NotificationClickRouter?
 
@@ -40,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { await container.viewModel.start() }
 
         let popover = PopoverController(rootView: AnyView(MiniPlayerView(viewModel: container.viewModel)))
+        self.popover = popover
         let statusItemController = StatusItemController(
             popover: popover,
             menuProvider: { [weak container] in
@@ -50,6 +53,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         )
         self.statusItemController = statusItemController
+
+        // Apply current floating-mode setting and keep popover in sync with
+        // future menu-toggle changes. The changes stream yields the current
+        // snapshot first so this handles both initial launch and updates.
+        floatingModeBinderTask?.cancel()
+        floatingModeBinderTask = Task { @MainActor [weak self, weak container] in
+            guard let store = container?.configStore else { return }
+            for await snapshot in await store.changes {
+                guard let self else { return }
+                let wantsFloating = snapshot.popoverFloating
+                let currently = self.popover?.isFloating ?? false
+                guard wantsFloating != currently else { continue }
+                self.popover?.setFloatingMode(wantsFloating)
+                if wantsFloating, let button = self.statusItemController?.statusItem.button {
+                    self.popover?.show(relativeTo: button)
+                }
+            }
+        }
 
         container.viewModel.showPopoverIfNeeded = { [weak statusItemController] in
             statusItemController?.showPopoverIfNeeded()

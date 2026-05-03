@@ -21,6 +21,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var upcomingRowCount: Int
     // Chan 42 and 99 are always excluded from the Upcoming Program view regardless of this list.
     public var upcomingHiddenChannelIds: [Int]
+    // When true, the popover is shown as a movable always-visible floating
+    // panel (no outside-click dismissal, draggable). Toggled from the menu.
+    public var popoverFloating: Bool
 
     public init(
         selectedChannelId: Int = 0,
@@ -35,7 +38,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         verboseLoggingEnabled: Bool = false,
         playerId: String? = nil,
         upcomingRowCount: Int = 5,
-        upcomingHiddenChannelIds: [Int] = []
+        upcomingHiddenChannelIds: [Int] = [],
+        popoverFloating: Bool = false
     ) {
         self.selectedChannelId = selectedChannelId
         self.hogModeEnabled = hogModeEnabled
@@ -50,6 +54,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.playerId = playerId
         self.upcomingRowCount = upcomingRowCount
         self.upcomingHiddenChannelIds = upcomingHiddenChannelIds
+        self.popoverFloating = popoverFloating
     }
 
     public init(from decoder: Decoder) throws {
@@ -67,6 +72,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.playerId = try c.decodeIfPresent(String.self, forKey: .playerId)
         self.upcomingRowCount = try c.decodeIfPresent(Int.self, forKey: .upcomingRowCount) ?? 5
         self.upcomingHiddenChannelIds = try c.decodeIfPresent([Int].self, forKey: .upcomingHiddenChannelIds) ?? []
+        self.popoverFloating = try c.decodeIfPresent(Bool.self, forKey: .popoverFloating) ?? false
     }
 
     public static let `default` = AppSettings()

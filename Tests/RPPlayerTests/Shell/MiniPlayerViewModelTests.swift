@@ -427,6 +427,43 @@ final class MiniPlayerViewModelTests: XCTestCase {
         XCTAssertEqual(sut.remainingSecondsForTooltip, 60)
     }
 
+    func testPopoverFloatingEnabledMirrorsConfigStore() async throws {
+        let store = StubConfigStore(initial: AppSettings(popoverFloating: true))
+        let model = MiniPlayerViewModel(
+            coordinator: coordinator, api: api, initialChannelId: 0,
+            albumArtCache: StubAlbumArtCache(), auth: auth,
+            configStore: store,
+            paletteExtractor: StubAmbientPaletteExtractor(),
+            openSettings: { }
+        )
+        await model.start()
+        XCTAssertTrue(model.popoverFloatingEnabled)
+
+        try await store.update { $0.popoverFloating = false }
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertFalse(model.popoverFloatingEnabled)
+    }
+
+    func testTogglePopoverFloatingFlipsConfigValue() async throws {
+        let store = StubConfigStore(initial: AppSettings(popoverFloating: false))
+        let model = MiniPlayerViewModel(
+            coordinator: coordinator, api: api, initialChannelId: 0,
+            albumArtCache: StubAlbumArtCache(), auth: auth,
+            configStore: store,
+            paletteExtractor: StubAmbientPaletteExtractor(),
+            openSettings: { }
+        )
+        await model.start()
+
+        model.togglePopoverFloating()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertTrue(store.current.popoverFloating)
+
+        model.togglePopoverFloating()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertFalse(store.current.popoverFloating)
+    }
+
     func testRemainingSecondsForTooltipClampedAtZero() async throws {
         let np = NowPlaying.fixture(songStartSeconds: 100, songEndSeconds: 280)
         await coordinator.setNowPlaying(np)

@@ -14,6 +14,11 @@ enum ContextMenuBuilder {
         menu.addItem(openSong)
 
         menu.addItem(item("Upcoming Program…") { viewModel?.openUpcoming() })
+
+        let floatItem = item("Floating Window") { viewModel?.togglePopoverFloating() }
+        floatItem.state = (viewModel?.popoverFloatingEnabled == true) ? .on : .off
+        menu.addItem(floatItem)
+
         menu.addItem(.separator())
         menu.addItem(item("About RP Player") { viewModel?.openAbout() })
         menu.addItem(.separator())

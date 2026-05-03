@@ -65,6 +65,7 @@ final class AppDelegateTests: XCTestCase {
                         paletteExtractor: StubAmbientPaletteExtractor()
                     )
                 ),
+                configStore: configStore,
                 coordinatorShutdown: { await coordinator.shutdown() },
                 onLaunchTasks: []
             )
@@ -144,6 +145,7 @@ final class AppDelegateTests: XCTestCase {
                         paletteExtractor: StubAmbientPaletteExtractor()
                     )
                 ),
+                configStore: configStore,
                 coordinatorShutdown: { didShutDown.signal() },
                 onLaunchTasks: []
             )
