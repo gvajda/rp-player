@@ -5,16 +5,21 @@ struct SettingsView: View {
     @State private var showForceMaxConfirm = false
 
     var body: some View {
-        Form {
-            supportSection
-            audioSection
-            notificationsSection
-            appearanceSection
-            upcomingProgramSection
-            accountSection
-            dataSection
+        VStack(spacing: 0) {
+            supportRow
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
+                .padding(.bottom, 4)
+            Form {
+                audioSection
+                notificationsSection
+                appearanceSection
+                upcomingProgramSection
+                accountSection
+                dataSection
+            }
+            .formStyle(.grouped)
         }
-        .formStyle(.grouped)
         .frame(width: 480, height: 560)
         .task { await viewModel.start() }
         .alert("Force Max Volume", isPresented: $showForceMaxConfirm) {
@@ -27,35 +32,54 @@ struct SettingsView: View {
         }
     }
 
-    private var supportSection: some View {
-        Section {
-            Link(destination: URL(string: "https://radioparadise.com/donate")!) {
-                Label {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Support Radio Paradise")
-                        Text("Opens radioparadise.com in your browser")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                } icon: {
+    private var supportRow: some View {
+        HStack(spacing: 10) {
+            supportButton(
+                title: "Support Radio Paradise",
+                subtitle: "radioparadise.com",
+                url: "https://radioparadise.com/donate",
+                icon: AnyView(
                     Image(systemName: "heart.fill")
                         .foregroundStyle(.pink)
-                }
-            }
-            Link(destination: URL(string: "https://buymeacoffee.com/gvajda")!) {
-                Label {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Support RP Player development")
-                        Text("Buy me a coffee — opens buymeacoffee.com")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                } icon: {
-                    Image(systemName: "cup.and.saucer.fill")
-                        .foregroundStyle(.brown)
-                }
-            }
+                )
+            )
+            supportButton(
+                title: "Buy me a coffee",
+                subtitle: "buymeacoffee.com",
+                url: "https://buymeacoffee.com/gvajda",
+                icon: AnyView(bmcIcon)
+            )
         }
+    }
+
+    private var bmcIcon: some View {
+        let image: NSImage = {
+            if let url = Bundle.module.url(forResource: "bmc", withExtension: "png"),
+               let img = NSImage(contentsOf: url) {
+                return img
+            }
+            return NSImage()
+        }()
+        return Image(nsImage: image)
+            .resizable()
+            .frame(width: 18, height: 18)
+    }
+
+    private func supportButton(title: String, subtitle: String, url: String, icon: AnyView) -> some View {
+        Link(destination: URL(string: url)!) {
+            HStack(spacing: 8) {
+                icon
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title)
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(SupportButtonStyle())
     }
 
     private var audioSection: some View {
@@ -110,14 +134,26 @@ struct SettingsView: View {
 
     private var appearanceSection: some View {
         Section("Appearance") {
-            Picker("Appearance", selection: appearanceBinding) {
-                Text("System").tag(AppearanceMode.system)
-                Text("Light").tag(AppearanceMode.light)
-                Text("Dark").tag(AppearanceMode.dark)
+            HStack {
+                Text("Appearance")
+                Spacer()
+                HStack(spacing: 6) {
+                    appearanceButton(.system, label: "System")
+                    appearanceButton(.light, label: "Light")
+                    appearanceButton(.dark, label: "Dark")
+                }
             }
-            .pickerStyle(.segmented)
             Toggle("Ambient background from album art", isOn: ambientBackgroundBinding)
         }
+    }
+
+    private func appearanceButton(_ mode: AppearanceMode, label: String) -> some View {
+        Button {
+            Task { await viewModel.setAppearance(mode) }
+        } label: {
+            Text(label).frame(minWidth: 56)
+        }
+        .buttonStyle(StableButtonStyle(filled: viewModel.appearance == mode))
     }
 
     private var upcomingProgramSection: some View {
@@ -162,8 +198,10 @@ struct SettingsView: View {
                     Button("Sign out") {
                         Task { await viewModel.signOut() }
                     }
+                    .buttonStyle(StableButtonStyle())
                 } else {
                     Button("Sign in") { viewModel.openLoginWindow() }
+                        .buttonStyle(StableButtonStyle())
                 }
             }
         }
@@ -171,7 +209,11 @@ struct SettingsView: View {
 
     private var dataSection: some View {
         Section("Data") {
-            Button("Show application data") { viewModel.openApplicationData() }
+            HStack {
+                Button("Show application data") { viewModel.openApplicationData() }
+                    .buttonStyle(StableButtonStyle())
+                Spacer()
+            }
             Toggle("Verbose logging", isOn: verboseLoggingBinding)
         }
     }
