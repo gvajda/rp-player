@@ -66,6 +66,9 @@ final class AppDelegateTests: XCTestCase {
                     )
                 ),
                 configStore: configStore,
+                nowPlayingCenterController: NowPlayingCenterController(
+                    coordinator: coordinator, albumArtCache: cache
+                ),
                 coordinatorShutdown: { await coordinator.shutdown() },
                 onLaunchTasks: []
             )
@@ -146,6 +149,9 @@ final class AppDelegateTests: XCTestCase {
                     )
                 ),
                 configStore: configStore,
+                nowPlayingCenterController: NowPlayingCenterController(
+                    coordinator: coordinator, albumArtCache: cache
+                ),
                 coordinatorShutdown: { didShutDown.signal() },
                 onLaunchTasks: []
             )

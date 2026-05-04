@@ -35,6 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         Task { await container.notificationCoordinator.start() }
+        container.nowPlayingCenterController.start()
 
         // Start the view model now (rather than lazily from MiniPlayerView.task)
         // so the menu-bar tooltip and right-click menu reflect live state before
@@ -107,6 +108,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         guard let container else { return }
         Task { await container.notificationCoordinator.stop() }
+        container.nowPlayingCenterController.stop()
 
         // Block the terminate path on a clean shutdown of the coordinator —
         // libmpv must release the audio device before we exit.

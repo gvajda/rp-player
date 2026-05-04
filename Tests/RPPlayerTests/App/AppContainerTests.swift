@@ -91,6 +91,9 @@ final class AppContainerTests: XCTestCase {
                 )
             ),
             configStore: configStore,
+            nowPlayingCenterController: NowPlayingCenterController(
+                coordinator: coordinator, albumArtCache: cache
+            ),
             coordinatorShutdown: coordinatorShutdown,
             onLaunchTasks: onLaunchTasks
         )

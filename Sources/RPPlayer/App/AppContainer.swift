@@ -18,6 +18,7 @@ final class AppContainer {
     let pastSongPopoverController: PastSongPopoverController
     let upcomingWindowController: UpcomingWindowController
     let configStore: any ConfigStore
+    let nowPlayingCenterController: NowPlayingCenterController
 
     private let coordinatorShutdown: @Sendable () async -> Void
     private let onLaunchTasksClosures: [@Sendable () async -> Void]
@@ -36,6 +37,7 @@ final class AppContainer {
         pastSongPopoverController: PastSongPopoverController,
         upcomingWindowController: UpcomingWindowController,
         configStore: any ConfigStore,
+        nowPlayingCenterController: NowPlayingCenterController,
         coordinatorShutdown: @escaping @Sendable () async -> Void,
         onLaunchTasks: [@Sendable () async -> Void] = []
     ) {
@@ -52,6 +54,7 @@ final class AppContainer {
         self.pastSongPopoverController = pastSongPopoverController
         self.upcomingWindowController = upcomingWindowController
         self.configStore = configStore
+        self.nowPlayingCenterController = nowPlayingCenterController
         self.coordinatorShutdown = coordinatorShutdown
         self.onLaunchTasksClosures = onLaunchTasks
     }
@@ -358,6 +361,11 @@ extension AppContainer {
             }
         ]
 
+        let nowPlayingCenterController = NowPlayingCenterController(
+            coordinator: coordinator,
+            albumArtCache: cache
+        )
+
         logger.info("AppContainer.live() ready")
         return AppContainer(
             viewModel: viewModel,
@@ -373,6 +381,7 @@ extension AppContainer {
             pastSongPopoverController: PastSongPopoverController(),
             upcomingWindowController: upcomingWindowController,
             configStore: store ?? NoopConfigStore(),
+            nowPlayingCenterController: nowPlayingCenterController,
             coordinatorShutdown: { await coordinator.shutdown(); await hogController.release() },
             onLaunchTasks: onLaunchTasks
         )
