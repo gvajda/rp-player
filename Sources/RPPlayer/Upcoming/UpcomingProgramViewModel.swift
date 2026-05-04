@@ -35,7 +35,11 @@ final class UpcomingProgramViewModel: ObservableObject {
 
     /// Per-column UI metrics — kept in lock-step with `UpcomingProgramView`.
     /// Used by `UpcomingWindowController` to compute the snug window width.
+    /// Each column renders as a 226pt frame wrapped in `.padding(6)` (so the
+    /// column card occupies 238pt total), separated by a 6pt HStack spacing,
+    /// inside an HStack with `.padding(10)`.
     static let columnWidth: CGFloat = 226
+    static let columnOuterPadding: CGFloat = 6  // .padding(6) on each column card
     static let columnSpacing: CGFloat = 6
     static let columnsContainerPadding: CGFloat = 10  // .padding(10) on the HStack
 
@@ -79,9 +83,14 @@ final class UpcomingProgramViewModel: ObservableObject {
     }
 
     /// Width of the columns-container content needed to fit the currently
-    /// configured (filtered) channel list. Returns nil before any successful
-    /// `load()` — caller should leave the window size alone in that case.
+    /// configured (filtered) channel list. Lazily primes the channel cache
+    /// via `api.listChannels()` if `load()` hasn't run yet — required for the
+    /// window-pre-flight resize to work on the first show after app restart.
+    /// Returns nil only when the channel list is unavailable.
     func desiredContentWidth() async -> CGFloat? {
+        if cachedChannels.isEmpty {
+            cachedChannels = (try? await api.listChannels()) ?? []
+        }
         guard !cachedChannels.isEmpty else { return nil }
         let settings = await configStore.settings
         let hiddenIds = Set(settings.upcomingHiddenChannelIds)
@@ -91,7 +100,8 @@ final class UpcomingProgramViewModel: ObservableObject {
         }.count
         guard count > 0 else { return nil }
         let n = CGFloat(count)
-        return n * Self.columnWidth + (n - 1) * Self.columnSpacing + 2 * Self.columnsContainerPadding
+        let perColumn = Self.columnWidth + 2 * Self.columnOuterPadding
+        return n * perColumn + (n - 1) * Self.columnSpacing + 2 * Self.columnsContainerPadding
     }
 
     func load() async {
