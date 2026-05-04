@@ -12,6 +12,7 @@ struct PastSongView: View {
                     title: viewModel.song.title,
                     artist: viewModel.song.artist,
                     album: viewModel.song.album,
+                    year: viewModel.song.year,
                     currentRating: viewModel.currentRating,
                     isSignedIn: viewModel.isSignedIn,
                     onRate: { value in Task { await viewModel.rate(value) } }

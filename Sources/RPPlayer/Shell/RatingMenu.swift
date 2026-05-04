@@ -12,8 +12,8 @@ struct RatingMenu: View {
             }
         } label: {
             Text(label)
-                .font(.caption.monospacedDigit())
-                .frame(minWidth: 32, alignment: .center)
+                .font(.title3)
+                .foregroundStyle(.primary)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)

@@ -4,34 +4,51 @@ struct SongTitleRow: View {
     let title: String
     let artist: String
     let album: String?
+    let year: String?
     let currentRating: Int?
     let isSignedIn: Bool
     let onRate: (Int) -> Void
 
+    private var showAlbumOrYear: Bool {
+        let hasAlbum = !(album ?? "").isEmpty
+        let hasYear = !(year ?? "").isEmpty
+        return hasAlbum || hasYear
+    }
+
     var body: some View {
-        HStack(alignment: .center, spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .center, spacing: 8) {
                 Text(title)
                     .font(.title3)
                     .lineLimit(1)
-                Text(artist)
-                    .font(.subheadline)
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                if let album, !album.isEmpty {
-                    Text(album)
-                        .font(.caption)
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
+                Spacer(minLength: 0)
+                RatingMenu(
+                    currentRating: currentRating,
+                    isSignedIn: isSignedIn,
+                    onRate: onRate
+                )
+            }
+            Text(artist)
+                .font(.subheadline)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+            if showAlbumOrYear {
+                HStack(alignment: .center, spacing: 8) {
+                    if let album, !album.isEmpty {
+                        Text(album)
+                            .font(.caption)
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 0)
+                    if let year, !year.isEmpty {
+                        Text(year)
+                            .font(.caption)
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                    }
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            RatingMenu(
-                currentRating: currentRating,
-                isSignedIn: isSignedIn,
-                onRate: onRate
-            )
         }
         .frame(width: 318)
     }

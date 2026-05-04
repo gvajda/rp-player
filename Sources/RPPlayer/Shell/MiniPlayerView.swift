@@ -22,6 +22,7 @@ struct MiniPlayerView: View {
                     title: viewModel.nowPlaying?.song.title ?? "—",
                     artist: viewModel.nowPlaying?.song.artist ?? "",
                     album: viewModel.nowPlaying?.song.album,
+                    year: viewModel.nowPlaying?.song.year,
                     currentRating: viewModel.currentRating,
                     isSignedIn: viewModel.isSignedIn,
                     onRate: { value in Task { await viewModel.rate(value) } }
