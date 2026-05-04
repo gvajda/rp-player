@@ -18,7 +18,14 @@ struct MiniPlayerView: View {
             }
             PopoverAlbumArt(image: viewModel.currentArt)
             VStack(spacing: 12) {
-                titleRow
+                SongTitleRow(
+                    title: viewModel.nowPlaying?.song.title ?? "—",
+                    artist: viewModel.nowPlaying?.song.artist ?? "",
+                    album: viewModel.nowPlaying?.song.album,
+                    currentRating: viewModel.currentRating,
+                    isSignedIn: viewModel.isSignedIn,
+                    onRate: { value in Task { await viewModel.rate(value) } }
+                )
                 progressRow
                 transport
                 channelRow
@@ -40,37 +47,6 @@ struct MiniPlayerView: View {
             startPoint: .top,
             endPoint: .bottom
         )
-    }
-
-    private var titleRow: some View {
-        HStack(alignment: .center, spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(viewModel.nowPlaying?.song.title ?? "—")
-                    .font(.title3)
-                    .lineLimit(1)
-                Text(viewModel.nowPlaying?.song.artist ?? "")
-                    .font(.subheadline)
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                if let song = viewModel.nowPlaying?.song,
-                   let album = song.album,
-                   !album.isEmpty {
-                    Text(album)
-                        .font(.caption)
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            RatingMenu(
-                currentRating: viewModel.currentRating,
-                isSignedIn: viewModel.isSignedIn
-            ) { value in
-                Task { await viewModel.rate(value) }
-            }
-        }
-        .frame(width: 318)
     }
 
     private var progressRow: some View {
