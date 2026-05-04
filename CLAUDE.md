@@ -14,7 +14,7 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 
 ## Current state
 
-- Last merged: **PR 22** — media-key + Now Playing center support. 324 tests passing on `main`.
+- Last merged: **PR 23** — popover shared components + ambient parity for past-song popover + rating-on-title-row + year-with-album. 335 tests passing on `main`.
 
 ## PR status
 
@@ -44,7 +44,7 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 | 20   | merged to main | ✅      | CI: merge release into ci.yml (test + tag-gated release jobs); Codecov coverage via OIDC + sersoft lcov conversion + codecov.yml path fix; README badges (build+tests, coverage, latest release, license) |
 | 21   | merged to main | ✅      | Audio settings overhaul: releaseHogOnPauseEnabled, forceMaxVolumeEnabled (replaces dead softwareVolumeEnabled), applyReplayGainEnabled, DeviceVolumeController (CoreAudio scalar pin/read), PlaybackState stream + currentPlaybackState, force-max confirmation alert, ReplayGain hover info popover, Appearance segmented picker, output-device refresh button (AudioDeviceCatalog.reload() on protocol) |
 | 22   | merged to main | ✅      | Media-key + Now Playing center support: MPRemoteCommandCenter (play/pause/togglePlayPause/nextTrack), MPNowPlayingInfoCenter (title/artist/album/artwork/duration/elapsed + playbackState); position throttled to 1 Hz; artwork construction in nonisolated helper to avoid MainActor-isolation crash on MediaPlayer's dispatch queue |
-| 23   | claude/pr23-popover-shared-components | 🚧      | Popover shared components: PopoverAlbumArt + SongTitleRow + AmbientGradientBackground extracted; PastSongView gets ambient gradient + matched typography; PastSongPopoverController folded into shared PopoverController via present(rootView:relativeTo:); main popover panel width 320 → 342 |
+| 23   | merged to main | ✅      | Popover shared components: PopoverAlbumArt + SongTitleRow + AmbientGradientBackground extracted; PastSongView gets ambient gradient + matched typography; PastSongPopoverController folded into shared PopoverController via present(rootView:relativeTo:); main popover panel width 320 → 342; rating moved to title row (.title3); year displayed inline with album (right-aligned) |
 
 ---
 
