@@ -140,12 +140,33 @@ final class MiniPlayerViewModelTests: XCTestCase {
 
     func testSelectChannelSecondCallSupersedesFirst() async throws {
         let model = sut!
-        async let first: Void = model.selectChannel(2)
-        async let second: Void = model.selectChannel(5)
-        _ = await (first, second)
+        await coordinator.setHoldOnChangeChannel(true)
+
+        let firstTask = Task { await model.selectChannel(2) }
+        try await waitForRecordedCallCount(1)
+
+        let secondTask = Task { await model.selectChannel(5) }
+        try await waitForRecordedCallCount(2)
+
+        await coordinator.releaseChangeChannelHolds()
+        _ = await firstTask.value
+        _ = await secondTask.value
+
         XCTAssertEqual(sut.selectedChannelId, 5)
         let calls = await coordinator.recordedCalls()
         XCTAssertEqual(calls.count, 2)
+    }
+
+    private func waitForRecordedCallCount(_ target: Int, maxIterations: Int = 1000) async throws {
+        var i = 0
+        while await coordinator.recordedCalls().count < target {
+            await Task.yield()
+            i += 1
+            if i > maxIterations {
+                XCTFail("coordinator never recorded \(target) calls (got \(await coordinator.recordedCalls().count))")
+                return
+            }
+        }
     }
 
     func testCurrentArtLoadsFromCacheOnNowPlayingUpdate() async throws {

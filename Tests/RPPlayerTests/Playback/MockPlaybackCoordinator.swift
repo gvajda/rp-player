@@ -18,6 +18,8 @@ actor MockPlaybackCoordinator: PlaybackCoordinator {
     private var positionContinuations: [UUID: AsyncStream<Double>.Continuation] = [:]
     private var lastPosition: Double = 0
     private var nextError: Error?
+    private var holdChangeChannelEnabled: Bool = false
+    private var changeChannelHolds: [CheckedContinuation<Void, Never>] = []
     private(set) var errorsContinuation: AsyncStream<String>.Continuation!
     var errors: AsyncStream<String>
 
@@ -91,6 +93,19 @@ actor MockPlaybackCoordinator: PlaybackCoordinator {
     func skipForward() async throws { try recordOrThrow(.skipForward) }
     func changeChannel(to channelId: Int) async throws {
         try recordOrThrow(.changeChannel(to: channelId))
+        if holdChangeChannelEnabled {
+            await withCheckedContinuation { changeChannelHolds.append($0) }
+        }
+    }
+
+    func setHoldOnChangeChannel(_ enabled: Bool) {
+        holdChangeChannelEnabled = enabled
+    }
+
+    func releaseChangeChannelHolds() {
+        let pending = changeChannelHolds
+        changeChannelHolds.removeAll()
+        pending.forEach { $0.resume() }
     }
     func shutdown() async {
         calls.append(.shutdown)
