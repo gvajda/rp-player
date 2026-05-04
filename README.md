@@ -4,13 +4,7 @@ Optimized for macOS 14+
 
 [Download the latest RP Player release](https://github.com/gvajda/rp-player/releases/latest)
 
-![build + tests](https://img.shields.io/github/actions/workflow/status/gvajda/rp-player/ci.yml?label=build%20%2B%20tests)
-
-![coverage](https://img.shields.io/codecov/c/github/gvajda/rp-player)
-
-![latest release](https://img.shields.io/github/v/release/gvajda/rp-player?label=latest%20release)
-
-![license](https://img.shields.io/github/license/gvajda/rp-player?cacheSeconds=3600)
+![build + tests](https://img.shields.io/github/actions/workflow/status/gvajda/rp-player/ci.yml?label=build%20%2B%20tests) ![coverage](https://img.shields.io/codecov/c/github/gvajda/rp-player) ![latest release](https://img.shields.io/github/v/release/gvajda/rp-player?label=latest%20release) ![license](https://img.shields.io/github/license/gvajda/rp-player?cacheSeconds=3600)
 
 ## Summary
 
