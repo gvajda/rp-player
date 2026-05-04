@@ -42,6 +42,19 @@ struct SettingsView: View {
                         .foregroundStyle(.pink)
                 }
             }
+            Link(destination: URL(string: "https://buymeacoffee.com/gvajda")!) {
+                Label {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Support RP Player development")
+                        Text("Buy me a coffee — opens buymeacoffee.com")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } icon: {
+                    Image(systemName: "cup.and.saucer.fill")
+                        .foregroundStyle(.brown)
+                }
+            }
         }
     }
 

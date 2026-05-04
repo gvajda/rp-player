@@ -4,10 +4,13 @@ Optimized for macOS 14+
 
 [Download the latest RP Player release](https://github.com/gvajda/rp-player/releases/latest)
 
-[![build + tests](https://img.shields.io/github/actions/workflow/status/gvajda/rp-player/ci.yml?label=build%20%2B%20tests)](https://github.com/gvajda/rp-player/actions/workflows/ci.yml)
-[![coverage](https://img.shields.io/codecov/c/github/gvajda/rp-player)](https://codecov.io/gh/gvajda/rp-player)
-[![latest release](https://img.shields.io/github/v/release/gvajda/rp-player?label=latest%20release)](https://github.com/gvajda/rp-player/releases/latest)
-[![license](https://img.shields.io/github/license/gvajda/rp-player?cacheSeconds=3600)](LICENSE)
+![build + tests](https://img.shields.io/github/actions/workflow/status/gvajda/rp-player/ci.yml?label=build%20%2B%20tests)
+
+![coverage](https://img.shields.io/codecov/c/github/gvajda/rp-player)
+
+![latest release](https://img.shields.io/github/v/release/gvajda/rp-player?label=latest%20release)
+
+![license](https://img.shields.io/github/license/gvajda/rp-player?cacheSeconds=3600)
 
 ## Summary
 
@@ -16,7 +19,7 @@ My goal was a tiny menu-bar [Radio Paradise](https://radioparadise.com/) player 
 > **Disclaimer**\
 > This is not an official Radio Paradise product. The Radio Paradise name and logo are owned by Radio Paradise. All displayed metadata and audio streams come from the public Radio Paradise REST API.
 
-_Screenshot placeholder — popover with album art, ambient background, transport, channel picker._
+*Screenshot placeholder — popover with album art, ambient background, transport, channel picker.*
 
 ## Getting started
 
@@ -53,7 +56,7 @@ The app installs a status item in the menu bar (no Dock icon, no main window). C
   - Cross-session resume: the backend remembers where you left off per channel. Restarting the app picks up where you stopped.
   - Telemetry endpoints (`update_history`, `update_pause`) keep the cursor accurate across pauses, skips, and song boundaries.
 
-_Screenshot placeholder — Settings window: bitrate, output device, hog mode toggle._
+*Screenshot placeholder — Settings window: bitrate, output device, hog mode toggle.*
 
 ### Mini player popover
 
@@ -75,7 +78,7 @@ _Screenshot placeholder — Settings window: bitrate, output device, hog mode to
 - Hovering the icon (after a 300 ms delay) shows a two-line tooltip: "RP Player" plus a live `-mm:ss` countdown to the end of the current song.
 - The countdown ticks every second while the cursor stays over the icon. No song playing → second line hidden.
 
-_GIF placeholder — cursor hovering the menu-bar icon, countdown ticking down._
+*GIF placeholder — cursor hovering the menu-bar icon, countdown ticking down.*
 
 ### Media keys + Control Center widget
 
@@ -100,7 +103,7 @@ _GIF placeholder — cursor hovering the menu-bar icon, countdown ticking down._
 - Refresh button in the toolbar; "last updated" relative timestamp; channel filter for hiding channels you never browse (chan 42 + 99 are always excluded).
 - Uses `api/play` (not `api/get_block`) so the upcoming list reflects the same personalised cursor as actual playback.
 
-_Screenshot placeholder — Upcoming Program window with current channel highlighted._
+*Screenshot placeholder — Upcoming Program window with current channel highlighted.*
 
 ### Album art + ambient background
 
@@ -131,7 +134,7 @@ _Screenshot placeholder — Upcoming Program window with current channel highlig
 ### Audio pipeline
 
 - **Decoder:** libmpv 0.36.0, vendored under `Vendor/libmpv/` (universal binaries via `media-kit/libmpv-darwin-build`).
-- **Output:** mpv's plain `coreaudio` AO. The app does not use `coreaudio_exclusive` — it opens hog mode itself via `AudioObjectSetPropertyData` on `kAudioDevicePropertyHogMode` _before_ mpv opens the device, then hands the device back on shutdown. This avoids the format-negotiation failures observed on USB DACs (e.g. Qudelix-5K) when mpv tries to own exclusive mode itself.
+- **Output:** mpv's plain `coreaudio` AO. The app does not use `coreaudio_exclusive` — it opens hog mode itself via `AudioObjectSetPropertyData` on `kAudioDevicePropertyHogMode` *before* mpv opens the device, then hands the device back on shutdown. This avoids the format-negotiation failures observed on USB DACs (e.g. Qudelix-5K) when mpv tries to own exclusive mode itself.
 - **Block-cued seek:** `loadfile <url> replace start=<seconds>` for the initial cue, instead of a post-`fileLoaded` seek, so the UI doesn't briefly show the cue position while the HTTP buffer is still catching up.
 
 ### Cookie-based authentication
@@ -173,6 +176,14 @@ swift test
 swift run RPPlayer       # raw process; status item appears in the menu bar
 scripts/make-app.sh      # produces a signed RP Player.app bundle
 ```
+
+## Support development
+
+If you find RP Player useful, you can support continued development:
+
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/gvajda)
+
+Please also consider [donating to Radio Paradise](https://radioparadise.com/donate) — they're the ones running the listener-supported station this app plays.
 
 ## License
 
