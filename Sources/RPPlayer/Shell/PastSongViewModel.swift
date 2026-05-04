@@ -69,6 +69,11 @@ final class PastSongViewModel: ObservableObject {
         }
     }
 
+    func stop() {
+        settingsSubscriptionTask?.cancel(); settingsSubscriptionTask = nil
+        paletteTask?.cancel(); paletteTask = nil
+    }
+
     func rate(_ value: Int) async {
         guard let id = Int(song.songId) else { return }
         do {

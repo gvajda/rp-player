@@ -165,4 +165,22 @@ final class PastSongViewModelTests: XCTestCase {
         for _ in 0..<5 { await Task.yield() }
         XCTAssertNil(sut.ambientTopColor)
     }
+
+    func testStopCancelsTasks() async {
+        let store = StubConfigStore(initial: .default)
+        let extractor = StubAmbientPaletteExtractor()
+        let sut = PastSongViewModel(
+            song: makeSong(),
+            albumArtCache: StubAlbumArtCache(),
+            auth: StubKeychainAuth(),
+            api: MockRpApiClient(),
+            configStore: store,
+            paletteExtractor: extractor
+        )
+        await sut.start()
+        sut.stop()
+        try? await store.update { $0.ambientBackgroundEnabled = true }
+        for _ in 0..<5 { await Task.yield() }
+        XCTAssertNil(sut.ambientTopColor)
+    }
 }

@@ -8,6 +8,7 @@ final class PastSongPopoverController {
 
     private let panel: NSPanel
     private var hostingView: NSHostingView<AnyView>?
+    private var viewModel: PastSongViewModel?
     private var globalClickMonitor: Any?
     private var localKeyMonitor: Any?
 
@@ -41,6 +42,7 @@ final class PastSongPopoverController {
         panel.contentView?.layer?.cornerRadius = 10
         panel.contentView?.layer?.masksToBounds = true
         hostingView = host
+        self.viewModel = viewModel
 
         guard let buttonWindow = anchor.window else { return }
         let buttonRectInScreen = buttonWindow.convertToScreen(
@@ -59,6 +61,8 @@ final class PastSongPopoverController {
 
     func close() {
         removeMonitors()
+        viewModel?.stop()
+        viewModel = nil
         panel.orderOut(nil)
         hostingView = nil
         panel.contentView = nil
