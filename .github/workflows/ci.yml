@@ -28,7 +28,6 @@ jobs:
         with:
           search-paths: ./.build
           format: lcov
-          target-name-filter: ^RPPlayer$
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
