@@ -232,7 +232,11 @@ final class MiniPlayerViewModel: ObservableObject {
     }
 
     func selectChannel(_ id: Int) async {
-        guard id != selectedChannelId else { return }
+        // Skip the no-op only when the channel is already selected AND playback
+        // is active. With nothing playing (stopped / error), clicking the same
+        // channel should still start it — otherwise the Upcoming panel feels
+        // dead when the user picks the channel they last had.
+        if id == selectedChannelId && nowPlaying != nil { return }
         errorMessage = nil
         let previous = selectedChannelId
         selectedChannelId = id

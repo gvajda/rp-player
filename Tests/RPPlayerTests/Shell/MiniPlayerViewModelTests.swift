@@ -86,10 +86,23 @@ final class MiniPlayerViewModelTests: XCTestCase {
         XCTAssertEqual(sut.selectedChannelId, 2)
     }
 
-    func testSelectChannelDoesNothingWhenIdUnchanged() async throws {
+    func testSelectChannelDoesNothingWhenIdUnchangedAndPlaying() async throws {
+        // Seed nowPlaying via the subscription stream so the VM treats playback
+        // as active; same-channel click should be a no-op (avoid restart).
+        await sut.start()
+        await coordinator.setNowPlaying(.fixture())
+        try await Task.sleep(nanoseconds: 50_000_000)
         await sut.selectChannel(0)
         let calls = await coordinator.recordedCalls()
         XCTAssertTrue(calls.isEmpty)
+    }
+
+    func testSelectChannelStartsPlaybackWhenIdMatchesButNothingPlaying() async throws {
+        // No nowPlaying seeded → VM treats it as stopped/idle. Clicking the
+        // already-selected channel should kick off playback.
+        await sut.selectChannel(0)
+        let calls = await coordinator.recordedCalls()
+        XCTAssertEqual(calls, [.changeChannel(to: 0)])
     }
 
     func testSelectChannelInvokesPersistenceClosureOnSuccess() async throws {
