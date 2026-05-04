@@ -13,6 +13,7 @@ final class SettingsViewModel: ObservableObject {
     @Published private(set) var outputDeviceUID: String?
     @Published private(set) var verboseLoggingEnabled: Bool
     @Published private(set) var appearance: AppearanceMode
+    @Published private(set) var menuBarIconStyle: MenuBarIconStyle
     @Published private(set) var ambientBackgroundEnabled: Bool
     @Published private(set) var upcomingRowCount: Int
     @Published private(set) var upcomingHiddenChannelIds: [Int]
@@ -57,6 +58,7 @@ final class SettingsViewModel: ObservableObject {
         self.outputDeviceUID = snapshot.outputDeviceUID
         self.verboseLoggingEnabled = snapshot.verboseLoggingEnabled
         self.appearance = snapshot.appearance
+        self.menuBarIconStyle = snapshot.menuBarIconStyle
         self.ambientBackgroundEnabled = snapshot.ambientBackgroundEnabled
         self.upcomingRowCount = snapshot.upcomingRowCount
         self.upcomingHiddenChannelIds = snapshot.upcomingHiddenChannelIds
@@ -80,6 +82,7 @@ final class SettingsViewModel: ObservableObject {
                     self.outputDeviceUID = snapshot.outputDeviceUID
                     self.verboseLoggingEnabled = snapshot.verboseLoggingEnabled
                     self.appearance = snapshot.appearance
+                    self.menuBarIconStyle = snapshot.menuBarIconStyle
                     self.ambientBackgroundEnabled = snapshot.ambientBackgroundEnabled
                     self.upcomingRowCount = snapshot.upcomingRowCount
                     self.upcomingHiddenChannelIds = snapshot.upcomingHiddenChannelIds
@@ -151,6 +154,10 @@ final class SettingsViewModel: ObservableObject {
 
     func setAppearance(_ value: AppearanceMode) async {
         await update { $0.appearance = value }
+    }
+
+    func setMenuBarIconStyle(_ value: MenuBarIconStyle) async {
+        await update { $0.menuBarIconStyle = value }
     }
 
     func setAmbientBackgroundEnabled(_ value: Bool) async {

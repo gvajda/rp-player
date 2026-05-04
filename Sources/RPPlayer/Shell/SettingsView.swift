@@ -143,8 +143,25 @@ struct SettingsView: View {
                     appearanceButton(.dark, label: "Dark")
                 }
             }
+            HStack {
+                Text("Menu bar icon")
+                Spacer()
+                HStack(spacing: 6) {
+                    menuBarIconButton(.template, label: "White")
+                    menuBarIconButton(.color, label: "Color")
+                }
+            }
             Toggle("Ambient background from album art", isOn: ambientBackgroundBinding)
         }
+    }
+
+    private func menuBarIconButton(_ style: MenuBarIconStyle, label: String) -> some View {
+        Button {
+            Task { await viewModel.setMenuBarIconStyle(style) }
+        } label: {
+            Text(label).frame(minWidth: 56)
+        }
+        .buttonStyle(StableButtonStyle(filled: viewModel.menuBarIconStyle == style))
     }
 
     private func appearanceButton(_ mode: AppearanceMode, label: String) -> some View {

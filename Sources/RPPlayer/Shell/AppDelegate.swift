@@ -51,7 +51,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             },
             remainingSecondsProvider: { [weak container] in
                 container?.viewModel.remainingSecondsForTooltip
-            }
+            },
+            initialIconStyle: container.initialMenuBarIconStyle
         )
         self.statusItemController = statusItemController
 
@@ -61,14 +62,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         floatingModeBinderTask?.cancel()
         floatingModeBinderTask = Task { @MainActor [weak self, weak container] in
             guard let store = container?.configStore else { return }
+            var lastIconStyle: MenuBarIconStyle?
             for await snapshot in await store.changes {
                 guard let self else { return }
                 let wantsFloating = snapshot.popoverFloating
                 let currently = self.popover?.isFloating ?? false
-                guard wantsFloating != currently else { continue }
-                self.popover?.setFloatingMode(wantsFloating)
-                if wantsFloating, let button = self.statusItemController?.statusItem.button {
-                    self.popover?.show(relativeTo: button)
+                if wantsFloating != currently {
+                    self.popover?.setFloatingMode(wantsFloating)
+                    if wantsFloating, let button = self.statusItemController?.statusItem.button {
+                        self.popover?.show(relativeTo: button)
+                    }
+                }
+                if snapshot.menuBarIconStyle != lastIconStyle {
+                    lastIconStyle = snapshot.menuBarIconStyle
+                    self.statusItemController?.setIconStyle(snapshot.menuBarIconStyle)
                 }
             }
         }

@@ -14,7 +14,7 @@ BUNDLE_ID="com.gvajda.rpplayer"
 VERSION="${VERSION:-0.1.0}"
 BUILD="$(git -C "$ROOT" rev-parse --short HEAD)"
 ENTITLEMENTS="$ROOT/scripts/entitlements.plist"
-ICON_SRC="$ROOT/Sources/RPPlayer/Resources/rp.ico"
+ICON_SRC="$ROOT/Sources/RPPlayer/Resources/rp-color.png"
 
 echo "==> swift build -c $CONFIG"
 swift build --package-path "$ROOT" -c "$CONFIG"

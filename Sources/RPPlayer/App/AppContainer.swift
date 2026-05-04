@@ -19,6 +19,7 @@ final class AppContainer {
     let upcomingWindowController: UpcomingWindowController
     let configStore: any ConfigStore
     let nowPlayingCenterController: NowPlayingCenterController
+    let initialMenuBarIconStyle: MenuBarIconStyle
 
     private let coordinatorShutdown: @Sendable () async -> Void
     private let onLaunchTasksClosures: [@Sendable () async -> Void]
@@ -38,6 +39,7 @@ final class AppContainer {
         upcomingWindowController: UpcomingWindowController,
         configStore: any ConfigStore,
         nowPlayingCenterController: NowPlayingCenterController,
+        initialMenuBarIconStyle: MenuBarIconStyle = .template,
         coordinatorShutdown: @escaping @Sendable () async -> Void,
         onLaunchTasks: [@Sendable () async -> Void] = []
     ) {
@@ -55,6 +57,7 @@ final class AppContainer {
         self.upcomingWindowController = upcomingWindowController
         self.configStore = configStore
         self.nowPlayingCenterController = nowPlayingCenterController
+        self.initialMenuBarIconStyle = initialMenuBarIconStyle
         self.coordinatorShutdown = coordinatorShutdown
         self.onLaunchTasksClosures = onLaunchTasks
     }
@@ -422,6 +425,7 @@ extension AppContainer {
             upcomingWindowController: upcomingWindowController,
             configStore: store ?? NoopConfigStore(),
             nowPlayingCenterController: nowPlayingCenterController,
+            initialMenuBarIconStyle: initial.menuBarIconStyle,
             coordinatorShutdown: { await coordinator.shutdown(); await hogController.release() },
             onLaunchTasks: onLaunchTasks
         )

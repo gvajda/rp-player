@@ -20,18 +20,11 @@ final class StatusItemController {
         menuProvider: (() -> NSMenu)? = nil,
         remainingSecondsProvider: (@MainActor () -> Int?)? = nil,
         show: ((NSView) -> Void)? = nil,
-        close: (() -> Void)? = nil
+        close: (() -> Void)? = nil,
+        initialIconStyle: MenuBarIconStyle = .template
     ) {
         let item = statusBar.statusItem(withLength: NSStatusItem.variableLength)
-        if let url = Bundle.module.url(forResource: "rp", withExtension: "ico"),
-           let image = NSImage(contentsOf: url) {
-            image.size = NSSize(width: 18, height: 18)
-            item.button?.image = image
-        } else {
-            let fallback = NSImage(systemSymbolName: "music.note", accessibilityDescription: "RP Player")
-            fallback?.isTemplate = true
-            item.button?.image = fallback
-        }
+        Self.applyIcon(initialIconStyle, to: item)
         item.button?.setAccessibilityLabel("RP Player")
 
         self.statusItem = item
@@ -47,6 +40,33 @@ final class StatusItemController {
 
         if let button = item.button {
             installHoverTracking(on: button)
+        }
+    }
+
+    func setIconStyle(_ style: MenuBarIconStyle) {
+        Self.applyIcon(style, to: statusItem)
+    }
+
+    private static func applyIcon(_ style: MenuBarIconStyle, to item: NSStatusItem) {
+        let resourceName: String
+        let isTemplate: Bool
+        switch style {
+        case .color:
+            resourceName = "rp-color"
+            isTemplate = false
+        case .template:
+            resourceName = "rp-template"
+            isTemplate = true
+        }
+        if let url = Bundle.module.url(forResource: resourceName, withExtension: "png"),
+           let image = NSImage(contentsOf: url) {
+            image.size = NSSize(width: 18, height: 18)
+            image.isTemplate = isTemplate
+            item.button?.image = image
+        } else {
+            let fallback = NSImage(systemSymbolName: "music.note", accessibilityDescription: "RP Player")
+            fallback?.isTemplate = true
+            item.button?.image = fallback
         }
     }
 

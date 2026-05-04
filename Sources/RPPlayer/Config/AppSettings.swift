@@ -10,6 +10,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var applyReplayGainEnabled: Bool
     public var notificationsEnabled: Bool
     public var appearance: AppearanceMode
+    public var menuBarIconStyle: MenuBarIconStyle
     public var ambientBackgroundEnabled: Bool
     /// Radio Paradise bitrate code passed to `api/play`.
     /// 0 = 32k aac, 1 = 64k aac, 2 = 128k aac, 3 = 320k aac, 4 = flac, 5 = 128k mp3, 6 = 320k mp3.
@@ -35,6 +36,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         applyReplayGainEnabled: Bool = false,
         notificationsEnabled: Bool = true,
         appearance: AppearanceMode = .system,
+        menuBarIconStyle: MenuBarIconStyle = .template,
         ambientBackgroundEnabled: Bool = false,
         bitrate: Int = 4,
         outputDeviceUID: String? = nil,
@@ -52,6 +54,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.applyReplayGainEnabled = applyReplayGainEnabled
         self.notificationsEnabled = notificationsEnabled
         self.appearance = appearance
+        self.menuBarIconStyle = menuBarIconStyle
         self.ambientBackgroundEnabled = ambientBackgroundEnabled
         self.bitrate = bitrate
         self.outputDeviceUID = outputDeviceUID
@@ -72,6 +75,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.applyReplayGainEnabled = try c.decodeIfPresent(Bool.self, forKey: .applyReplayGainEnabled) ?? false
         self.notificationsEnabled = try c.decodeIfPresent(Bool.self, forKey: .notificationsEnabled) ?? true
         self.appearance = try c.decodeIfPresent(AppearanceMode.self, forKey: .appearance) ?? .system
+        self.menuBarIconStyle = try c.decodeIfPresent(MenuBarIconStyle.self, forKey: .menuBarIconStyle) ?? .template
         self.ambientBackgroundEnabled = try c.decodeIfPresent(Bool.self, forKey: .ambientBackgroundEnabled) ?? false
         self.bitrate = try c.decodeIfPresent(Int.self, forKey: .bitrate) ?? 4
         self.outputDeviceUID = try c.decodeIfPresent(String.self, forKey: .outputDeviceUID)
