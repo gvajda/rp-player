@@ -6,7 +6,7 @@ struct PastSongView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            albumArt
+            PopoverAlbumArt(image: viewModel.currentArt)
             VStack(spacing: 12) {
                 titleRow
             }
@@ -14,26 +14,6 @@ struct PastSongView: View {
         }
         .frame(width: 342)
         .task { await viewModel.start() }
-    }
-
-    private var albumArt: some View {
-        Group {
-            if let art = viewModel.currentArt {
-                Image(nsImage: art)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 342, height: 342)
-                    .clipped()
-            } else {
-                Image(systemName: "music.note")
-                    .resizable()
-                    .scaledToFit()
-                    .padding(80)
-                    .foregroundStyle(.secondary)
-                    .frame(width: 342, height: 342)
-                    .background(Color(nsColor: .controlBackgroundColor))
-            }
-        }
     }
 
     private var titleRow: some View {
