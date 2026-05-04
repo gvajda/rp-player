@@ -12,6 +12,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var floatingModeBinderTask: Task<Void, Never>?
     // delegate is weak so AppDelegate holds a strong ref
     private(set) var notificationClickRouter: NotificationClickRouter?
+    // Owned here so we can stop subscriptions on transitions. Outside-click /
+    // Esc dismissal of the past-song popover does not stop this VM eagerly —
+    // it stops on the next interaction (new past-song click, or main popover open).
+    private var pastSongViewModel: PastSongViewModel?
 
     init(containerFactory: @escaping @MainActor () throws -> AppContainer = { try .live() }) {
         self.containerFactory = containerFactory
@@ -89,13 +93,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 coordinator: container.coordinator,
                 registry: container.songRegistry,
                 api: container.api,
-                mainPresenter: { [weak statusItemController, container] in
+                mainPresenter: { [weak self, weak statusItemController, container] in
+                    self?.pastSongViewModel?.stop()
+                    self?.pastSongViewModel = nil
                     container.pastSongPopoverController.close()
                     statusItemController?.showPopoverIfNeeded()
                 },
-                pastSongPresenter: { [weak statusItemController, container] song in
+                pastSongPresenter: { [weak self, weak statusItemController, container] song in
                     statusItemController?.closeIfShown()
                     guard let anchor = statusItemController?.statusItem.button else { return }
+                    self?.pastSongViewModel?.stop()
                     let viewModel = PastSongViewModel(
                         song: song,
                         albumArtCache: container.albumArtCache,
@@ -104,7 +111,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         configStore: container.configStore,
                         paletteExtractor: AmbientPaletteExtractor()
                     )
-                    container.pastSongPopoverController.present(viewModel: viewModel, relativeTo: anchor)
+                    self?.pastSongViewModel = viewModel
+                    container.pastSongPopoverController.present(
+                        rootView: AnyView(PastSongView(viewModel: viewModel)),
+                        relativeTo: anchor
+                    )
                 }
             )
             self.notificationClickRouter = router

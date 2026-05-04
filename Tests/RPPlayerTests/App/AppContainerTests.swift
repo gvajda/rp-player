@@ -1,3 +1,4 @@
+import SwiftUI
 import XCTest
 @testable import RPPlayer
 
@@ -81,7 +82,7 @@ final class AppContainerTests: XCTestCase {
             api: api,
             albumArtCache: cache,
             keychainAuth: auth,
-            pastSongPopoverController: PastSongPopoverController(),
+            pastSongPopoverController: PopoverController(rootView: AnyView(EmptyView())),
             upcomingWindowController: UpcomingWindowController(
                 viewModel: UpcomingProgramViewModel(
                     api: MockRpApiClient(),

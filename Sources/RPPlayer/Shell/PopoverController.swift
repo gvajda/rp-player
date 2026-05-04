@@ -61,6 +61,17 @@ class PopoverController {
         installMonitors()
     }
 
+    func present(rootView: AnyView, relativeTo anchor: NSView) {
+        let wrapped = AnyView(rootView.background(Color(nsColor: .windowBackgroundColor)))
+        let hostingView = NSHostingView(rootView: wrapped)
+        hostingView.frame = NSRect(origin: .zero, size: Self.contentSize)
+        panel.contentView = hostingView
+        panel.contentView?.wantsLayer = true
+        panel.contentView?.layer?.cornerRadius = 10
+        panel.contentView?.layer?.masksToBounds = true
+        show(relativeTo: anchor)
+    }
+
     func close() {
         removeMonitors()
         panel.orderOut(nil)

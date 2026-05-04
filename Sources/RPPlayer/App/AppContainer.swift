@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Security
+import SwiftUI
 import UserNotifications
 
 @MainActor
@@ -15,7 +16,7 @@ final class AppContainer {
     let api: any RpApiClient
     let albumArtCache: any AlbumArtCache
     let keychainAuth: any KeychainAuth
-    let pastSongPopoverController: PastSongPopoverController
+    let pastSongPopoverController: PopoverController
     let upcomingWindowController: UpcomingWindowController
     let configStore: any ConfigStore
     let nowPlayingCenterController: NowPlayingCenterController
@@ -35,7 +36,7 @@ final class AppContainer {
         api: any RpApiClient,
         albumArtCache: any AlbumArtCache,
         keychainAuth: any KeychainAuth,
-        pastSongPopoverController: PastSongPopoverController,
+        pastSongPopoverController: PopoverController,
         upcomingWindowController: UpcomingWindowController,
         configStore: any ConfigStore,
         nowPlayingCenterController: NowPlayingCenterController,
@@ -421,7 +422,7 @@ extension AppContainer {
             api: api,
             albumArtCache: cache,
             keychainAuth: keychainAuth,
-            pastSongPopoverController: PastSongPopoverController(),
+            pastSongPopoverController: PopoverController(rootView: AnyView(EmptyView())),
             upcomingWindowController: upcomingWindowController,
             configStore: store ?? NoopConfigStore(),
             nowPlayingCenterController: nowPlayingCenterController,
