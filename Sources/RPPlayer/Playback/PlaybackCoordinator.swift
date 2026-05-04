@@ -327,7 +327,13 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         eventTask?.cancel()
         await eventTask?.value
         eventTask = nil
-        try? await engine.stop()
+        // Click-on-quit fix: mute mpv (which feeds zeros to the AudioUnit),
+        // give the AudioUnit's buffer a moment to drain into silence, then
+        // terminate mpv cleanly. A bare stop / process exit hard-cuts the
+        // AudioUnit mid-buffer and produces an audible pop on some DACs.
+        try? await engine.setMute(true)
+        try? await Task.sleep(nanoseconds: 150_000_000)
+        await engine.shutdown()
         for c in continuations.values { c.finish() }
         continuations.removeAll()
         for c in positionContinuations.values { c.finish() }

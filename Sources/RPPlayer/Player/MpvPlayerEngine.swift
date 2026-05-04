@@ -188,6 +188,11 @@ public actor MpvPlayerEngine: PlayerEngine {
         try setStringProperty("volume-max", enabled ? "100" : "130")
     }
 
+    public func setMute(_ muted: Bool) async throws {
+        try requireHandle()
+        try setBoolProperty("mute", muted)
+    }
+
     public func setApplyReplayGain(_ enabled: Bool) async throws {
         try requireHandle()
         try setStringProperty("replaygain", enabled ? "track" : "no")

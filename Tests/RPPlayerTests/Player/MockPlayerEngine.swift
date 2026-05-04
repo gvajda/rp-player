@@ -11,6 +11,7 @@ actor MockPlayerEngine: PlayerEngine {
         case setOutputDevice(uid: String?)
         case setForceMaxVolume(enabled: Bool)
         case setApplyReplayGain(enabled: Bool)
+        case setMute(muted: Bool)
         case shutdown
     }
 
@@ -61,6 +62,9 @@ actor MockPlayerEngine: PlayerEngine {
     }
     func setApplyReplayGain(_ enabled: Bool) async throws {
         try recordOrThrow(.setApplyReplayGain(enabled: enabled))
+    }
+    func setMute(_ muted: Bool) async throws {
+        try recordOrThrow(.setMute(muted: muted))
     }
     func shutdown() async {
         calls.append(.shutdown)
