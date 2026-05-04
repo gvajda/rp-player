@@ -1080,7 +1080,7 @@ extension LivePlaybackCoordinatorTests {
 
         await coordinator.shutdown()
         let errorMessage = await collector.value
-        XCTAssertEqual(errorMessage, "Audio device unavailable. Check System Settings → Sound → Output.")
+        XCTAssertEqual(errorMessage, "Audio device unavailable. Hog mode + Force Max Volume turned off so the next device you pick can't surprise you. Check System Settings → Sound → Output.")
     }
 
     func testFileEndedWithErrorCodeMinusFourteenClearsBlockState() async throws {
@@ -1467,9 +1467,55 @@ extension LivePlaybackCoordinatorTests {
         let first = await iter.next()
         XCTAssertEqual(first, .playing)
     }
+
+    func testDeviceUnavailableHandlerInvokedOnCodeMinusFourteen() async throws {
+        let api = MockRpApiClient()
+        let block = makeBlock(songs: [("s1", 60_000)])
+        await api.setBlockResponses([block])
+        let engine = MockPlayerEngine()
+
+        let calls = HandlerCalls()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(),
+            bitrateProvider: { 4 },
+            onDeviceUnavailable: { await calls.increment() }
+        )
+        try await coordinator.play(channelId: 0)
+        await engine.fire(.fileEnded(reason: .error(code: -14)))
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        let count = await calls.count
+        XCTAssertEqual(count, 1)
+    }
+
+    func testDeviceUnavailableHandlerNotInvokedOnOtherErrors() async throws {
+        let api = MockRpApiClient()
+        let block = makeBlock(songs: [("s1", 60_000)])
+        await api.setBlockResponses([block])
+        let engine = MockPlayerEngine()
+
+        let calls = HandlerCalls()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(),
+            bitrateProvider: { 4 },
+            onDeviceUnavailable: { await calls.increment() }
+        )
+        try await coordinator.play(channelId: 0)
+        // -100 is not in the unplayable-block set and not -14; routes through handlePlaybackError.
+        await engine.fire(.fileEnded(reason: .error(code: -100)))
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        let count = await calls.count
+        XCTAssertEqual(count, 0)
+    }
 }
 
 private actor ObservedStates {
     var values: [PlaybackState] = []
     func append(_ s: PlaybackState) { values.append(s) }
+}
+
+private actor HandlerCalls {
+    var count = 0
+    func increment() { count += 1 }
 }

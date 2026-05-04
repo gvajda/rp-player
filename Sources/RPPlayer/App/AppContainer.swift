@@ -162,6 +162,19 @@ extension AppContainer {
             },
             prefetchArt: { [cache] cover in
                 Task.detached { _ = await cache.image(for: cover) }
+            },
+            onDeviceUnavailable: { [store, hogController, logger] in
+                // Hearing-safety reset when mpv reports MPV_ERROR_AO_INIT_FAILED:
+                // drop hog mode + force-max so the next device the user picks
+                // (often built-in speakers) doesn't blast at 100%. Release hog
+                // explicitly too so we're not still holding the (now-gone) device.
+                guard let store else { return }
+                logger.info("device unavailable: clearing hogModeEnabled + forceMaxVolumeEnabled for safety")
+                try? await store.update {
+                    $0.hogModeEnabled = false
+                    $0.forceMaxVolumeEnabled = false
+                }
+                await hogController.release()
             }
         )
 

@@ -54,13 +54,16 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
 
     public var errors: AsyncStream<String>
 
+    private let onDeviceUnavailable: (@Sendable () async -> Void)?
+
     public init(
         api: any RpApiClient,
         engine: any PlayerEngine,
         logger: any Logging,
         bitrateProvider: @escaping @Sendable () async -> Int,
         clock: @escaping @Sendable () -> Date = { Date() },
-        prefetchArt: @escaping @Sendable (String) -> Void = { _ in }
+        prefetchArt: @escaping @Sendable (String) -> Void = { _ in },
+        onDeviceUnavailable: (@Sendable () async -> Void)? = nil
     ) {
         self.api = api
         self.engine = engine
@@ -68,6 +71,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         self.bitrateProvider = bitrateProvider
         self.clock = clock
         self.prefetchArt = prefetchArt
+        self.onDeviceUnavailable = onDeviceUnavailable
         var cont: AsyncStream<String>.Continuation!
         self.errors = AsyncStream { cont = $0 }
         self.errorsContinuation = cont
@@ -411,10 +415,17 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         pausePositionMs = 0
         current = nil
         let message = code == -14
-            ? "Audio device unavailable. Check System Settings → Sound → Output."
+            ? "Audio device unavailable. Hog mode + Force Max Volume turned off so the next device you pick can't surprise you. Check System Settings → Sound → Output."
             : "Playback stopped unexpectedly (error \(code))."
         emitState(.stopped)
         errorsContinuation?.yield(message)
+        // Hearing-safety: when the chosen device went away (mpv code -14), drop
+        // hog mode AND force-max so picking a fallback device (e.g. built-in
+        // speakers) doesn't slam them at 100%. The handler is provided by
+        // AppContainer and writes the settings + releases hog.
+        if code == -14, let handler = onDeviceUnavailable {
+            await handler()
+        }
     }
 
     // mpv error codes that mean "this specific file/block is unplayable" (bad
