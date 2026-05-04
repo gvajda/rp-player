@@ -19,7 +19,9 @@ final class PastSongPopoverControllerTests: XCTestCase {
             song: song,
             albumArtCache: StubAlbumArtCache(),
             auth: StubKeychainAuth(),
-            api: MockRpApiClient()
+            api: MockRpApiClient(),
+            configStore: StubConfigStore(initial: .default),
+            paletteExtractor: StubAmbientPaletteExtractor()
         )
         controller.present(viewModel: viewModel, relativeTo: anchor)
         // Panel may or may not become visible depending on anchor.window — just

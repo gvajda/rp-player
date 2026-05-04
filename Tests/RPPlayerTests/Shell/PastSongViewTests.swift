@@ -16,7 +16,9 @@ final class PastSongViewTests: XCTestCase {
             song: song,
             albumArtCache: StubAlbumArtCache(),
             auth: StubKeychainAuth(),
-            api: MockRpApiClient()
+            api: MockRpApiClient(),
+            configStore: StubConfigStore(initial: .default),
+            paletteExtractor: StubAmbientPaletteExtractor()
         )
         let host = NSHostingController(rootView: PastSongView(viewModel: viewModel))
         host.loadView()

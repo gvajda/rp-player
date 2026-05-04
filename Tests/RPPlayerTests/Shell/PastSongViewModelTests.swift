@@ -18,7 +18,14 @@ final class PastSongViewModelTests: XCTestCase {
         let cache = StubAlbumArtCache()
         let auth = StubKeychainAuth()
         auth.loggedIn = true
-        let sut = PastSongViewModel(song: makeSong(rating: "8"), albumArtCache: cache, auth: auth, api: api)
+        let sut = PastSongViewModel(
+            song: makeSong(rating: "8"),
+            albumArtCache: cache,
+            auth: auth,
+            api: api,
+            configStore: StubConfigStore(initial: .default),
+            paletteExtractor: StubAmbientPaletteExtractor()
+        )
         await sut.start()
         XCTAssertEqual(sut.currentRating, 8)
         XCTAssertTrue(sut.isSignedIn)
@@ -29,7 +36,9 @@ final class PastSongViewModelTests: XCTestCase {
             song: makeSong(rating: nil),
             albumArtCache: StubAlbumArtCache(),
             auth: StubKeychainAuth(),
-            api: MockRpApiClient()
+            api: MockRpApiClient(),
+            configStore: StubConfigStore(initial: .default),
+            paletteExtractor: StubAmbientPaletteExtractor()
         )
         await sut.start()
         XCTAssertNil(sut.currentRating)
@@ -42,7 +51,9 @@ final class PastSongViewModelTests: XCTestCase {
             song: makeSong(cover: "covers/l/x.jpg"),
             albumArtCache: cache,
             auth: StubKeychainAuth(),
-            api: MockRpApiClient()
+            api: MockRpApiClient(),
+            configStore: StubConfigStore(initial: .default),
+            paletteExtractor: StubAmbientPaletteExtractor()
         )
         await sut.start()
         XCTAssertNotNil(sut.currentArt)
@@ -54,7 +65,9 @@ final class PastSongViewModelTests: XCTestCase {
             song: makeSong(rating: "5"),
             albumArtCache: StubAlbumArtCache(),
             auth: StubKeychainAuth(),
-            api: api
+            api: api,
+            configStore: StubConfigStore(initial: .default),
+            paletteExtractor: StubAmbientPaletteExtractor()
         )
         await sut.start()
         await sut.rate(9)
@@ -71,10 +84,85 @@ final class PastSongViewModelTests: XCTestCase {
             song: makeSong(rating: "5"),
             albumArtCache: StubAlbumArtCache(),
             auth: StubKeychainAuth(),
-            api: api
+            api: api,
+            configStore: StubConfigStore(initial: .default),
+            paletteExtractor: StubAmbientPaletteExtractor()
         )
         await sut.start()
         await sut.rate(9)
         XCTAssertEqual(sut.currentRating, 5)
+    }
+
+    func testStartExtractsAmbientColorWhenEnabledAndCoverPresent() async {
+        let cache = StubAlbumArtCache()
+        cache.imageByPath["covers/l/x.jpg"] = NSImage(size: NSSize(width: 16, height: 16))
+        var settings = AppSettings.default
+        settings.ambientBackgroundEnabled = true
+        let store = StubConfigStore(initial: settings)
+        let extractor = StubAmbientPaletteExtractor(
+            nextResult: ExtractedColor(red: 0.5, green: 0.25, blue: 0.75)
+        )
+        let sut = PastSongViewModel(
+            song: makeSong(cover: "covers/l/x.jpg"),
+            albumArtCache: cache,
+            auth: StubKeychainAuth(),
+            api: MockRpApiClient(),
+            configStore: store,
+            paletteExtractor: extractor
+        )
+        await sut.start()
+        for _ in 0..<5 { await Task.yield() }
+        XCTAssertNotNil(sut.ambientTopColor)
+    }
+
+    func testStartSkipsAmbientExtractionWhenDisabled() async {
+        let cache = StubAlbumArtCache()
+        cache.imageByPath["covers/l/x.jpg"] = NSImage(size: NSSize(width: 16, height: 16))
+        let store = StubConfigStore(initial: .default)
+        let extractor = StubAmbientPaletteExtractor(
+            nextResult: ExtractedColor(red: 0.5, green: 0.25, blue: 0.75)
+        )
+        let sut = PastSongViewModel(
+            song: makeSong(cover: "covers/l/x.jpg"),
+            albumArtCache: cache,
+            auth: StubKeychainAuth(),
+            api: MockRpApiClient(),
+            configStore: store,
+            paletteExtractor: extractor
+        )
+        await sut.start()
+        for _ in 0..<5 { await Task.yield() }
+        XCTAssertNil(sut.ambientTopColor)
+        XCTAssertTrue(extractor.calls.isEmpty)
+    }
+
+    func testStartClearsAmbientColorForPromoSong() async {
+        let cache = StubAlbumArtCache()
+        cache.imageByPath["covers/l/promo.jpg"] = NSImage(size: NSSize(width: 16, height: 16))
+        var settings = AppSettings.default
+        settings.ambientBackgroundEnabled = true
+        let store = StubConfigStore(initial: settings)
+        let extractor = StubAmbientPaletteExtractor(
+            nextResult: ExtractedColor(red: 1, green: 1, blue: 1)
+        )
+        var promo = makeSong(cover: "covers/l/promo.jpg")
+        promo = PlayListSong(
+            songId: "0", artist: promo.artist, title: promo.title, album: promo.album,
+            duration: promo.duration, event: promo.event, schedTime: promo.schedTime,
+            chan: promo.chan, year: promo.year, asin: promo.asin, rating: promo.rating,
+            userRating: promo.userRating, cover: promo.cover, elapsed: promo.elapsed,
+            slideshow: promo.slideshow, type: "P", sliceNum: promo.sliceNum
+        )
+        let sut = PastSongViewModel(
+            song: promo,
+            albumArtCache: cache,
+            auth: StubKeychainAuth(),
+            api: MockRpApiClient(),
+            configStore: store,
+            paletteExtractor: extractor
+        )
+        await sut.start()
+        for _ in 0..<5 { await Task.yield() }
+        XCTAssertNil(sut.ambientTopColor)
     }
 }

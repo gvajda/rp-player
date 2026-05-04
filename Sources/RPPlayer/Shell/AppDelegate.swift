@@ -100,7 +100,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         song: song,
                         albumArtCache: container.albumArtCache,
                         auth: container.keychainAuth,
-                        api: container.api
+                        api: container.api,
+                        configStore: container.configStore,
+                        paletteExtractor: AmbientPaletteExtractor()
                     )
                     container.pastSongPopoverController.present(viewModel: viewModel, relativeTo: anchor)
                 }
