@@ -19,7 +19,11 @@ public actor MpvPlayerEngine: PlayerEngine {
             throw PlayerEngineError.createFailed
         }
 
-        let baseline: [(String, String)] = [
+        // Force the null AO when running under XCTest so unit tests that exercise
+        // play(url:) don't open the user's real audio device + speakers.
+        // ProcessInfo's XCTestConfigurationFilePath env var is set by xctest only.
+        let underXCTest = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+        var baseline: [(String, String)] = [
             ("vid", "no"),
             ("video", "no"),
             ("input-default-bindings", "no"),
@@ -30,6 +34,9 @@ public actor MpvPlayerEngine: PlayerEngine {
             ("audio-pitch-correction", "no"),
             ("audio-channels", "auto"),
         ]
+        if underXCTest {
+            baseline.append(("ao", "null"))
+        }
         for (key, value) in baseline {
             let status = mpv_set_option_string(h, key, value)
             if status < 0 {
