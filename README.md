@@ -19,7 +19,7 @@ My goal was a tiny menu-bar [Radio Paradise](https://radioparadise.com/) player 
 > **Disclaimer**\
 > This is not an official Radio Paradise product. The Radio Paradise name and logo are owned by Radio Paradise. All displayed metadata and audio streams come from the public Radio Paradise REST API.
 
-*Screenshot placeholder — popover with album art, ambient background, transport, channel picker.*
+<p align="center"><img src=".screenshots/player-panel.png" alt="popover with album art, ambient background, playback control, channel picker"/></p>
 
 ## Getting started
 
@@ -44,6 +44,10 @@ The app installs a status item in the menu bar (no Dock icon, no main window). C
 - **Every bitrate the API offers**
   - 32k / 64k / 128k / 320k AAC, 128k / 320k MP3, **FLAC** (default).
   - Selectable from Settings; takes effect on the next channel switch or block boundary.
+- **Media keys + Control Center widget**
+  - Hardware **Play/Pause** and **Next Track** keys on Mac and Bluetooth keyboards control the stream.
+  - macOS **Now Playing** widget (Control Center, lock-screen-style controls) shows current title/artist/album/artwork plus elapsed time, and reflects play/pause state.
+  - Previous-track and seek are intentionally disabled — Radio Paradise is forward-only.
 - **Bit-perfect output via CoreAudio hog mode**
   - The app acquires the audio device exclusively (`kAudioDevicePropertyHogMode`) and feeds it the decoded sample stream untouched — no system mixer, no resampling.
   - Hog mode is opt-out in Settings if you'd rather share the device with other apps.
@@ -56,13 +60,15 @@ The app installs a status item in the menu bar (no Dock icon, no main window). C
   - Cross-session resume: the backend remembers where you left off per channel. Restarting the app picks up where you stopped.
   - Telemetry endpoints (`update_history`, `update_pause`) keep the cursor accurate across pauses, skips, and song boundaries.
 
-*Screenshot placeholder — Settings window: bitrate, output device, hog mode toggle.*
+<p align="center"><img src=".screenshots/settings.png" alt="Settings window: bitrate, output device, hog mode toggle."/></p>
+
+## Visuals
 
 ### Mini player popover
 
 - Album art at the top of the panel, edge-to-edge.
 - Title / artist / album, current rating (★ N), live elapsed/remaining and a progress bar that updates per second.
-- Transport: play–pause + skip-forward (skip respects the per-block song list and falls through to the prefetched next block).
+- Playback control: play–pause + skip-forward (skip respects the per-block song list and falls through to the prefetched next block).
 - Channel picker centred under the controls; bitrate label to the right (verbatim from the API: "FLAC", "320k AAC", etc.).
 - Hamburger menu with: Settings, Open Song in Browser, Upcoming Program, Floating Window, About, Quit.
 
@@ -72,38 +78,6 @@ The app installs a status item in the menu bar (no Dock icon, no main window). C
 - The popover detaches from the menu-bar anchor: stays visible across other-app interactions, joins all Spaces, and is draggable from any background area.
 - Click anywhere to dismiss is disabled; toggle off (or close from the icon click) returns it to anchored mode.
 - Setting persists across launches — turn it on once, the panel comes back on the next start.
-
-### Hover tooltip on the menu-bar icon
-
-- Hovering the icon (after a 300 ms delay) shows a two-line tooltip: "RP Player" plus a live `-mm:ss` countdown to the end of the current song.
-- The countdown ticks every second while the cursor stays over the icon. No song playing → second line hidden.
-
-*GIF placeholder — cursor hovering the menu-bar icon, countdown ticking down.*
-
-### Media keys + Control Center widget
-
-- Hardware **Play/Pause** and **Next Track** keys on Mac and Bluetooth keyboards control the stream.
-- macOS **Now Playing** widget (Control Center, lock-screen-style controls) shows current title/artist/album/artwork plus elapsed time, and reflects play/pause state.
-- Previous-track and seek are intentionally disabled — Radio Paradise is forward-only.
-
-### Right-click context menu
-
-- Same items as the in-popover hamburger menu (sourced from one shared NSMenu builder).
-- "Open Song in Browser" auto-disables when nothing is playing.
-- "Upcoming Program…" opens the schedule window described below.
-- "Floating Window" toggles the popover into draggable always-on-top mode (see below).
-
-### Upcoming Program window
-
-- Side-by-side columns, one per channel, each showing the next N songs (configurable in Settings).
-- Each card has the album art, title, artist, album, and your personal rating if any.
-- The currently playing channel's column is tinted with the accent colour and its title carries a glow.
-- The currently playing song row gets an accent-colour border + glow if it's still in the loaded slice; if the data is stale the column highlight stays but the row glow doesn't appear.
-- **Channel headers are clickable** — switching from this window changes the channel in the popover and on the engine. Songs are not interactable; pause/skip stay in the popover.
-- Refresh button in the toolbar; "last updated" relative timestamp; channel filter for hiding channels you never browse (chan 42 + 99 are always excluded).
-- Uses `api/play` (not `api/get_block`) so the upcoming list reflects the same personalised cursor as actual playback.
-
-*Screenshot placeholder — Upcoming Program window with current channel highlighted.*
 
 ### Album art + ambient background
 
@@ -124,10 +98,29 @@ The app installs a status item in the menu bar (no Dock icon, no main window). C
   - For a song that finished playing recently → opens a small "past song" panel with the same metadata + rating row, so you can rate a track you only noticed after it ended.
 - Toggle in Settings; needs the system notification permission granted on first launch.
 
-### Resilience
+### Hover tooltip on the menu-bar icon
 
-- mpv occasionally fails to decode a block (e.g. some short promo `.m4a` files return `MPV_ERROR_NOTHING_TO_PLAY`). Instead of stalling the channel, the app advances past the bad block via `api/play` and tries the next one, up to a small retry budget. The cursor moves forward, the listener doesn't get stuck.
-- Audio device unplug surfaces a clear banner ("Audio device unavailable…") and stops cleanly so re-plugging + clicking play recovers without a relaunch.
+- Hovering the icon (after a 300 ms delay) shows a two-line tooltip: "RP Player" plus a live `-mm:ss` countdown to the end of the current song.
+- The countdown ticks every second while the cursor stays over the icon. No song playing → second line hidden.
+
+### Right-click context menu
+
+- Same items as the in-popover hamburger menu (sourced from one shared NSMenu builder).
+- "Open Song in Browser" auto-disables when nothing is playing.
+- "Upcoming Program…" opens the schedule window described below.
+- "Floating Window" toggles the popover into draggable always-on-top mode (see below).
+
+### Upcoming Program window
+
+- Side-by-side columns, one per channel, each showing the next N songs (configurable in Settings).
+- Each card has the album art, title, artist, album, and your personal rating if any.
+- The currently playing channel's column is tinted with the accent colour and its title carries a glow.
+- The currently playing song row gets an accent-colour border + glow if it's still in the loaded slice; if the data is stale the column highlight stays but the row glow doesn't appear.
+- **Channel headers are clickable** — switching from this window changes the channel in the popover and on the engine. Songs are not interactable; pause/skip stay in the popover.
+- Refresh button in the toolbar; "last updated" relative timestamp; channel filter for hiding channels you never browse (chan 42 + 99 are always excluded).
+- Uses `api/play` (not `api/get_block`) so the upcoming list reflects the same personalised cursor as actual playback.
+
+<p align="center"><img src=".screenshots/upcoming-program.png" alt="Upcoming Program window with current channel highlighted."/></p>
 
 ## Under the hood
 
@@ -137,20 +130,25 @@ The app installs a status item in the menu bar (no Dock icon, no main window). C
 - **Output:** mpv's plain `coreaudio` AO. The app does not use `coreaudio_exclusive` — it opens hog mode itself via `AudioObjectSetPropertyData` on `kAudioDevicePropertyHogMode` *before* mpv opens the device, then hands the device back on shutdown. This avoids the format-negotiation failures observed on USB DACs (e.g. Qudelix-5K) when mpv tries to own exclusive mode itself.
 - **Block-cued seek:** `loadfile <url> replace start=<seconds>` for the initial cue, instead of a post-`fileLoaded` seek, so the UI doesn't briefly show the cue position while the HTTP buffer is still catching up.
 
+### Resilience
+
+- mpv occasionally fails to decode a block (e.g. some short promo `.m4a` files return `MPV_ERROR_NOTHING_TO_PLAY`). Instead of stalling the channel, the app advances past the bad block via `api/play` and tries the next one, up to a small retry budget. The cursor moves forward, the listener doesn't get stuck.
+- Audio device unplug surfaces a clear banner ("Audio device unavailable…") and stops cleanly so re-plugging + clicking play recovers without a relaunch.
+
 ### Cookie-based authentication
 
 If you sign in, the app stores the same session cookies your browser stores after a Radio Paradise login (`C_username`, `C_passwd`, `C_validated`, plus the session/PHPSESSID cookies needed by `api/rate`). Storage is the macOS Keychain.
 
-> [!NOTE]\
+> [!NOTE]
 > The app **does not store or log your password**. Only the cookies the browser sets are kept. Logging out from Settings deletes them.
 
 ### Files on disk
 
 `~/Library/Application Support/RP Player/` contains:
 
-- **`config.json`** — user-visible settings (selected channel, bitrate, hog mode, appearance, ambient toggle, upcoming row count, hidden channels, floating-window state, output device UID, etc.). Editing this file by hand is equivalent to changing the setting via the UI.
-- **`Logs/RPPlayer.log`** — rotating log file (info-level by default; flip "Verbose logging" in Settings for full coordinator/engine traces).
-- **`AlbumArtCache/`** — covers indexed by SHA-256 of the cover path. Capped at 100 files / 10 MB; oldest evicted on every write.
+- `config.json` — user-visible settings (selected channel, bitrate, hog mode, appearance, ambient toggle, upcoming row count, hidden channels, floating-window state, output device UID, etc.). Editing this file by hand is equivalent to changing the setting via the UI.
+- `Logs/RPPlayer.log` — rotating log file (info-level by default; flip "Verbose logging" in Settings for full coordinator/engine traces).
+- `AlbumArtCache/` — covers indexed by SHA-256 of the cover path. Capped at 100 files / 10 MB; oldest evicted on every write.
 
 The Keychain account/service used for cookies is `com.gvajda.rpplayer`. Removing the app does not delete the keychain entry — use Settings → Sign out to clear it.
 
