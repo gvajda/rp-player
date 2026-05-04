@@ -54,7 +54,7 @@ struct SettingsView: View {
 
     private var bmcIcon: some View {
         let image: NSImage = {
-            if let url = Bundle.module.url(forResource: "bmc", withExtension: "png"),
+            if let url = AppResources.bundle.url(forResource: "bmc", withExtension: "png"),
                let img = NSImage(contentsOf: url) {
                 return img
             }

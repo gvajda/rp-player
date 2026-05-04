@@ -58,7 +58,7 @@ final class StatusItemController {
             resourceName = "rp-template"
             isTemplate = true
         }
-        if let url = Bundle.module.url(forResource: resourceName, withExtension: "png"),
+        if let url = AppResources.bundle.url(forResource: resourceName, withExtension: "png"),
            let image = NSImage(contentsOf: url) {
             image.size = NSSize(width: 18, height: 18)
             image.isTemplate = isTemplate
