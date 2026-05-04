@@ -22,13 +22,17 @@ jobs:
           swift --version
       - name: Run tests with coverage
         run: swift test --enable-code-coverage
-      - name: Locate coverage report
+      - name: Convert coverage to lcov
+        uses: sersoft-gmbh/swift-coverage-action@v4
         id: cov
-        run: echo "path=$(swift test --enable-code-coverage --show-codecov-path)" >> "$GITHUB_OUTPUT"
+        with:
+          search-paths: ./.build
+          format: lcov
+          target-name-filter: ^RPPlayer$
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
-          files: ${{ steps.cov.outputs.path }}
+          files: ${{ join(fromJSON(steps.cov.outputs.files), ',') }}
           use_oidc: true
           fail_ci_if_error: false
 
