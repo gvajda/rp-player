@@ -13,6 +13,7 @@ final class NowPlayingCenterController {
     private var lastSongDuration: Double = 0
     private var lastPosition: Double = 0
     private var lastCoverPath: String?
+    private var lastPositionUpdateAt: Date?
 
     init(coordinator: any PlaybackCoordinator, albumArtCache: any AlbumArtCache) {
         self.coordinator = coordinator
@@ -113,22 +114,26 @@ final class NowPlayingCenterController {
             info[MPMediaItemPropertyAlbumTitle] = album
         }
 
-        // Reuse cached artwork without redundant disk reads.
-        if let cover = song.cover, !cover.isEmpty, cover != lastCoverPath {
-            lastCoverPath = cover
-            if let image = await albumArtCache.image(for: cover) {
-                let size = image.size
-                let artwork = MPMediaItemArtwork(boundsSize: size) { _ in image }
-                info[MPMediaItemPropertyArtwork] = artwork
-            }
-        } else if let cover = song.cover, cover == lastCoverPath,
-                  let existing = MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPMediaItemPropertyArtwork] {
-            info[MPMediaItemPropertyArtwork] = existing
-        } else if song.cover == nil {
-            lastCoverPath = nil
-        }
-
+        // Publish text first so the widget appears even if artwork load fails.
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+
+        // Artwork load is async + fallible; merge it into the existing info
+        // dictionary on success rather than overwriting in case the song
+        // changes again during the await.
+        guard let cover = song.cover, !cover.isEmpty, cover != lastCoverPath else { return }
+        lastCoverPath = cover
+        guard let image = await albumArtCache.image(for: cover) else { return }
+        let size = image.size
+        guard size.width > 0, size.height > 0 else { return }
+        // MPMediaItemArtwork's request handler runs on MediaPlayer's dispatch
+        // queue. Build it from a nonisolated helper so the closure does not
+        // inherit MainActor isolation and trap on swift_task_checkIsolated.
+        let artwork = Self.makeArtwork(image: image, size: size)
+        patchInfo([MPMediaItemPropertyArtwork: artwork])
+    }
+
+    nonisolated private static func makeArtwork(image: NSImage, size: CGSize) -> MPMediaItemArtwork {
+        MPMediaItemArtwork(boundsSize: size) { _ in image }
     }
 
     private func handleState(_ state: PlaybackState) async {
@@ -148,8 +153,12 @@ final class NowPlayingCenterController {
     }
 
     private func handlePosition(_ blockPosition: Double) async {
-        // Coordinator emits block-position seconds. NowPlaying carries
-        // songStartSeconds; in-song elapsed = blockPosition - songStart.
+        // Throttle updates to ~1 Hz; mpv emits position much more often, and
+        // patching nowPlayingInfo on every tick stresses MediaPlayer with no
+        // visible benefit (the widget interpolates between updates).
+        let now = Date()
+        if let last = lastPositionUpdateAt, now.timeIntervalSince(last) < 1.0 { return }
+        lastPositionUpdateAt = now
         guard let np = await coordinator.nowPlaying else { return }
         let elapsed = max(0, blockPosition - np.songStartSeconds)
         lastPosition = elapsed

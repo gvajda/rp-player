@@ -44,7 +44,10 @@ The app installs a status item in the menu bar (no Dock icon, no main window). C
 - **Bit-perfect output via CoreAudio hog mode**
   - The app acquires the audio device exclusively (`kAudioDevicePropertyHogMode`) and feeds it the decoded sample stream untouched — no system mixer, no resampling.
   - Hog mode is opt-out in Settings if you'd rather share the device with other apps.
-  - Output device picker reads from `AudioDeviceCatalog`; switching device while playing hands the device cleanly between streams.
+  - **Release on Pause** (default on): the device returns to shared use whenever you pause, so other apps and Mac calls work normally without quitting RP Player.
+  - **Force Max Volume** (for external DACs): pins the device's CoreAudio volume to 100% and locks `volume-max` so no software attenuation is in the signal path. Confirmation alert before enabling — set your DAC/amp/headphone volume first.
+  - **Apply ReplayGain** toggle (default off; force-max overrides it): per-track loudness normalisation when on, untouched audio when off.
+  - Output device picker reads from `AudioDeviceCatalog`; refresh button next to the picker rescans on demand for newly paired Bluetooth or hot-plugged devices.
 - **Behaviour matches the official player**
   - Bootstrap and advance both go through `api/play` with the personalised per-listener cursor, so the same blocks/songs play in the same order as the web player.
   - Cross-session resume: the backend remembers where you left off per channel. Restarting the app picks up where you stopped.
@@ -73,6 +76,12 @@ _Screenshot placeholder — Settings window: bitrate, output device, hog mode to
 - The countdown ticks every second while the cursor stays over the icon. No song playing → second line hidden.
 
 _GIF placeholder — cursor hovering the menu-bar icon, countdown ticking down._
+
+### Media keys + Control Center widget
+
+- Hardware **Play/Pause** and **Next Track** keys on Mac and Bluetooth keyboards control the stream.
+- macOS **Now Playing** widget (Control Center, lock-screen-style controls) shows current title/artist/album/artwork plus elapsed time, and reflects play/pause state.
+- Previous-track and seek are intentionally disabled — Radio Paradise is forward-only.
 
 ### Right-click context menu
 
