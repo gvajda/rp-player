@@ -33,20 +33,9 @@ struct MiniPlayerView: View {
             .padding(12)
         }
         .frame(width: 342)
-        .background(ambientBackground)
+        .background(AmbientGradientBackground(topColor: viewModel.ambientTopColor))
         .animation(.easeInOut(duration: 0.4), value: viewModel.ambientTopColor)
         .task { await viewModel.start() }
-    }
-
-    private var ambientBackground: some View {
-        LinearGradient(
-            colors: [
-                viewModel.ambientTopColor ?? Color(nsColor: .windowBackgroundColor),
-                (viewModel.ambientTopColor ?? Color(nsColor: .windowBackgroundColor)).opacity(0.4)
-            ],
-            startPoint: .top,
-            endPoint: .bottom
-        )
     }
 
     private var progressRow: some View {
