@@ -11,6 +11,8 @@ public actor MpvPlayerEngine: PlayerEngine {
 
     public init(
         initialDeviceUID: String? = nil,
+        initialForceMaxVolume: Bool = false,
+        initialApplyReplayGain: Bool = false,
         logger: (any Logging)? = nil
     ) throws {
         guard let h = mpv_create() else {
@@ -27,7 +29,6 @@ public actor MpvPlayerEngine: PlayerEngine {
             ("audio-display", "no"),
             ("audio-pitch-correction", "no"),
             ("audio-channels", "auto"),
-            ("volume-max", "100"),
         ]
         for (key, value) in baseline {
             let status = mpv_set_option_string(h, key, value)
@@ -44,6 +45,23 @@ public actor MpvPlayerEngine: PlayerEngine {
                 let message = String(cString: mpv_error_string(status))
                 mpv_terminate_destroy(h)
                 throw PlayerEngineError.setOptionFailed(name: "audio-device", code: Int(status), message: message)
+            }
+        }
+
+        // Force-max-volume pins volume at 100 and caps volume-max at 100 so any
+        // future UI slider can't exceed unity gain. ReplayGain "no" matches mpv
+        // default; "track" applies per-track gain when the user opts in.
+        let initialOptions: [(String, String)] = [
+            ("volume", "100"),
+            ("volume-max", initialForceMaxVolume ? "100" : "130"),
+            ("replaygain", initialApplyReplayGain ? "track" : "no"),
+        ]
+        for (key, value) in initialOptions {
+            let status = mpv_set_option_string(h, key, value)
+            if status < 0 {
+                let message = String(cString: mpv_error_string(status))
+                mpv_terminate_destroy(h)
+                throw PlayerEngineError.setOptionFailed(name: key, code: Int(status), message: message)
             }
         }
 
@@ -162,6 +180,17 @@ public actor MpvPlayerEngine: PlayerEngine {
     public func seek(to seconds: Double) async throws {
         try requireHandle()
         try runCommand(["seek", String(seconds), "absolute"])
+    }
+
+    public func setForceMaxVolume(_ enabled: Bool) async throws {
+        try requireHandle()
+        try setStringProperty("volume", "100")
+        try setStringProperty("volume-max", enabled ? "100" : "130")
+    }
+
+    public func setApplyReplayGain(_ enabled: Bool) async throws {
+        try requireHandle()
+        try setStringProperty("replaygain", enabled ? "track" : "no")
     }
 
     public func setOutputDevice(uid: String?) async throws {

@@ -117,8 +117,13 @@ extension AppContainer {
 
         let engine: any PlayerEngine
         do {
+            // Force-max forces replaygain out of the signal path regardless of the
+            // user's stored replaygain intent (which is preserved for restore).
+            let effectiveReplayGain = initial.applyReplayGainEnabled && !initial.forceMaxVolumeEnabled
             engine = try MpvPlayerEngine(
                 initialDeviceUID: initial.outputDeviceUID,
+                initialForceMaxVolume: initial.forceMaxVolumeEnabled,
+                initialApplyReplayGain: effectiveReplayGain,
                 logger: logger
             )
         } catch {
@@ -129,8 +134,16 @@ extension AppContainer {
         }
 
         let hogController = HogModeController()
-        if initial.hogModeEnabled, let uid = initial.outputDeviceUID, !uid.isEmpty {
+        let volumeController = DeviceVolumeController()
+        // Skip the launch-time acquire when release-on-pause is on: nothing is
+        // playing yet, so grabbing the device would block other apps for no
+        // benefit. The state-stream subscriber below acquires on first .playing.
+        if initial.hogModeEnabled, !initial.releaseHogOnPauseEnabled,
+           let uid = initial.outputDeviceUID, !uid.isEmpty {
             Task { _ = await hogController.acquire(deviceUID: uid) }
+        }
+        if initial.forceMaxVolumeEnabled, let uid = initial.outputDeviceUID, !uid.isEmpty {
+            Task { _ = await volumeController.setVolumeMax(deviceUID: uid) }
         }
 
         let coordinator = LivePlaybackCoordinator(
@@ -155,15 +168,83 @@ extension AppContainer {
         // propagate on every save. mpv applies these on next file-load, so
         // toggling mid-playback requires a stop/play to take effect.
         if let store {
-            Task { [engine, hogController] in
+            Task { [engine, hogController, volumeController, coordinator, store] in
                 let stream = await store.changes
+                var lastForceMax = initial.forceMaxVolumeEnabled
+                var lastEffectiveRG = initial.applyReplayGainEnabled && !initial.forceMaxVolumeEnabled
+                var lastDeviceUID = initial.outputDeviceUID
+                var lastHog = initial.hogModeEnabled
                 for await settings in stream {
-                    if settings.hogModeEnabled, let uid = settings.outputDeviceUID, !uid.isEmpty {
+                    // Hog acquire reflects current playback state: when release-on-pause
+                    // is on AND we're paused/stopped, don't grab the device just because
+                    // the user toggled hog ON. The state-stream subscriber below covers
+                    // re-acquisition on resume.
+                    let state = await coordinator.currentPlaybackState
+                    let wantHog = settings.hogModeEnabled
+                        && (!settings.releaseHogOnPauseEnabled || state == .playing)
+                    if wantHog, let uid = settings.outputDeviceUID, !uid.isEmpty {
                         _ = await hogController.acquire(deviceUID: uid)
                     } else {
                         await hogController.release()
                     }
                     try? await engine.setOutputDevice(uid: settings.outputDeviceUID)
+                    let deviceChanged = settings.outputDeviceUID != lastDeviceUID
+                    lastDeviceUID = settings.outputDeviceUID
+
+                    // Hog OFF → ON transition: read device volume now, reset
+                    // forceMaxVolume to match. User can then trust the toggle: ON
+                    // means "currently at max and will be locked there"; OFF means
+                    // "currently below max, set max via OS first".
+                    let hogTurnedOn = settings.hogModeEnabled && !lastHog
+                    lastHog = settings.hogModeEnabled
+                    if hogTurnedOn, let uid = settings.outputDeviceUID, !uid.isEmpty {
+                        let v = await volumeController.currentVolume(deviceUID: uid)
+                        let isMax = (v ?? 0) >= 0.999
+                        if isMax != settings.forceMaxVolumeEnabled {
+                            try? await store.update { $0.forceMaxVolumeEnabled = isMax }
+                            // Settings stream will re-emit; let the next iteration
+                            // handle engine.setForceMaxVolume + locking.
+                            continue
+                        }
+                    }
+                    if settings.forceMaxVolumeEnabled != lastForceMax {
+                        try? await engine.setForceMaxVolume(settings.forceMaxVolumeEnabled)
+                        lastForceMax = settings.forceMaxVolumeEnabled
+                        if settings.forceMaxVolumeEnabled,
+                           let uid = settings.outputDeviceUID, !uid.isEmpty {
+                            _ = await volumeController.setVolumeMax(deviceUID: uid)
+                        }
+                    } else if settings.forceMaxVolumeEnabled, deviceChanged,
+                              let uid = settings.outputDeviceUID, !uid.isEmpty {
+                        // Device switched while force-max stayed on — reapply to the new device.
+                        _ = await volumeController.setVolumeMax(deviceUID: uid)
+                    }
+                    let effectiveRG = settings.applyReplayGainEnabled && !settings.forceMaxVolumeEnabled
+                    if effectiveRG != lastEffectiveRG {
+                        try? await engine.setApplyReplayGain(effectiveRG)
+                        lastEffectiveRG = effectiveRG
+                    }
+                }
+            }
+            // Release/re-acquire hog on pause/resume when the user opted in.
+            // Also pin device volume to max on every .playing transition when
+            // force-max is on, in case the user nudged the OS slider while paused.
+            Task { [hogController, volumeController, coordinator, store] in
+                let stream = await coordinator.stateUpdates
+                for await state in stream {
+                    let s = await store.settings
+                    guard let uid = s.outputDeviceUID, !uid.isEmpty else { continue }
+                    if s.hogModeEnabled, s.releaseHogOnPauseEnabled {
+                        switch state {
+                        case .playing:
+                            _ = await hogController.acquire(deviceUID: uid)
+                        case .paused, .stopped:
+                            await hogController.release()
+                        }
+                    }
+                    if state == .playing, s.forceMaxVolumeEnabled {
+                        _ = await volumeController.setVolumeMax(deviceUID: uid)
+                    }
                 }
             }
             Task { [logger] in
@@ -339,5 +420,7 @@ private struct NoopPlayerEngine: PlayerEngine {
     func stop() async throws { throw error }
     func seek(to seconds: Double) async throws { throw error }
     func setOutputDevice(uid: String?) async throws { throw error }
+    func setForceMaxVolume(_ enabled: Bool) async throws { throw error }
+    func setApplyReplayGain(_ enabled: Bool) async throws { throw error }
     func shutdown() async {}
 }

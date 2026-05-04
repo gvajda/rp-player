@@ -47,6 +47,9 @@ final class StubAudioDeviceCatalog: AudioDeviceCatalog {
         current = devices
         continuations.forEach { $0.yield(devices) }
     }
+
+    private(set) var reloadCount = 0
+    func reload() async { reloadCount += 1 }
 }
 
 @MainActor

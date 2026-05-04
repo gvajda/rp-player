@@ -64,6 +64,15 @@ actor MockPlaybackCoordinator: PlaybackCoordinator {
         }
     }
 
+    var stateUpdates: AsyncStream<PlaybackState> {
+        AsyncStream { continuation in
+            continuation.yield(.stopped)
+            continuation.finish()
+        }
+    }
+
+    var currentPlaybackState: PlaybackState { .stopped }
+
     private func unregister(id: UUID) { continuations.removeValue(forKey: id) }
     private func unregisterPosition(id: UUID) { positionContinuations.removeValue(forKey: id) }
 

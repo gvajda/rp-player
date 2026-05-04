@@ -6,7 +6,9 @@ final class SettingsViewModel: ObservableObject {
     @Published private(set) var selectedChannelId: Int
     @Published private(set) var bitrate: Int
     @Published private(set) var hogModeEnabled: Bool
-    @Published private(set) var softwareVolumeEnabled: Bool
+    @Published private(set) var releaseHogOnPauseEnabled: Bool
+    @Published private(set) var forceMaxVolumeEnabled: Bool
+    @Published private(set) var applyReplayGainEnabled: Bool
     @Published private(set) var notificationsEnabled: Bool
     @Published private(set) var outputDeviceUID: String?
     @Published private(set) var verboseLoggingEnabled: Bool
@@ -48,7 +50,9 @@ final class SettingsViewModel: ObservableObject {
         self.selectedChannelId = snapshot.selectedChannelId
         self.bitrate = snapshot.bitrate
         self.hogModeEnabled = snapshot.hogModeEnabled
-        self.softwareVolumeEnabled = snapshot.softwareVolumeEnabled
+        self.releaseHogOnPauseEnabled = snapshot.releaseHogOnPauseEnabled
+        self.forceMaxVolumeEnabled = snapshot.forceMaxVolumeEnabled
+        self.applyReplayGainEnabled = snapshot.applyReplayGainEnabled
         self.notificationsEnabled = snapshot.notificationsEnabled
         self.outputDeviceUID = snapshot.outputDeviceUID
         self.verboseLoggingEnabled = snapshot.verboseLoggingEnabled
@@ -69,7 +73,9 @@ final class SettingsViewModel: ObservableObject {
                     self.selectedChannelId = snapshot.selectedChannelId
                     self.bitrate = snapshot.bitrate
                     self.hogModeEnabled = snapshot.hogModeEnabled
-                    self.softwareVolumeEnabled = snapshot.softwareVolumeEnabled
+                    self.releaseHogOnPauseEnabled = snapshot.releaseHogOnPauseEnabled
+                    self.forceMaxVolumeEnabled = snapshot.forceMaxVolumeEnabled
+                    self.applyReplayGainEnabled = snapshot.applyReplayGainEnabled
                     self.notificationsEnabled = snapshot.notificationsEnabled
                     self.outputDeviceUID = snapshot.outputDeviceUID
                     self.verboseLoggingEnabled = snapshot.verboseLoggingEnabled
@@ -115,8 +121,16 @@ final class SettingsViewModel: ObservableObject {
         await update { $0.hogModeEnabled = value }
     }
 
-    func setSoftwareVolumeEnabled(_ value: Bool) async {
-        await update { $0.softwareVolumeEnabled = value }
+    func setReleaseHogOnPauseEnabled(_ value: Bool) async {
+        await update { $0.releaseHogOnPauseEnabled = value }
+    }
+
+    func setForceMaxVolumeEnabled(_ value: Bool) async {
+        await update { $0.forceMaxVolumeEnabled = value }
+    }
+
+    func setApplyReplayGainEnabled(_ value: Bool) async {
+        await update { $0.applyReplayGainEnabled = value }
     }
 
     func setNotificationsEnabled(_ value: Bool) async {
@@ -125,6 +139,10 @@ final class SettingsViewModel: ObservableObject {
 
     func setOutputDeviceUID(_ value: String?) async {
         await update { $0.outputDeviceUID = value }
+    }
+
+    func refreshDevices() async {
+        await deviceCatalog.reload()
     }
 
     func setVerboseLoggingEnabled(_ value: Bool) async {

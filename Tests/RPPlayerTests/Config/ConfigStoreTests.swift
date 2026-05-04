@@ -48,7 +48,7 @@ final class ConfigStoreTests: XCTestCase {
     func testDecodingMissingVerboseLoggingDefaultsToFalse() throws {
         // On-disk JSON written before the field existed should still decode.
         let json = """
-        {"selectedChannelId":0,"hogModeEnabled":true,"softwareVolumeEnabled":false,"notificationsEnabled":true,"bitrate":4,"logLevel":"info"}
+        {"selectedChannelId":0,"hogModeEnabled":true,"notificationsEnabled":true,"bitrate":4,"logLevel":"info"}
         """
         let data = Data(json.utf8)
         let decoded = try JSONDecoder().decode(AppSettings.self, from: data)

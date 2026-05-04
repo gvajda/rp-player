@@ -9,6 +9,8 @@ actor MockPlayerEngine: PlayerEngine {
         case stop
         case seek(seconds: Double)
         case setOutputDevice(uid: String?)
+        case setForceMaxVolume(enabled: Bool)
+        case setApplyReplayGain(enabled: Bool)
         case shutdown
     }
 
@@ -53,6 +55,12 @@ actor MockPlayerEngine: PlayerEngine {
     func seek(to seconds: Double) async throws { try recordOrThrow(.seek(seconds: seconds)) }
     func setOutputDevice(uid: String?) async throws {
         try recordOrThrow(.setOutputDevice(uid: uid))
+    }
+    func setForceMaxVolume(_ enabled: Bool) async throws {
+        try recordOrThrow(.setForceMaxVolume(enabled: enabled))
+    }
+    func setApplyReplayGain(_ enabled: Bool) async throws {
+        try recordOrThrow(.setApplyReplayGain(enabled: enabled))
     }
     func shutdown() async {
         calls.append(.shutdown)

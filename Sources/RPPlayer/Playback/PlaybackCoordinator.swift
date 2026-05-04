@@ -1,9 +1,17 @@
 import Foundation
 
+public enum PlaybackState: Sendable, Equatable {
+    case stopped
+    case playing
+    case paused
+}
+
 public protocol PlaybackCoordinator: Sendable {
     var nowPlaying: NowPlaying? { get async }
     var nowPlayingUpdates: AsyncStream<NowPlaying> { get async }
     var positionUpdates: AsyncStream<Double> { get async }
+    var stateUpdates: AsyncStream<PlaybackState> { get async }
+    var currentPlaybackState: PlaybackState { get async }
     var errors: AsyncStream<String> { get async }
 
     func play(channelId: Int) async throws
@@ -34,6 +42,8 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     private var current: NowPlaying?
     private var continuations: [UUID: AsyncStream<NowPlaying>.Continuation] = [:]
     private var positionContinuations: [UUID: AsyncStream<Double>.Continuation] = [:]
+    private var stateContinuations: [UUID: AsyncStream<PlaybackState>.Continuation] = [:]
+    private var currentState: PlaybackState = .stopped
     private var eventTask: Task<Void, Never>?
     private var prefetchedBlock: GetBlock?
     private var prefetchTask: Task<Void, Never>?
@@ -64,6 +74,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     }
 
     public var nowPlaying: NowPlaying? { current }
+    public var currentPlaybackState: PlaybackState { currentState }
 
     public var nowPlayingUpdates: AsyncStream<NowPlaying> {
         let id = UUID()
@@ -87,6 +98,24 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
                 Task { [weak self] in await self?.unregisterPosition(id: id) }
             }
         }
+    }
+
+    public var stateUpdates: AsyncStream<PlaybackState> {
+        let id = UUID()
+        return AsyncStream { continuation in
+            if self.isShutdown { continuation.finish(); return }
+            self.stateContinuations[id] = continuation
+            continuation.yield(self.currentState)
+            continuation.onTermination = { [weak self] _ in
+                Task { [weak self] in await self?.unregisterState(id: id) }
+            }
+        }
+    }
+
+    private func emitState(_ state: PlaybackState) {
+        guard state != currentState else { return }
+        currentState = state
+        for c in stateContinuations.values { c.yield(state) }
     }
 
     public func play(channelId: Int) async throws {
@@ -123,6 +152,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             throw PlaybackCoordinatorError.engineError(message: String(describing: error))
         }
         emitNowPlaying(forSongIndex: 0)
+        emitState(.playing)
         fireSongStartTelemetry(song: orderedSongs[0], channelId: channelId)
     }
 
@@ -130,6 +160,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         logger.debug("pause()")
         guard currentBlock != nil else { throw PlaybackCoordinatorError.notPlaying }
         do { try await engine.pause() } catch { throw PlaybackCoordinatorError.engineError(message: String(describing: error)) }
+        emitState(.paused)
         pausedAt = clock()
         if currentSongIndex < startsAt.count {
             pausePositionMs = max(1, Int((currentPositionSeconds - startsAt[currentSongIndex]) * 1000))
@@ -167,6 +198,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         }
         logger.debug("resume: block fresh, engine.resume()")
         do { try await engine.resume() } catch { throw PlaybackCoordinatorError.engineError(message: String(describing: error)) }
+        emitState(.playing)
         guard pausedAt != nil, let channelId = currentChannelId,
               currentSongIndex < orderedSongs.count else { return }
         let song = orderedSongs[currentSongIndex]
@@ -211,6 +243,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         pausePositionMs = 0
         current = nil
         do { try await engine.stop() } catch { throw PlaybackCoordinatorError.engineError(message: String(describing: error)) }
+        emitState(.stopped)
     }
 
     public func skipForward() async throws {
@@ -299,6 +332,8 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         continuations.removeAll()
         for c in positionContinuations.values { c.finish() }
         positionContinuations.removeAll()
+        for c in stateContinuations.values { c.finish() }
+        stateContinuations.removeAll()
         errorsContinuation?.finish()
         errorsContinuation = nil
     }
@@ -372,6 +407,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         let message = code == -14
             ? "Audio device unavailable. Check System Settings → Sound → Output."
             : "Playback stopped unexpectedly (error \(code))."
+        emitState(.stopped)
         errorsContinuation?.yield(message)
     }
 
@@ -506,6 +542,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
 
     private func unregister(id: UUID) { continuations.removeValue(forKey: id) }
     private func unregisterPosition(id: UUID) { positionContinuations.removeValue(forKey: id) }
+    private func unregisterState(id: UUID) { stateContinuations.removeValue(forKey: id) }
 
     private func maybeStartPrefetch() {
         guard let channelId = currentChannelId,

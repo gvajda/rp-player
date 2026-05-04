@@ -1421,4 +1421,55 @@ extension LivePlaybackCoordinatorTests {
         XCTAssertNil(episodeId)
         XCTAssertNil(sliceNum)
     }
+
+    func testStateStreamEmitsPlayingPausedStoppedTransitions() async throws {
+        let api = MockRpApiClient()
+        let block = makeBlock(songs: [("s1", 60_000), ("s2", 60_000)])
+        await api.setBlockResponses([block])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
+        )
+
+        let observed = ObservedStates()
+        let stream = await coordinator.stateUpdates
+        let subscription = Task {
+            for await state in stream {
+                await observed.append(state)
+            }
+        }
+
+        try await coordinator.play(channelId: 0)
+        try await coordinator.pause()
+        try await coordinator.resume()
+        try await coordinator.stop()
+
+        // Let the AsyncStream drain.
+        try await Task.sleep(nanoseconds: 100_000_000)
+        subscription.cancel()
+
+        let states = await observed.values
+        XCTAssertEqual(states, [.stopped, .playing, .paused, .playing, .stopped])
+    }
+
+    func testStateStreamSeedsCurrentStateOnSubscribe() async throws {
+        let api = MockRpApiClient()
+        let block = makeBlock(songs: [("s1", 60_000), ("s2", 60_000)])
+        await api.setBlockResponses([block])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
+        )
+        try await coordinator.play(channelId: 0)
+
+        let stream = await coordinator.stateUpdates
+        var iter = stream.makeAsyncIterator()
+        let first = await iter.next()
+        XCTAssertEqual(first, .playing)
+    }
+}
+
+private actor ObservedStates {
+    var values: [PlaybackState] = []
+    func append(_ s: PlaybackState) { values.append(s) }
 }

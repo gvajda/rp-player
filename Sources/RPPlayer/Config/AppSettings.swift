@@ -5,7 +5,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// Authoritative list comes from `api/list_chan` at runtime.
     public var selectedChannelId: Int
     public var hogModeEnabled: Bool
-    public var softwareVolumeEnabled: Bool
+    public var releaseHogOnPauseEnabled: Bool
+    public var forceMaxVolumeEnabled: Bool
+    public var applyReplayGainEnabled: Bool
     public var notificationsEnabled: Bool
     public var appearance: AppearanceMode
     public var ambientBackgroundEnabled: Bool
@@ -28,7 +30,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public init(
         selectedChannelId: Int = 0,
         hogModeEnabled: Bool = true,
-        softwareVolumeEnabled: Bool = false,
+        releaseHogOnPauseEnabled: Bool = true,
+        forceMaxVolumeEnabled: Bool = false,
+        applyReplayGainEnabled: Bool = false,
         notificationsEnabled: Bool = true,
         appearance: AppearanceMode = .system,
         ambientBackgroundEnabled: Bool = false,
@@ -43,7 +47,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
     ) {
         self.selectedChannelId = selectedChannelId
         self.hogModeEnabled = hogModeEnabled
-        self.softwareVolumeEnabled = softwareVolumeEnabled
+        self.releaseHogOnPauseEnabled = releaseHogOnPauseEnabled
+        self.forceMaxVolumeEnabled = forceMaxVolumeEnabled
+        self.applyReplayGainEnabled = applyReplayGainEnabled
         self.notificationsEnabled = notificationsEnabled
         self.appearance = appearance
         self.ambientBackgroundEnabled = ambientBackgroundEnabled
@@ -61,7 +67,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.selectedChannelId = try c.decodeIfPresent(Int.self, forKey: .selectedChannelId) ?? 0
         self.hogModeEnabled = try c.decodeIfPresent(Bool.self, forKey: .hogModeEnabled) ?? true
-        self.softwareVolumeEnabled = try c.decodeIfPresent(Bool.self, forKey: .softwareVolumeEnabled) ?? false
+        self.releaseHogOnPauseEnabled = try c.decodeIfPresent(Bool.self, forKey: .releaseHogOnPauseEnabled) ?? true
+        self.forceMaxVolumeEnabled = try c.decodeIfPresent(Bool.self, forKey: .forceMaxVolumeEnabled) ?? false
+        self.applyReplayGainEnabled = try c.decodeIfPresent(Bool.self, forKey: .applyReplayGainEnabled) ?? false
         self.notificationsEnabled = try c.decodeIfPresent(Bool.self, forKey: .notificationsEnabled) ?? true
         self.appearance = try c.decodeIfPresent(AppearanceMode.self, forKey: .appearance) ?? .system
         self.ambientBackgroundEnabled = try c.decodeIfPresent(Bool.self, forKey: .ambientBackgroundEnabled) ?? false

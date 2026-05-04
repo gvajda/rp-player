@@ -8,6 +8,7 @@ import Foundation
 public protocol AudioDeviceCatalog: Sendable {
     var devices: [AudioDevice] { get async }
     var changes: AsyncStream<[AudioDevice]> { get async }
+    func reload() async
 }
 
 /// Low-level seam: returns the current set of CoreAudio output devices on demand.

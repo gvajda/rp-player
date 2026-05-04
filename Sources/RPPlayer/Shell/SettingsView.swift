@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var viewModel: SettingsViewModel
+    @State private var showForceMaxConfirm = false
 
     var body: some View {
         Form {
@@ -16,6 +17,14 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .frame(width: 480, height: 560)
         .task { await viewModel.start() }
+        .alert("Force Max Volume", isPresented: $showForceMaxConfirm) {
+            Button("Cancel", role: .cancel) {}
+            Button("Continue", role: .destructive) {
+                Task { await viewModel.setForceMaxVolumeEnabled(true) }
+            }
+        } message: {
+            Text("This sets the macOS output volume for the selected device to 100% and removes software volume from the signal path. Lower the volume on your DAC, amp, or headphones first to avoid hearing damage.")
+        }
     }
 
     private var supportSection: some View {
@@ -38,14 +47,36 @@ struct SettingsView: View {
 
     private var audioSection: some View {
         Section("Audio") {
-            Picker("Output device", selection: deviceBinding) {
-                Text("Select an output device").tag(String?.none)
-                ForEach(viewModel.devices, id: \.uid) { device in
-                    Text(deviceLabel(device)).tag(Optional(device.uid))
+            HStack {
+                Picker("Output device", selection: deviceBinding) {
+                    Text("Select an output device").tag(String?.none)
+                    ForEach(viewModel.devices, id: \.uid) { device in
+                        Text(deviceLabel(device)).tag(Optional(device.uid))
+                    }
                 }
+                Button {
+                    Task { await viewModel.refreshDevices() }
+                } label: {
+                    Image(systemName: "arrow.clockwise.circle")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.borderless)
+                .help("Rescan audio devices")
             }
             Toggle("Hog mode (bit-perfect)", isOn: hogModeBinding)
-            Toggle("Software volume control", isOn: softwareVolumeBinding)
+            Toggle("Release on Pause", isOn: releaseHogOnPauseBinding)
+                .padding(.leading, 20)
+                .disabled(!viewModel.hogModeEnabled)
+            Toggle("Force Max Volume (for external DACs)", isOn: forceMaxVolumeBinding)
+                .padding(.leading, 20)
+                .disabled(!viewModel.hogModeEnabled)
+            Toggle(isOn: applyReplayGainEffectiveBinding) {
+                HStack(spacing: 6) {
+                    Text("Apply ReplayGain")
+                    HoverInfoIcon(text: "ReplayGain is a per-track loudness adjustment encoded in the file's metadata. With it ON, mpv attenuates each track to match a reference loudness so songs play at similar levels. With it OFF (default), audio is sent untouched — preferred for bit-perfect playback.")
+                }
+            }
+            .disabled(viewModel.forceMaxVolumeEnabled)
             Picker("Bitrate", selection: bitrateBinding) {
                 Text("32K AAC").tag(0)
                 Text("64K AAC").tag(1)
@@ -71,7 +102,7 @@ struct SettingsView: View {
                 Text("Light").tag(AppearanceMode.light)
                 Text("Dark").tag(AppearanceMode.dark)
             }
-            .pickerStyle(.menu)
+            .pickerStyle(.segmented)
             Toggle("Ambient background from album art", isOn: ambientBackgroundBinding)
         }
     }
@@ -151,10 +182,32 @@ struct SettingsView: View {
         )
     }
 
-    private var softwareVolumeBinding: Binding<Bool> {
+    private var releaseHogOnPauseBinding: Binding<Bool> {
         Binding(
-            get: { viewModel.softwareVolumeEnabled },
-            set: { newValue in Task { await viewModel.setSoftwareVolumeEnabled(newValue) } }
+            get: { viewModel.releaseHogOnPauseEnabled },
+            set: { newValue in Task { await viewModel.setReleaseHogOnPauseEnabled(newValue) } }
+        )
+    }
+
+    private var forceMaxVolumeBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.forceMaxVolumeEnabled },
+            set: { newValue in
+                if newValue && !viewModel.forceMaxVolumeEnabled {
+                    showForceMaxConfirm = true
+                } else {
+                    Task { await viewModel.setForceMaxVolumeEnabled(newValue) }
+                }
+            }
+        )
+    }
+
+    // ReplayGain UI shows the *effective* state: forced OFF when force-max is on,
+    // but the user's stored preference is preserved underneath for restore on toggle-off.
+    private var applyReplayGainEffectiveBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.applyReplayGainEnabled && !viewModel.forceMaxVolumeEnabled },
+            set: { newValue in Task { await viewModel.setApplyReplayGainEnabled(newValue) } }
         )
     }
 

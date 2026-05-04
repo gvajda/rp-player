@@ -9,6 +9,8 @@ public protocol PlayerEngine: Sendable {
     func stop() async throws
     func seek(to seconds: Double) async throws
     func setOutputDevice(uid: String?) async throws
+    func setForceMaxVolume(_ enabled: Bool) async throws
+    func setApplyReplayGain(_ enabled: Bool) async throws
     func shutdown() async
 }
 
