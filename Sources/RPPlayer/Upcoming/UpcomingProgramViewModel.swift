@@ -31,6 +31,13 @@ final class UpcomingProgramViewModel: ObservableObject {
     private let coordinator: (any PlaybackCoordinator)?
     private let selectChannelHandler: (@MainActor (Int) async -> Void)?
     private var nowPlayingTask: Task<Void, Never>?
+    private var cachedChannels: [Channel] = []
+
+    /// Per-column UI metrics — kept in lock-step with `UpcomingProgramView`.
+    /// Used by `UpcomingWindowController` to compute the snug window width.
+    static let columnWidth: CGFloat = 226
+    static let columnSpacing: CGFloat = 6
+    static let columnsContainerPadding: CGFloat = 10  // .padding(10) on the HStack
 
     init(
         api: any RpApiClient,
@@ -71,6 +78,22 @@ final class UpcomingProgramViewModel: ObservableObject {
         Task { await handler(id) }
     }
 
+    /// Width of the columns-container content needed to fit the currently
+    /// configured (filtered) channel list. Returns nil before any successful
+    /// `load()` — caller should leave the window size alone in that case.
+    func desiredContentWidth() async -> CGFloat? {
+        guard !cachedChannels.isEmpty else { return nil }
+        let settings = await configStore.settings
+        let hiddenIds = Set(settings.upcomingHiddenChannelIds)
+        let count = cachedChannels.filter {
+            guard let id = Int($0.chan) else { return false }
+            return id != 42 && id != 99 && !hiddenIds.contains(id)
+        }.count
+        guard count > 0 else { return nil }
+        let n = CGFloat(count)
+        return n * Self.columnWidth + (n - 1) * Self.columnSpacing + 2 * Self.columnsContainerPadding
+    }
+
     func load() async {
         await ensureNowPlayingSubscription()
         isLoading = true
@@ -89,6 +112,7 @@ final class UpcomingProgramViewModel: ObservableObject {
             isLoading = false
             return
         }
+        cachedChannels = allChannels
 
         let enabledChannels = allChannels.filter {
             guard let id = Int($0.chan) else { return false }

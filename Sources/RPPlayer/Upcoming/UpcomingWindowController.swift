@@ -10,7 +10,7 @@ final class UpcomingWindowController {
         self.viewModel = viewModel
     }
 
-    func show() {
+    func show() async {
         if window == nil {
             let rootView = UpcomingProgramView(viewModel: viewModel)
             let hosting = NSHostingController(rootView: rootView)
@@ -23,6 +23,18 @@ final class UpcomingWindowController {
             w.isReleasedWhenClosed = false
             window = w
         }
+
+        // Shrink the window before it appears if the saved frame is wider than
+        // the current filtered-channel set warrants — avoids a glitchy resize
+        // visible to the user.
+        if let w = window, let desired = await viewModel.desiredContentWidth() {
+            let currentContent = w.contentRect(forFrameRect: w.frame).size
+            if currentContent.width > desired {
+                let target = max(desired, w.minSize.width)
+                w.setContentSize(NSSize(width: target, height: currentContent.height))
+            }
+        }
+
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }

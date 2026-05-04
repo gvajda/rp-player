@@ -342,7 +342,9 @@ extension AppContainer {
             selectChannelHandler: { [viewModel] id in await viewModel.selectChannel(id) }
         )
         let upcomingWindowController = UpcomingWindowController(viewModel: upcomingViewModel)
-        viewModel.upcomingAction = { [upcomingWindowController] in upcomingWindowController.show() }
+        viewModel.upcomingAction = { [upcomingWindowController] in
+            Task { @MainActor in await upcomingWindowController.show() }
+        }
 
         let onLaunchTasks: [@Sendable () async -> Void] = [
             { [logger] in
