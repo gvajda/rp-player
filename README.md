@@ -60,6 +60,13 @@ _Screenshot placeholder — Settings window: bitrate, output device, hog mode to
 - Channel picker centred under the controls; bitrate label to the right (verbatim from the API: "FLAC", "320k AAC", etc.).
 - Hamburger menu with: Settings, Open Song in Browser, Upcoming Program, Floating Window, About, Quit.
 
+### Floating window mode
+
+- Toggle from the menu (right-click icon or in-popover hamburger). Item shows a checkmark when active.
+- The popover detaches from the menu-bar anchor: stays visible across other-app interactions, joins all Spaces, and is draggable from any background area.
+- Click anywhere to dismiss is disabled; toggle off (or close from the icon click) returns it to anchored mode.
+- Setting persists across launches — turn it on once, the panel comes back on the next start.
+
 ### Hover tooltip on the menu-bar icon
 
 - Hovering the icon (after a 300 ms delay) shows a two-line tooltip: "RP Player" plus a live `-mm:ss` countdown to the end of the current song.
@@ -85,13 +92,6 @@ _GIF placeholder — cursor hovering the menu-bar icon, countdown ticking down._
 - Uses `api/play` (not `api/get_block`) so the upcoming list reflects the same personalised cursor as actual playback.
 
 _Screenshot placeholder — Upcoming Program window with current channel highlighted._
-
-### Floating window mode
-
-- Toggle from the menu (right-click icon or in-popover hamburger). Item shows a checkmark when active.
-- The popover detaches from the menu-bar anchor: stays visible across other-app interactions, joins all Spaces, and is draggable from any background area.
-- Click anywhere to dismiss is disabled; toggle off (or close from the icon click) returns it to anchored mode.
-- Setting persists across launches — turn it on once, the panel comes back on the next start.
 
 ### Album art + ambient background
 
