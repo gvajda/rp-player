@@ -14,7 +14,7 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 
 ## Current state
 
-- Last merged: **PR 19** — Upcoming Program window. 309 tests passing on `main`.
+- Last merged: **PR 20** — CI rework + README badges + Codecov coverage. 309 tests passing on `main`.
 
 ## PR status
 
@@ -41,6 +41,7 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 | 17   | merged to main | ✅      | Audio device error handling (errors stream, popover auto-open, VM reset)    |
 | 18   | merged to main | ✅      | Ambient background from album art (opt-in; fades on promo/error/disable)    |
 | 19   | merged to main | ✅      | Upcoming Program window (get_block read-only fetch, multi-column card view, settings row count + channel filter; ambient card color; cue Int/String fix; black progress bar in light+ambient mode) |
+| 20   | merged to main | ✅      | CI: merge release into ci.yml (test + tag-gated release jobs); Codecov coverage via OIDC + sersoft lcov conversion + codecov.yml path fix; README badges (build+tests, coverage, latest release, license) |
 
 ---
 
@@ -181,6 +182,15 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 ### Deployment target
 
 - `.macOS(.v14)` floor. `NSImage: Sendable` requires macOS 14, and `LiveAlbumArtCache.inFlight: [String: Task<NSImage?, Never>]` produces unrejectable Sendable warnings on `.v13`.
+
+### CI / coverage
+
+- **Single workflow** `.github/workflows/ci.yml` with two jobs: `test` (runs on push/PR/tag) and `release` (gated `if: startsWith(github.ref, 'refs/tags/v')`, `needs: test`). Eliminates duplicate test runs on tag pushes; release blocks on green tests.
+- **Coverage upload is tokenless via OIDC.** `codecov/codecov-action@v4` with `use_oidc: true` + job-level `permissions: id-token: write`. Codecov GitHub App is installed scoped to `gvajda/rp-player` only — no OAuth `repo` scope, no `CODECOV_TOKEN` secret.
+- **Coverage conversion via `sersoft-gmbh/swift-coverage-action@v4`.** SPM's `swift test --enable-code-coverage --show-codecov-path` produces raw llvm-cov-export JSON which Codecov's processor reports as "No swift data found" → empty report. The sersoft action runs `xcrun llvm-cov export -format=lcov` against the test bundle and writes `.swiftcov/*.lcov`. Do NOT pass `target-name-filter` — it filters by **test bundle** name (`RPPlayerPackageTests`), not source target, so `^RPPlayer$` skipped everything.
+- **`codecov.yml` path-fix:** `fixes: ["/Users/runner/work/rp-player/rp-player/::"]` strips the CI runner absolute-path prefix so lcov entries align with repo-relative paths. Without this Codecov reports 0% (paths don't match repo files).
+- **Repo is public.** Default branch = `main`. shields.io badges (`img.shields.io/github/...`) require public repos — they fail with "repo not found" on private repos. Build-status badge defaults to default branch; if default branch ever changes again, add `?branch=main` query param.
+- **GitHub camo proxy caches badge SVGs.** If a badge URL resolved to an error (e.g. "repo not found" while private) and was rendered once, the camo cache holds the bad SVG. Bust by changing the URL string slightly (e.g. add `?cacheSeconds=3600`).
 
 ---
 
