@@ -79,9 +79,9 @@ extension AppContainer {
         let logger = AppLogger.fileBacked(category: "shell", directory: ConfigPaths.logsDirectory)
         logger.info("AppContainer.live() starting")
         let configURL = ConfigPaths.configFile
-        let initial = Self.loadSettings(from: configURL)
-        logger.setVerbose(initial.verboseLoggingEnabled)
-        logger.info("loaded settings: hog=\(initial.hogModeEnabled) device=\(initial.outputDeviceUID ?? "nil") bitrate=\(initial.bitrate) verboseLogging=\(initial.verboseLoggingEnabled)")
+        let loaded = Self.loadSettings(from: configURL)
+        logger.setVerbose(loaded.verboseLoggingEnabled)
+        logger.info("loaded settings: hog=\(loaded.hogModeEnabled) device=\(loaded.outputDeviceUID ?? "nil") bitrate=\(loaded.bitrate) verboseLogging=\(loaded.verboseLoggingEnabled)")
         let store: JSONConfigStore?
         do {
             store = try JSONConfigStore(url: configURL)
@@ -89,6 +89,31 @@ extension AppContainer {
             logger.error("Failed to open config store: \(error.localizedDescription)")
             store = nil
         }
+
+        // Hearing-safety on startup: if the saved output device isn't present
+        // (e.g. user quit with DAC connected, then unplugged it before the next
+        // launch), clear hog mode + force-max + the stale device UID. Without
+        // this, the next channel switch can fall back to built-in speakers and
+        // pin them at 100% — matching what the runtime -14 path does, but
+        // proactively so the user doesn't even need to click play first.
+        let initial: AppSettings = {
+            guard let uid = loaded.outputDeviceUID, !uid.isEmpty else { return loaded }
+            let knownUIDs = Set(CoreAudioDeviceLister().currentDevices().map { $0.uid })
+            if knownUIDs.contains(uid) { return loaded }
+            logger.info("saved output device '\(uid)' not present at startup; clearing hog + force-max + outputDeviceUID for safety")
+            if let store {
+                Task { try? await store.update {
+                    $0.hogModeEnabled = false
+                    $0.forceMaxVolumeEnabled = false
+                    $0.outputDeviceUID = nil
+                } }
+            }
+            var safe = loaded
+            safe.hogModeEnabled = false
+            safe.forceMaxVolumeEnabled = false
+            safe.outputDeviceUID = nil
+            return safe
+        }()
 
         let playerId: String
         if let existing = initial.playerId, !existing.isEmpty {
