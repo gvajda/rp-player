@@ -3,7 +3,7 @@ import SwiftUI
 
 @MainActor
 class PopoverController {
-    static let contentSize = NSSize(width: 320, height: 540)
+    static let contentSize = NSSize(width: 342, height: 540)
     private static let escapeKeyCode: UInt16 = 53
 
     let panel: NSPanel
