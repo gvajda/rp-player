@@ -29,9 +29,8 @@ final class HoverTooltipWindow {
         stack.spacing = 0
         stack.translatesAutoresizingMaskIntoConstraints = false
 
-        container = NSView()
+        container = AdaptiveBackgroundView()
         container.wantsLayer = true
-        container.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
         container.layer?.cornerRadius = 4
         container.layer?.borderWidth = 0.5
         container.layer?.borderColor = NSColor.separatorColor.cgColor
@@ -112,4 +111,11 @@ final class HoverTracker: NSResponder {
 
     override func mouseEntered(with event: NSEvent) { onEnter() }
     override func mouseExited(with event: NSEvent) { onExit() }
+}
+
+private final class AdaptiveBackgroundView: NSView {
+    override var wantsUpdateLayer: Bool { true }
+    override func updateLayer() {
+        layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+    }
 }
