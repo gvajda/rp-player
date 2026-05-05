@@ -383,7 +383,7 @@ extension AppContainer {
             coordinator: coordinator,
             selectChannelHandler: { [viewModel] id in await viewModel.selectChannel(id) }
         )
-        let upcomingWindowController = UpcomingWindowController(viewModel: upcomingViewModel)
+        let upcomingWindowController = UpcomingWindowController(viewModel: upcomingViewModel, configStore: store ?? NoopConfigStore())
         viewModel.upcomingAction = { [upcomingWindowController] in
             Task { @MainActor in await upcomingWindowController.show() }
         }

@@ -64,7 +64,8 @@ final class AppDelegateTests: XCTestCase {
                         albumArtCache: StubAlbumArtCache(),
                         configStore: StubConfigStore(initial: .default),
                         paletteExtractor: StubAmbientPaletteExtractor()
-                    )
+                    ),
+                    configStore: StubConfigStore(initial: .default)
                 ),
                 configStore: configStore,
                 nowPlayingCenterController: NowPlayingCenterController(
@@ -147,7 +148,8 @@ final class AppDelegateTests: XCTestCase {
                         albumArtCache: StubAlbumArtCache(),
                         configStore: StubConfigStore(initial: .default),
                         paletteExtractor: StubAmbientPaletteExtractor()
-                    )
+                    ),
+                    configStore: StubConfigStore(initial: .default)
                 ),
                 configStore: configStore,
                 nowPlayingCenterController: NowPlayingCenterController(
