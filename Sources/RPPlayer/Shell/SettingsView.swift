@@ -152,7 +152,19 @@ struct SettingsView: View {
                 }
             }
             Toggle("Ambient background from album art", isOn: ambientBackgroundBinding)
+            Toggle("Liquid Glass (popovers)", isOn: liquidGlassBinding)
+                .disabled(!Self.isLiquidGlassAvailable)
+            if !Self.isLiquidGlassAvailable {
+                Text("Requires macOS 26 or later")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Toggle("Frosted Upcoming Program window", isOn: frostedUpcomingBinding)
         }
+    }
+
+    private static var isLiquidGlassAvailable: Bool {
+        if #available(macOS 26.0, *) { true } else { false }
     }
 
     private func menuBarIconButton(_ style: MenuBarIconStyle, label: String) -> some View {
@@ -301,6 +313,20 @@ struct SettingsView: View {
         Binding(
             get: { viewModel.ambientBackgroundEnabled },
             set: { newValue in Task { await viewModel.setAmbientBackgroundEnabled(newValue) } }
+        )
+    }
+
+    private var liquidGlassBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.liquidGlassEnabled },
+            set: { newValue in Task { await viewModel.setLiquidGlassEnabled(newValue) } }
+        )
+    }
+
+    private var frostedUpcomingBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.frostedUpcomingEnabled },
+            set: { newValue in Task { await viewModel.setFrostedUpcomingEnabled(newValue) } }
         )
     }
 
