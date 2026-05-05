@@ -87,4 +87,36 @@ final class AppSettingsCodableTests: XCTestCase {
         let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
         XCTAssertEqual(decoded.upcomingHiddenChannelIds, [1, 3])
     }
+
+    func testRoundTripPreservesLiquidGlassEnabled() throws {
+        var settings = AppSettings.default
+        settings.liquidGlassEnabled = true
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
+        XCTAssertTrue(decoded.liquidGlassEnabled)
+    }
+
+    func testMissingLiquidGlassEnabledKeyDecodesAsFalse() throws {
+        let json = """
+        {"selectedChannelId":0}
+        """.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: json)
+        XCTAssertFalse(decoded.liquidGlassEnabled)
+    }
+
+    func testRoundTripPreservesFrostedUpcomingEnabled() throws {
+        var settings = AppSettings.default
+        settings.frostedUpcomingEnabled = true
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
+        XCTAssertTrue(decoded.frostedUpcomingEnabled)
+    }
+
+    func testMissingFrostedUpcomingEnabledKeyDecodesAsFalse() throws {
+        let json = """
+        {"selectedChannelId":0}
+        """.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: json)
+        XCTAssertFalse(decoded.frostedUpcomingEnabled)
+    }
 }
