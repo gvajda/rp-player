@@ -128,6 +128,8 @@ The app installs a status item in the menu bar (no Dock icon, no main window). C
 
 - mpv occasionally fails to decode a block (e.g. some short promo `.m4a` files return `MPV_ERROR_NOTHING_TO_PLAY`). Instead of stalling the channel, the app advances past the bad block via `api/play` and tries the next one, up to a small retry budget. The cursor moves forward, the listener doesn't get stuck.
 - Audio device unplug surfaces a clear banner ("Audio device unavailable…") and stops cleanly so re-plugging + clicking play recovers without a relaunch.
+- Stale-bootstrap recovery: when the listener has been idle long enough that the server's per-`(player_id, chan)` cursor has lagged real-time, `api/play?action=start` can return a block whose audio file already finished broadcasting (encoded as `cue=0` with all song offsets non-positive and at least one strictly negative). Naively playing that file would resurrect already-aired content while the UI latched onto a song that never matched the audio. The app detects this signature and follows up with a single `api/play?action=play` advance to fetch the live block; one retry max so the user is never caught in a loop.
+- Long-idle resume refetch: when resuming after a pause of 59 minutes or more, the app refetches the block via the bootstrap path instead of asking mpv to resume the existing stream. The threshold sits just under typical 1-hour CDN/server TCP idle eviction, so the listener never hears mpv hit "stream ends prematurely" on a connection the CDN already closed. Composes with stale-bootstrap recovery — if the refetched block is also stale, the same single advance retry kicks in.
 
 ### Cookie-based authentication
 
