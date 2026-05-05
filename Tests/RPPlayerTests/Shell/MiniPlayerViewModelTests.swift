@@ -426,6 +426,28 @@ final class MiniPlayerViewModelTests: XCTestCase {
         XCTAssertNil(sut.nowPlaying)
     }
 
+    func testSystemPauseSyncsIsPlaying() async throws {
+        await coordinator.fireState(.playing)
+        await sut.start()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertTrue(sut.isPlaying, "stateUpdates .playing should set isPlaying=true")
+
+        await coordinator.fireState(.paused)
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertFalse(sut.isPlaying, "system pause via media key should set isPlaying=false")
+    }
+
+    func testSystemResumeSyncsIsPlaying() async throws {
+        await coordinator.fireState(.paused)
+        await sut.start()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertFalse(sut.isPlaying)
+
+        await coordinator.fireState(.playing)
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertTrue(sut.isPlaying, "system resume via media key should set isPlaying=true")
+    }
+
     func testUserActionClearsErrorMessageFromCoordinatorStream() async throws {
         await sut.start()
 

@@ -16,7 +16,9 @@ actor MockPlaybackCoordinator: PlaybackCoordinator {
     private var current: NowPlaying?
     private var continuations: [UUID: AsyncStream<NowPlaying>.Continuation] = [:]
     private var positionContinuations: [UUID: AsyncStream<Double>.Continuation] = [:]
+    private var stateContinuations: [UUID: AsyncStream<PlaybackState>.Continuation] = [:]
     private var lastPosition: Double = 0
+    private var lastState: PlaybackState = .stopped
     private var nextError: Error?
     private var holdChangeChannelEnabled: Bool = false
     private var changeChannelHolds: [CheckedContinuation<Void, Never>] = []
@@ -27,6 +29,11 @@ actor MockPlaybackCoordinator: PlaybackCoordinator {
         var cont: AsyncStream<String>.Continuation!
         errors = AsyncStream { cont = $0 }
         errorsContinuation = cont
+    }
+
+    func fireState(_ state: PlaybackState) {
+        lastState = state
+        for c in stateContinuations.values { c.yield(state) }
     }
 
     func setNextError(_ error: Error) { nextError = error }
@@ -67,16 +74,21 @@ actor MockPlaybackCoordinator: PlaybackCoordinator {
     }
 
     var stateUpdates: AsyncStream<PlaybackState> {
-        AsyncStream { continuation in
-            continuation.yield(.stopped)
-            continuation.finish()
+        let id = UUID()
+        return AsyncStream { continuation in
+            self.stateContinuations[id] = continuation
+            continuation.yield(self.lastState)
+            continuation.onTermination = { [weak self] _ in
+                Task { [weak self] in await self?.unregisterState(id: id) }
+            }
         }
     }
 
-    var currentPlaybackState: PlaybackState { .stopped }
+    var currentPlaybackState: PlaybackState { lastState }
 
     private func unregister(id: UUID) { continuations.removeValue(forKey: id) }
     private func unregisterPosition(id: UUID) { positionContinuations.removeValue(forKey: id) }
+    private func unregisterState(id: UUID) { stateContinuations.removeValue(forKey: id) }
 
     private func recordOrThrow(_ call: Call) throws {
         if let err = nextError {
@@ -113,6 +125,8 @@ actor MockPlaybackCoordinator: PlaybackCoordinator {
         continuations.removeAll()
         for c in positionContinuations.values { c.finish() }
         positionContinuations.removeAll()
+        for c in stateContinuations.values { c.finish() }
+        stateContinuations.removeAll()
         errorsContinuation.finish()
     }
 }

@@ -34,6 +34,7 @@ final class MiniPlayerViewModel: ObservableObject {
     private var subscriptionTask: Task<Void, Never>?
     private var positionSubscriptionTask: Task<Void, Never>?
     private var errorsSubscriptionTask: Task<Void, Never>?
+    private var stateSubscriptionTask: Task<Void, Never>?
     private var settingsSubscriptionTask: Task<Void, Never>?
     private var paletteTask: Task<Void, Never>?
     private var inFlightChannelId: Int?
@@ -81,6 +82,8 @@ final class MiniPlayerViewModel: ObservableObject {
         positionSubscriptionTask = nil
         errorsSubscriptionTask?.cancel()
         errorsSubscriptionTask = nil
+        stateSubscriptionTask?.cancel()
+        stateSubscriptionTask = nil
         settingsSubscriptionTask?.cancel()
         settingsSubscriptionTask = nil
         paletteTask?.cancel()
@@ -161,6 +164,17 @@ final class MiniPlayerViewModel: ObservableObject {
             }
         }
 
+        let stateStream = await coordinator.stateUpdates
+        stateSubscriptionTask = Task { [weak self] in
+            for await state in stateStream {
+                guard let self else { return }
+                switch state {
+                case .playing: isPlaying = true
+                case .paused, .stopped: isPlaying = false
+                }
+            }
+        }
+
         let settingsStream = await configStore.changes
         settingsSubscriptionTask = Task { [weak self] in
             for await snapshot in settingsStream {
@@ -191,6 +205,7 @@ final class MiniPlayerViewModel: ObservableObject {
         subscriptionTask?.cancel(); subscriptionTask = nil
         positionSubscriptionTask?.cancel(); positionSubscriptionTask = nil
         errorsSubscriptionTask?.cancel(); errorsSubscriptionTask = nil
+        stateSubscriptionTask?.cancel(); stateSubscriptionTask = nil
         settingsSubscriptionTask?.cancel(); settingsSubscriptionTask = nil
         paletteTask?.cancel(); paletteTask = nil
         hasStarted = false
