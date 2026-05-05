@@ -55,6 +55,11 @@ The app installs a status item in the menu bar (no Dock icon, no main window). C
   - Bootstrap and advance both go through `api/play` with the personalised per-listener cursor, so the same blocks/songs play in the same order as the web player.
   - Cross-session resume: the backend remembers where you left off per channel. Restarting the app picks up where you stopped.
   - Telemetry endpoints (`update_history`, `update_pause`) keep the cursor accurate across pauses, skips, and song boundaries.
+- **Appearance**
+  - System / Light / Dark mode picker.
+  - Ambient background derived from album art (opt-in).
+  - **Liquid Glass (popovers)** — Apple's macOS 26 translucent material applied to the mini-player and past-song popovers, refracting the desktop behind. Disabled with a "Requires macOS 26 or later" caption on older systems. Mutually exclusive with Ambient.
+  - **Frosted Upcoming Program window** — `NSVisualEffectView` blur behind the upcoming-cards layout (macOS 14+).
 
 <p align="center"><img src=".screenshots/settings.png" alt="Settings window: bitrate, output device, hog mode toggle."/></p>
 
