@@ -86,10 +86,17 @@ jobs:
       - name: Verify universal binary
         run: lipo -info "build/RP Player.app/Contents/MacOS/RP Player"
 
-      - name: Zip
+      - name: Create DMG
         run: |
-          cd build
-          zip -r "RP Player-${GITHUB_REF_NAME}.zip" "RP Player.app"
+          mkdir -p build/dmg-staging
+          cp -r "build/RP Player.app" "build/dmg-staging/RP Player.app"
+          ln -s /Applications "build/dmg-staging/Applications"
+          hdiutil create \
+            -volname "RP Player" \
+            -srcfolder "build/dmg-staging" \
+            -ov \
+            -format UDZO \
+            "build/RP Player-${GITHUB_REF_NAME}.dmg"
 
       - name: Create GitHub Release
         env:
@@ -103,4 +110,4 @@ jobs:
             --title "$GITHUB_REF_NAME" \
             --generate-notes \
             $PRERELEASE_FLAG \
-            "build/RP Player-${GITHUB_REF_NAME}.zip"
+            "build/RP Player-${GITHUB_REF_NAME}.dmg"

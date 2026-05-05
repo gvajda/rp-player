@@ -17,7 +17,7 @@ My goal was a tiny menu-bar [Radio Paradise](https://radioparadise.com/) player 
 
 ## Getting started
 
-The app ships as a notarisation-free `.app` bundle. Download `RP Player-<version>.zip` from the [Releases](https://github.com/gvajda/rp-player/releases/latest) page, unzip, and drag `RP Player.app` into `/Applications`.
+The app ships as a notarisation-free `.app` bundle. Download `RP Player-<version>.dmg` from the [Releases](https://github.com/gvajda/rp-player/releases/latest) page, open the DMG, and drag `RP Player.app` into the `Applications` shortcut.
 
 **First launch:** macOS Gatekeeper blocks apps that aren't notarised. Right-click `RP Player.app` in Finder and choose **Open**, then confirm. Or, from a terminal:
 
