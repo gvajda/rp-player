@@ -580,6 +580,81 @@ extension LivePlaybackCoordinatorTests {
             "prefetched block from before stop() must not resurface after restart. calls=\(engineCalls)"
         )
     }
+
+    func testResumeAfterLongIdleRefetchesBlockInsteadOfEngineResume() async throws {
+        // After paused for >= 59 minutes, mpv's HTTP connection to the CDN is
+        // commonly stale (server-side connection eviction, even if block.expiration
+        // is still in the future per RP's API). resume() must refetch via play()
+        // rather than calling engine.resume() blindly.
+        final class MutableClock: @unchecked Sendable {
+            var date = Date(timeIntervalSince1970: 1_000)
+        }
+        let clockState = MutableClock()
+        let api = MockRpApiClient()
+        let firstBlock = makeBlock(
+            url: "https://example.com/before.flac",
+            expiration: 99_999_999_999,
+            songs: [("s1", 60_000), ("s2", 60_000)]
+        )
+        let refetched = makeBlock(
+            url: "https://example.com/after.flac",
+            songs: [("s3", 60_000)]
+        )
+        await api.setBlockResponses([firstBlock, refetched])
+        let engine = MockPlayerEngine()
+        let coord = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(),
+            bitrateProvider: { 4 }, clock: { clockState.date }
+        )
+        try await coord.play(channelId: 0)
+        try await coord.pause()
+        // 59 minutes + 1 second after pause
+        clockState.date = Date(timeIntervalSince1970: 1_000 + 59 * 60 + 1)
+        try await coord.resume()
+
+        let engineCalls = await engine.recordedCalls()
+        let resumeCount = engineCalls.filter { if case .resume = $0 { return true } else { return false } }.count
+        XCTAssertEqual(resumeCount, 0, "expected no engine.resume after long idle")
+        XCTAssertEqual(engineCalls.last,
+                       .play(url: URL(string: "https://example.com/after.flac")!, startSeconds: nil),
+                       "expected engine.play with refetched block")
+        let apiCalls = await api.calls
+        XCTAssertEqual(apiCalls.count, 2, "expected bootstrap + refetch (no extra advance)")
+        guard case let .play(_, _, _, action2, _, _, _) = apiCalls[1] else {
+            return XCTFail("expected second call to be .play")
+        }
+        XCTAssertEqual(action2, .start, "long-idle refetch goes through play(channelId:) which uses action=start")
+    }
+
+    func testResumeWithinIdleThresholdStillCallsEngineResume() async throws {
+        // 30 minutes after pause: still within 59m threshold, normal engine.resume() path.
+        final class MutableClock: @unchecked Sendable {
+            var date = Date(timeIntervalSince1970: 1_000)
+        }
+        let clockState = MutableClock()
+        let api = MockRpApiClient()
+        let block = makeBlock(
+            url: "https://example.com/0-1.flac",
+            expiration: 99_999_999_999,
+            songs: [("s1", 60_000), ("s2", 60_000)]
+        )
+        await api.setBlockResponses([block])
+        let engine = MockPlayerEngine()
+        let coord = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(),
+            bitrateProvider: { 4 }, clock: { clockState.date }
+        )
+        try await coord.play(channelId: 0)
+        try await coord.pause()
+        clockState.date = Date(timeIntervalSince1970: 1_000 + 30 * 60)
+        try await coord.resume()
+
+        let engineCalls = await engine.recordedCalls()
+        let resumeCount = engineCalls.filter { if case .resume = $0 { return true } else { return false } }.count
+        XCTAssertEqual(resumeCount, 1, "expected exactly one engine.resume within idle threshold")
+        let apiCalls = await api.calls
+        XCTAssertEqual(apiCalls.count, 1, "no refetch within threshold")
+    }
 }
 
 extension LivePlaybackCoordinatorTests {

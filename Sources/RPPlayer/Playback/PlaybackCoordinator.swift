@@ -51,6 +51,8 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     private var errorsContinuation: AsyncStream<String>.Continuation?
     private var consecutivePlaybackFailures = 0
     private static let maxConsecutivePlaybackFailures = 3
+    // 59m, just under typical 1h CDN TCP idle eviction; observed mpv stream-end after 8.5h pause.
+    private static let longIdleResumeThresholdSeconds: TimeInterval = 59 * 60
 
     public var errors: AsyncStream<String>
 
@@ -205,10 +207,16 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     public func resume() async throws {
         logger.debug("resume()")
         guard let block = currentBlock else { throw PlaybackCoordinatorError.notPlaying }
-        if block.expiration > 0,
-           Date().timeIntervalSince1970 > Double(block.expiration),
-           let channelId = currentChannelId {
-            logger.info("resume: block expired (now=\(Int(Date().timeIntervalSince1970)) > expiration=\(block.expiration)), refetching")
+        let now = clock()
+        let pausedFor: TimeInterval? = pausedAt.map { now.timeIntervalSince($0) }
+        let longIdle = (pausedFor ?? 0) >= Self.longIdleResumeThresholdSeconds
+        let blockExpired = block.expiration > 0 && now.timeIntervalSince1970 > Double(block.expiration)
+        if (longIdle || blockExpired), let channelId = currentChannelId {
+            if longIdle {
+                logger.info("resume: long idle (\(Int(pausedFor ?? 0))s >= \(Int(Self.longIdleResumeThresholdSeconds))s), refetching block")
+            } else {
+                logger.info("resume: block expired (now=\(Int(now.timeIntervalSince1970)) > expiration=\(block.expiration)), refetching")
+            }
             pausedAt = nil
             pausePositionMs = 0
             try await play(channelId: channelId)
