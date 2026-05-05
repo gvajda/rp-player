@@ -31,7 +31,7 @@ struct PastSongView: View {
             }
         }
         .animation(.easeInOut(duration: 0.4), value: viewModel.ambientTopColor)
-        .modifier(LiquidGlassBackgroundIfEnabled(enabled: viewModel.liquidGlassEnabled))
+        .modifier(LiquidGlassBackgroundIfEnabled(enabled: effectiveLiquidGlassEnabled))
         .task { await viewModel.start() }
     }
 }
