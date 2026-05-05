@@ -12,11 +12,7 @@ class PopoverController {
     private var floatingMode: Bool = false
 
     init(rootView: AnyView) {
-        let wrapped = AnyView(
-            rootView
-                .background(Color(nsColor: .windowBackgroundColor))
-        )
-        let hostingView = NSHostingView(rootView: wrapped)
+        let hostingView = NSHostingView(rootView: rootView)
         hostingView.frame = NSRect(origin: .zero, size: Self.contentSize)
 
         let panel = NSPanel(
@@ -62,8 +58,7 @@ class PopoverController {
     }
 
     func present(rootView: AnyView, relativeTo anchor: NSView) {
-        let wrapped = AnyView(rootView.background(Color(nsColor: .windowBackgroundColor)))
-        let hostingView = NSHostingView(rootView: wrapped)
+        let hostingView = NSHostingView(rootView: rootView)
         hostingView.frame = NSRect(origin: .zero, size: Self.contentSize)
         panel.contentView = hostingView
         panel.contentView?.wantsLayer = true
