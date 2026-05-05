@@ -57,9 +57,8 @@ The app installs a status item in the menu bar (no Dock icon, no main window). C
   - Telemetry endpoints (`update_history`, `update_pause`) keep the cursor accurate across pauses, skips, and song boundaries.
 - **Appearance**
   - System / Light / Dark mode picker.
-  - Ambient background derived from album art (opt-in).
-  - **Liquid Glass (popovers)** — Apple's macOS 26 translucent material applied to the mini-player and past-song popovers, refracting the desktop behind. Disabled with a "Requires macOS 26 or later" caption on older systems. Mutually exclusive with Ambient.
-  - **Frosted Upcoming Program window** — `NSVisualEffectView` blur behind the upcoming-cards layout (macOS 14+).
+  - **Popover style** picker (None / Ambient / Frosty): None is the default opaque window background, Ambient paints a 2-stop gradient sampled from the current album art, Frosty drops a `NSVisualEffectView` (`.hudWindow`, `.behindWindow`) behind the SwiftUI host so the desktop blurs through.
+  - **Frosted Upcoming Program window** — same `NSVisualEffectView` blur behind the upcoming-cards layout (macOS 14+).
 
 <p align="center"><img src=".screenshots/settings.png" alt="Settings window: bitrate, output device, hog mode toggle."/></p>
 
