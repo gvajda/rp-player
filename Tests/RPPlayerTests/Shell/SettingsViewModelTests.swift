@@ -295,4 +295,70 @@ final class SettingsViewModelTests: XCTestCase {
         XCTAssertFalse(vm.upcomingChannels.contains { $0.chan == "99" })
         await vm.stop()
     }
+
+    func testLiquidGlassEnabledDefaultsToFalse() async throws {
+        let store = StubConfigStore(initial: .default)
+        let catalog = StubAudioDeviceCatalog(initial: [])
+        let auth = StubKeychainAuth()
+        let sut = SettingsViewModel(
+            configStore: store,
+            deviceCatalog: catalog,
+            auth: auth,
+            openLoginWindow: { },
+            openApplicationData: { }
+        )
+        XCTAssertFalse(sut.liquidGlassEnabled)
+    }
+
+    func testSetLiquidGlassEnabledPersistsAndUpdatesViewModel() async throws {
+        let store = StubConfigStore(initial: .default)
+        let catalog = StubAudioDeviceCatalog(initial: [])
+        let auth = StubKeychainAuth()
+        let sut = SettingsViewModel(
+            configStore: store,
+            deviceCatalog: catalog,
+            auth: auth,
+            openLoginWindow: { },
+            openApplicationData: { }
+        )
+        await sut.start()
+        await sut.setLiquidGlassEnabled(true)
+        try await Task.sleep(nanoseconds: 30_000_000)
+        XCTAssertTrue(sut.liquidGlassEnabled)
+        XCTAssertTrue(store.current.liquidGlassEnabled)
+        await sut.stop()
+    }
+
+    func testFrostedUpcomingEnabledDefaultsToFalse() async throws {
+        let store = StubConfigStore(initial: .default)
+        let catalog = StubAudioDeviceCatalog(initial: [])
+        let auth = StubKeychainAuth()
+        let sut = SettingsViewModel(
+            configStore: store,
+            deviceCatalog: catalog,
+            auth: auth,
+            openLoginWindow: { },
+            openApplicationData: { }
+        )
+        XCTAssertFalse(sut.frostedUpcomingEnabled)
+    }
+
+    func testSetFrostedUpcomingEnabledPersistsAndUpdatesViewModel() async throws {
+        let store = StubConfigStore(initial: .default)
+        let catalog = StubAudioDeviceCatalog(initial: [])
+        let auth = StubKeychainAuth()
+        let sut = SettingsViewModel(
+            configStore: store,
+            deviceCatalog: catalog,
+            auth: auth,
+            openLoginWindow: { },
+            openApplicationData: { }
+        )
+        await sut.start()
+        await sut.setFrostedUpcomingEnabled(true)
+        try await Task.sleep(nanoseconds: 30_000_000)
+        XCTAssertTrue(sut.frostedUpcomingEnabled)
+        XCTAssertTrue(store.current.frostedUpcomingEnabled)
+        await sut.stop()
+    }
 }
