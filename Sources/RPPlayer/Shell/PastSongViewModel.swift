@@ -9,6 +9,7 @@ final class PastSongViewModel: ObservableObject {
     @Published private(set) var currentRating: Int?
     @Published private(set) var isSignedIn: Bool
     @Published private(set) var ambientTopColor: Color?
+    @Published private(set) var liquidGlassEnabled: Bool = false
 
     private let albumArtCache: any AlbumArtCache
     private let auth: any KeychainAuth
@@ -41,12 +42,14 @@ final class PastSongViewModel: ObservableObject {
         isSignedIn = auth.isLoggedIn
         currentRating = Self.parseRating(song.userRating)
         ambientEnabled = await configStore.settings.ambientBackgroundEnabled
+        liquidGlassEnabled = await configStore.settings.liquidGlassEnabled
 
         let stream = await configStore.changes
         settingsSubscriptionTask?.cancel()
         settingsSubscriptionTask = Task { [weak self] in
             for await snapshot in stream {
                 guard let self else { return }
+                self.liquidGlassEnabled = snapshot.liquidGlassEnabled
                 let was = self.ambientEnabled
                 self.ambientEnabled = snapshot.ambientBackgroundEnabled
                 if was, !snapshot.ambientBackgroundEnabled {

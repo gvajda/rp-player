@@ -183,4 +183,24 @@ final class PastSongViewModelTests: XCTestCase {
         for _ in 0..<5 { await Task.yield() }
         XCTAssertNil(sut.ambientTopColor)
     }
+
+    func testLiquidGlassEnabledReflectsConfigStoreChange() async throws {
+        let api = MockRpApiClient()
+        let cache = StubAlbumArtCache()
+        let auth = StubKeychainAuth()
+        let store = StubConfigStore(initial: .default)
+        let sut = PastSongViewModel(
+            song: makeSong(),
+            albumArtCache: cache,
+            auth: auth,
+            api: api,
+            configStore: store,
+            paletteExtractor: StubAmbientPaletteExtractor()
+        )
+        await sut.start()
+        XCTAssertFalse(sut.liquidGlassEnabled)
+        try await store.update { $0.liquidGlassEnabled = true }
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertTrue(sut.liquidGlassEnabled)
+    }
 }
