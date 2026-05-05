@@ -15,6 +15,7 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 ## Current state
 
 - Last merged: **PR 25** — Popover style picker (None / Ambient / Frosty) + Frosted Upcoming Program window. 355 tests passing on `main`.
+- **Next up: PR 26 — CPU / RAM footprint investigation.** Activity Monitor shows 15–25% CPU and up to ~230 MB RAM during active playback on an M1 Pro MBP — feels excessive for a lightweight menu-bar player. Goal: identify hot paths and trim the footprint. First task is figuring out *how* to measure: Instruments (time profiler, allocations, leaks), `os_signpost` traces, an internal debug overlay, or a dedicated profiling build with extra logging? Suspects to consider: libmpv decode/AO, position-update fan-out (1 Hz throttle vs raw mpv ticks), SwiftUI re-renders in the popover (ambient gradient + palette extraction on every art change), Now Playing center artwork conversions, AsyncStream subscriber counts. No fix work this PR — produce a measurement plan, gather numbers, and write up findings + a follow-up plan before any code changes.
 
 ## PR status
 
