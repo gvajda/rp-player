@@ -26,7 +26,10 @@ struct PastSongView: View {
             case .none:
                 Color(nsColor: .windowBackgroundColor)
             case .ambient:
-                AmbientGradientBackground(topColor: viewModel.ambientTopColor)
+                ZStack {
+                    Color(nsColor: .windowBackgroundColor)
+                    AmbientGradientBackground(topColor: viewModel.ambientTopColor)
+                }
             case .frosty:
                 Color.clear
             }

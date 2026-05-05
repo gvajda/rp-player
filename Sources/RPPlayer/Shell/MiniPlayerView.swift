@@ -39,7 +39,10 @@ struct MiniPlayerView: View {
             case .none:
                 Color(nsColor: .windowBackgroundColor)
             case .ambient:
-                AmbientGradientBackground(topColor: viewModel.ambientTopColor)
+                ZStack {
+                    Color(nsColor: .windowBackgroundColor)
+                    AmbientGradientBackground(topColor: viewModel.ambientTopColor)
+                }
             case .frosty:
                 Color.clear
             }
@@ -50,7 +53,7 @@ struct MiniPlayerView: View {
 
     private var progressRow: some View {
         VStack(spacing: 2) {
-            if colorScheme == .light && viewModel.ambientTopColor != nil {
+            if colorScheme == .light && viewModel.popoverStyle != .none {
                 ProgressView(
                     value: viewModel.songElapsedSeconds,
                     total: max(viewModel.songDurationSeconds, 0.001)
