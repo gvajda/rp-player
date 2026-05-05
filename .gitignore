@@ -22,3 +22,5 @@ docs/superpowers/
 .temp/
 
 build/
+
+.vscode/

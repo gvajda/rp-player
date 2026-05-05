@@ -58,7 +58,13 @@ struct MiniPlayerView: View {
                     value: viewModel.songElapsedSeconds,
                     total: max(viewModel.songDurationSeconds, 0.001)
                 )
-                .progressViewStyle(AmbientProgressStyle(fillColor: .black))
+                .progressViewStyle(AmbientProgressStyle(fillColor: .primary))
+            } else if colorScheme == .dark && viewModel.popoverStyle != .none {
+                ProgressView(
+                    value: viewModel.songElapsedSeconds,
+                    total: max(viewModel.songDurationSeconds, 0.001)
+                )
+                .progressViewStyle(AmbientProgressStyle(fillColor: .primary))
             } else {
                 ProgressView(
                     value: viewModel.songElapsedSeconds,
@@ -96,7 +102,9 @@ struct MiniPlayerView: View {
                     }
                     Button {
                         let menu = ContextMenuBuilder.build(viewModel: viewModel)
-                        if let event = NSApp.currentEvent, let contentView = event.window?.contentView {
+                        if let event = NSApp.currentEvent,
+                            let contentView = event.window?.contentView
+                        {
                             NSMenu.popUpContextMenu(menu, with: event, for: contentView)
                         }
                     } label: {
@@ -113,10 +121,12 @@ struct MiniPlayerView: View {
     }
 
     private var channelPicker: some View {
-        Picker(selection: Binding(
-            get: { viewModel.selectedChannelId },
-            set: { newId in Task { await viewModel.selectChannel(newId) } }
-        )) {
+        Picker(
+            selection: Binding(
+                get: { viewModel.selectedChannelId },
+                set: { newId in Task { await viewModel.selectChannel(newId) } }
+            )
+        ) {
             ForEach(viewModel.channels, id: \.chan) { channel in
                 if let id = Int(channel.chan) {
                     Text(channel.title).tag(id)
@@ -173,7 +183,8 @@ private struct AmbientProgressStyle: ProgressViewStyle {
                 Capsule()
                     .fill(fillColor)
                     .frame(
-                        width: max(0, geo.size.width * CGFloat(configuration.fractionCompleted ?? 0)),
+                        width: max(
+                            0, geo.size.width * CGFloat(configuration.fractionCompleted ?? 0)),
                         height: 8
                     )
             }
@@ -182,4 +193,3 @@ private struct AmbientProgressStyle: ProgressViewStyle {
         .frame(height: 20)
     }
 }
-
