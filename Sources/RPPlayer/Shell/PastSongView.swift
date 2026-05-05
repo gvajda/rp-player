@@ -4,6 +4,10 @@ import SwiftUI
 struct PastSongView: View {
     @ObservedObject var viewModel: PastSongViewModel
 
+    private var effectiveLiquidGlassEnabled: Bool {
+        LiquidGlassBackground.isAvailable && viewModel.liquidGlassEnabled
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             PopoverAlbumArt(image: viewModel.currentArt)
@@ -22,7 +26,7 @@ struct PastSongView: View {
         }
         .frame(width: 342)
         .background {
-            if !viewModel.liquidGlassEnabled {
+            if !effectiveLiquidGlassEnabled {
                 AmbientGradientBackground(topColor: viewModel.ambientTopColor)
             }
         }

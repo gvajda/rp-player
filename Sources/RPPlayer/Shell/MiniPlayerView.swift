@@ -5,6 +5,10 @@ struct MiniPlayerView: View {
     @ObservedObject var viewModel: MiniPlayerViewModel
     @Environment(\.colorScheme) private var colorScheme
 
+    private var effectiveLiquidGlassEnabled: Bool {
+        LiquidGlassBackground.isAvailable && viewModel.liquidGlassEnabled
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             if let message = viewModel.errorMessage {
@@ -35,7 +39,7 @@ struct MiniPlayerView: View {
         }
         .frame(width: 342)
         .background {
-            if !viewModel.liquidGlassEnabled {
+            if !effectiveLiquidGlassEnabled {
                 AmbientGradientBackground(topColor: viewModel.ambientTopColor)
             }
         }

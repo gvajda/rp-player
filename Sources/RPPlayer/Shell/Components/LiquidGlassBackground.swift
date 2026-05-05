@@ -1,6 +1,10 @@
 import SwiftUI
 
 struct LiquidGlassBackground: ViewModifier {
+    static var isAvailable: Bool {
+        if #available(macOS 26.0, *) { true } else { false }
+    }
+
     func body(content: Content) -> some View {
         if #available(macOS 26.0, *) {
             content.glassEffect(in: RoundedRectangle(cornerRadius: 10))
