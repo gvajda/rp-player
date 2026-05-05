@@ -138,4 +138,26 @@ final class MiniPlayerViewModelAmbientTests: XCTestCase {
         XCTAssertNotNil(sut.ambientTopColor, "toggling ambient ON mid-playback should produce a color from the already-loaded art")
         await sut.stop()
     }
+
+    func testLiquidGlassEnabledReflectsConfigStoreChange() async throws {
+        var initial = AppSettings.default
+        initial.liquidGlassEnabled = false
+        store = StubConfigStore(initial: initial)
+        let sut = MiniPlayerViewModel(
+            coordinator: coordinator,
+            api: api,
+            initialChannelId: 0,
+            albumArtCache: cache,
+            auth: auth,
+            configStore: store,
+            paletteExtractor: extractor,
+            openSettings: { }
+        )
+        await sut.start()
+        XCTAssertFalse(sut.liquidGlassEnabled)
+        try await store.update { $0.liquidGlassEnabled = true }
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertTrue(sut.liquidGlassEnabled)
+        await sut.stop()
+    }
 }
