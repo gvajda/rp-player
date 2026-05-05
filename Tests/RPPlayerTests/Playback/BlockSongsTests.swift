@@ -84,4 +84,48 @@ final class BlockSongsTests: XCTestCase {
         let starts: [Double] = [0, 60, 180, 270]
         XCTAssertEqual(BlockSongs.indexOfSong(at: 99999.0, in: starts), 3)
     }
+
+    func testIsStaleReturnsTrueWhenCueZeroAndAllElapsedNonPositive() {
+        let songs = [
+            song(id: "x", duration: 275_300, elapsed: -1_069_700),
+            song(id: "x", duration: 505_000, elapsed: -794_400),
+            song(id: "x", duration: 289_400, elapsed: -289_400),
+        ]
+        XCTAssertTrue(BlockSongs.isStale(songs: songs, cue: 0))
+    }
+
+    func testIsStaleReturnsFalseForFreshPromoBlock() {
+        // Promo block: single song, cue=0, elapsed=0, type="P". Must NOT be stale.
+        let songs = [song(id: "x", duration: 5_000, elapsed: 0)]
+        XCTAssertFalse(BlockSongs.isStale(songs: songs, cue: 0))
+    }
+
+    func testIsStaleRequiresAtLeastOneStrictlyNegativeElapsed() {
+        // All-zero elapsed (degenerate music block at boundary) is NOT stale either.
+        let songs = [
+            song(id: "x", duration: 60_000, elapsed: 0),
+            song(id: "x", duration: 60_000, elapsed: 0),
+        ]
+        XCTAssertFalse(BlockSongs.isStale(songs: songs, cue: 0))
+    }
+
+    func testIsStaleReturnsFalseWhenAnyElapsedPositive() {
+        let songs = [
+            song(id: "x", duration: 60_000, elapsed: -1_000),
+            song(id: "x", duration: 60_000, elapsed: 60_000),
+        ]
+        XCTAssertFalse(BlockSongs.isStale(songs: songs, cue: 0))
+    }
+
+    func testIsStaleReturnsFalseWhenCueNonZero() {
+        let songs = [
+            song(id: "x", duration: 60_000, elapsed: -1_000),
+            song(id: "x", duration: 60_000, elapsed: -500),
+        ]
+        XCTAssertFalse(BlockSongs.isStale(songs: songs, cue: 357_800))
+    }
+
+    func testIsStaleReturnsFalseForEmptySongs() {
+        XCTAssertFalse(BlockSongs.isStale(songs: [], cue: 0))
+    }
 }

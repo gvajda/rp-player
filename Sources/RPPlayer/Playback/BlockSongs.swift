@@ -36,4 +36,15 @@ enum BlockSongs {
         }
         return result
     }
+
+    // True when the bootstrap response is for a block whose audio file has
+    // already played past its end (server cursor lagged real-time). Detected
+    // by cue == 0 AND every song's elapsed offset being <= 0 with at least
+    // one strictly negative — distinguishing stale blocks from fresh promo
+    // blocks (single song, elapsed=0).
+    static func isStale(songs: [PlayListSong], cue: Int) -> Bool {
+        guard !songs.isEmpty, cue == 0 else { return false }
+        let elapsedValues = songs.map { $0.elapsed ?? 0 }
+        return elapsedValues.allSatisfy { $0 <= 0 } && elapsedValues.contains { $0 < 0 }
+    }
 }
