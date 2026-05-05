@@ -25,6 +25,7 @@ struct HoverInfoIcon: View {
                     .font(.callout)
                     .padding(10)
                     .frame(maxWidth: 300, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
             }
     }
 }

@@ -28,7 +28,9 @@ struct SettingsView: View {
                 Task { await viewModel.setForceMaxVolumeEnabled(true) }
             }
         } message: {
-            Text("This sets the macOS output volume for the selected device to 100% and removes software volume from the signal path. Lower the volume on your DAC, amp, or headphones first to avoid hearing damage.")
+            Text(
+                "This sets the macOS output volume for the selected device to 100% and removes software volume from the signal path. Lower the volume on your DAC, amp, or headphones first to avoid hearing damage."
+            )
         }
     }
 
@@ -55,7 +57,8 @@ struct SettingsView: View {
     private var bmcIcon: some View {
         let image: NSImage = {
             if let url = AppResources.bundle.url(forResource: "bmc", withExtension: "png"),
-               let img = NSImage(contentsOf: url) {
+                let img = NSImage(contentsOf: url)
+            {
                 return img
             }
             return NSImage()
@@ -65,7 +68,9 @@ struct SettingsView: View {
             .frame(width: 18, height: 18)
     }
 
-    private func supportButton(title: String, subtitle: String, url: String, icon: AnyView) -> some View {
+    private func supportButton(title: String, subtitle: String, url: String, icon: AnyView)
+        -> some View
+    {
         Link(destination: URL(string: url)!) {
             HStack(spacing: 8) {
                 icon
@@ -110,7 +115,12 @@ struct SettingsView: View {
             Toggle(isOn: applyReplayGainEffectiveBinding) {
                 HStack(spacing: 6) {
                     Text("Apply ReplayGain")
-                    HoverInfoIcon(text: "ReplayGain is a per-track loudness adjustment encoded in the file's metadata. With it ON, mpv attenuates each track to match a reference loudness so songs play at similar levels. With it OFF (default), audio is sent untouched — preferred for bit-perfect playback.")
+                    if !viewModel.forceMaxVolumeEnabled {
+                        HoverInfoIcon(
+                            text:
+                                "ReplayGain is a per-track loudness adjustment encoded in the file's metadata. With it ON, the audio engine attenuates each track to match a reference loudness so songs play at similar levels.\n\nNot available when Force Max Volume is ON"
+                        )
+                    }
                 }
             }
             .disabled(viewModel.forceMaxVolumeEnabled)
@@ -193,12 +203,13 @@ struct SettingsView: View {
 
     private var upcomingProgramSection: some View {
         Section("Upcoming Program") {
-            Stepper("Rows: \(viewModel.upcomingRowCount)",
-                    value: Binding(
-                        get: { viewModel.upcomingRowCount },
-                        set: { v in Task { await viewModel.setUpcomingRowCount(v) } }
-                    ),
-                    in: 3...10)
+            Stepper(
+                "Rows: \(viewModel.upcomingRowCount)",
+                value: Binding(
+                    get: { viewModel.upcomingRowCount },
+                    set: { v in Task { await viewModel.setUpcomingRowCount(v) } }
+                ),
+                in: 3...10)
             if !viewModel.upcomingChannels.isEmpty {
                 ForEach(viewModel.upcomingChannels, id: \.chan) { channel in
                     let chanId = Int(channel.chan) ?? -1
@@ -254,7 +265,8 @@ struct SettingsView: View {
     }
 
     private func deviceLabel(_ device: AudioDevice) -> String {
-        let suffix = device.transportType.isBitPerfectRecommended ? "" : " (not recommended for bit-perfect)"
+        let suffix =
+            device.transportType.isBitPerfectRecommended ? "" : " (not recommended for bit-perfect)"
         return "\(device.name) — \(device.transportType.label)\(suffix)"
     }
 
