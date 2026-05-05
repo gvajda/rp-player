@@ -82,7 +82,7 @@ final class AppContainerTests: XCTestCase {
             api: api,
             albumArtCache: cache,
             keychainAuth: auth,
-            pastSongPopoverController: PopoverController(rootView: AnyView(EmptyView())),
+            pastSongPopoverController: PopoverController(rootView: AnyView(EmptyView()), configStore: StubConfigStore(initial: .default)),
             upcomingWindowController: UpcomingWindowController(
                 viewModel: UpcomingProgramViewModel(
                     api: MockRpApiClient(),

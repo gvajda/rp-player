@@ -46,7 +46,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // the popover has ever been opened. start() is idempotent.
         Task { await container.viewModel.start() }
 
-        let popover = PopoverController(rootView: AnyView(MiniPlayerView(viewModel: container.viewModel)))
+        let popover = PopoverController(rootView: AnyView(MiniPlayerView(viewModel: container.viewModel)), configStore: container.configStore)
         self.popover = popover
         let statusItemController = StatusItemController(
             popover: popover,

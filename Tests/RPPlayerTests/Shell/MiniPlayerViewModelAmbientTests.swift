@@ -139,9 +139,9 @@ final class MiniPlayerViewModelAmbientTests: XCTestCase {
         await sut.stop()
     }
 
-    func testLiquidGlassEnabledReflectsConfigStoreChange() async throws {
+    func testPopoverStyleReflectsConfigStoreChange() async throws {
         var initial = AppSettings.default
-        initial.liquidGlassEnabled = false
+        initial.popoverStyle = .none
         store = StubConfigStore(initial: initial)
         let sut = MiniPlayerViewModel(
             coordinator: coordinator,
@@ -154,10 +154,10 @@ final class MiniPlayerViewModelAmbientTests: XCTestCase {
             openSettings: { }
         )
         await sut.start()
-        XCTAssertFalse(sut.liquidGlassEnabled)
-        try await store.update { $0.liquidGlassEnabled = true }
+        XCTAssertEqual(sut.popoverStyle, .none)
+        try await store.update { $0.popoverStyle = .frosty }
         try await Task.sleep(nanoseconds: 50_000_000)
-        XCTAssertTrue(sut.liquidGlassEnabled)
+        XCTAssertEqual(sut.popoverStyle, .frosty)
         await sut.stop()
     }
 }

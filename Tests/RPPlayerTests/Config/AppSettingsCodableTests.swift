@@ -88,20 +88,22 @@ final class AppSettingsCodableTests: XCTestCase {
         XCTAssertEqual(decoded.upcomingHiddenChannelIds, [1, 3])
     }
 
-    func testRoundTripPreservesLiquidGlassEnabled() throws {
-        var settings = AppSettings.default
-        settings.liquidGlassEnabled = true
-        let data = try JSONEncoder().encode(settings)
-        let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
-        XCTAssertTrue(decoded.liquidGlassEnabled)
+    func testRoundTripPreservesPopoverStyle() throws {
+        for style in PopoverStyle.allCases {
+            var settings = AppSettings.default
+            settings.popoverStyle = style
+            let data = try JSONEncoder().encode(settings)
+            let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
+            XCTAssertEqual(decoded.popoverStyle, style, "round-trip failed for \(style)")
+        }
     }
 
-    func testMissingLiquidGlassEnabledKeyDecodesAsFalse() throws {
+    func testMissingPopoverStyleKeyDecodesAsNone() throws {
         let json = """
         {"selectedChannelId":0}
         """.data(using: .utf8)!
         let decoded = try JSONDecoder().decode(AppSettings.self, from: json)
-        XCTAssertFalse(decoded.liquidGlassEnabled)
+        XCTAssertEqual(decoded.popoverStyle, .none)
     }
 
     func testRoundTripPreservesFrostedUpcomingEnabled() throws {

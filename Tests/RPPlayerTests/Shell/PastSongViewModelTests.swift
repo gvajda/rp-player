@@ -184,7 +184,7 @@ final class PastSongViewModelTests: XCTestCase {
         XCTAssertNil(sut.ambientTopColor)
     }
 
-    func testLiquidGlassEnabledReflectsConfigStoreChange() async throws {
+    func testPopoverStyleReflectsConfigStoreChange() async throws {
         let api = MockRpApiClient()
         let cache = StubAlbumArtCache()
         let auth = StubKeychainAuth()
@@ -198,9 +198,9 @@ final class PastSongViewModelTests: XCTestCase {
             paletteExtractor: StubAmbientPaletteExtractor()
         )
         await sut.start()
-        XCTAssertFalse(sut.liquidGlassEnabled)
-        try await store.update { $0.liquidGlassEnabled = true }
+        XCTAssertEqual(sut.popoverStyle, .none)
+        try await store.update { $0.popoverStyle = .frosty }
         try await Task.sleep(nanoseconds: 50_000_000)
-        XCTAssertTrue(sut.liquidGlassEnabled)
+        XCTAssertEqual(sut.popoverStyle, .frosty)
     }
 }

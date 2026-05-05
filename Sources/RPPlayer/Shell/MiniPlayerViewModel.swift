@@ -18,7 +18,7 @@ final class MiniPlayerViewModel: ObservableObject {
     @Published private(set) var songDurationSeconds: Double = 0
     @Published private(set) var ambientTopColor: Color?
     @Published private(set) var popoverFloatingEnabled: Bool = false
-    @Published private(set) var liquidGlassEnabled: Bool = false
+    @Published private(set) var popoverStyle: PopoverStyle = .none
     private var ambientEnabled: Bool = false
 
     typealias PersistChannelId = @Sendable (Int) async -> Void
@@ -87,7 +87,7 @@ final class MiniPlayerViewModel: ObservableObject {
         paletteTask = nil
         self.ambientEnabled = await configStore.settings.ambientBackgroundEnabled
         self.popoverFloatingEnabled = await configStore.settings.popoverFloating
-        self.liquidGlassEnabled = await configStore.settings.liquidGlassEnabled
+        self.popoverStyle = await configStore.settings.popoverStyle
         do {
             self.channels = try await api.listChannels()
             self.errorMessage = nil
@@ -168,7 +168,7 @@ final class MiniPlayerViewModel: ObservableObject {
                 let wasEnabled = self.ambientEnabled
                 self.ambientEnabled = snapshot.ambientBackgroundEnabled
                 self.popoverFloatingEnabled = snapshot.popoverFloating
-                self.liquidGlassEnabled = snapshot.liquidGlassEnabled
+                self.popoverStyle = snapshot.popoverStyle
                 if wasEnabled, !snapshot.ambientBackgroundEnabled {
                     self.ambientTopColor = nil
                 } else if !wasEnabled, snapshot.ambientBackgroundEnabled,

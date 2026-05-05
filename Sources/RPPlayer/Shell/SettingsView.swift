@@ -151,16 +151,26 @@ struct SettingsView: View {
                     menuBarIconButton(.color, label: "Color")
                 }
             }
-            Toggle("Ambient background from album art", isOn: ambientBackgroundBinding)
-            Toggle("Liquid Glass (popovers)", isOn: liquidGlassBinding)
-                .disabled(!LiquidGlassBackground.isAvailable)
-            if !LiquidGlassBackground.isAvailable {
-                Text("Requires macOS 26 or later")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            HStack {
+                Text("Popover style")
+                Spacer()
+                HStack(spacing: 6) {
+                    popoverStyleButton(.none, label: "None")
+                    popoverStyleButton(.ambient, label: "Ambient")
+                    popoverStyleButton(.frosty, label: "Frosty")
+                }
             }
             Toggle("Frosted Upcoming Program window", isOn: frostedUpcomingBinding)
         }
+    }
+
+    private func popoverStyleButton(_ style: PopoverStyle, label: String) -> some View {
+        Button {
+            Task { await viewModel.setPopoverStyle(style) }
+        } label: {
+            Text(label).frame(minWidth: 56)
+        }
+        .buttonStyle(StableButtonStyle(filled: viewModel.popoverStyle == style))
     }
 
     private func menuBarIconButton(_ style: MenuBarIconStyle, label: String) -> some View {
@@ -302,20 +312,6 @@ struct SettingsView: View {
         Binding(
             get: { viewModel.appearance },
             set: { newValue in Task { await viewModel.setAppearance(newValue) } }
-        )
-    }
-
-    private var ambientBackgroundBinding: Binding<Bool> {
-        Binding(
-            get: { viewModel.ambientBackgroundEnabled },
-            set: { newValue in Task { await viewModel.setAmbientBackgroundEnabled(newValue) } }
-        )
-    }
-
-    private var liquidGlassBinding: Binding<Bool> {
-        Binding(
-            get: { viewModel.liquidGlassEnabled },
-            set: { newValue in Task { await viewModel.setLiquidGlassEnabled(newValue) } }
         )
     }
 

@@ -296,7 +296,7 @@ final class SettingsViewModelTests: XCTestCase {
         await vm.stop()
     }
 
-    func testLiquidGlassEnabledDefaultsToFalse() async throws {
+    func testPopoverStyleDefaultsToNone() async throws {
         let store = StubConfigStore(initial: .default)
         let catalog = StubAudioDeviceCatalog(initial: [])
         let auth = StubKeychainAuth()
@@ -307,10 +307,10 @@ final class SettingsViewModelTests: XCTestCase {
             openLoginWindow: { },
             openApplicationData: { }
         )
-        XCTAssertFalse(sut.liquidGlassEnabled)
+        XCTAssertEqual(sut.popoverStyle, .none)
     }
 
-    func testSetLiquidGlassEnabledPersistsAndUpdatesViewModel() async throws {
+    func testSetPopoverStylePersistsAndSyncsAmbientFlag() async throws {
         let store = StubConfigStore(initial: .default)
         let catalog = StubAudioDeviceCatalog(initial: [])
         let auth = StubKeychainAuth()
@@ -322,10 +322,17 @@ final class SettingsViewModelTests: XCTestCase {
             openApplicationData: { }
         )
         await sut.start()
-        await sut.setLiquidGlassEnabled(true)
+        await sut.setPopoverStyle(.ambient)
         try await Task.sleep(nanoseconds: 30_000_000)
-        XCTAssertTrue(sut.liquidGlassEnabled)
-        XCTAssertTrue(store.current.liquidGlassEnabled)
+        XCTAssertEqual(sut.popoverStyle, .ambient)
+        XCTAssertEqual(store.current.popoverStyle, .ambient)
+        XCTAssertTrue(store.current.ambientBackgroundEnabled, "selecting .ambient must keep ambientBackgroundEnabled in sync")
+
+        await sut.setPopoverStyle(.frosty)
+        try await Task.sleep(nanoseconds: 30_000_000)
+        XCTAssertEqual(sut.popoverStyle, .frosty)
+        XCTAssertFalse(store.current.ambientBackgroundEnabled, "non-.ambient styles must clear ambientBackgroundEnabled")
+
         await sut.stop()
     }
 

@@ -15,7 +15,7 @@ final class SettingsViewModel: ObservableObject {
     @Published private(set) var appearance: AppearanceMode
     @Published private(set) var menuBarIconStyle: MenuBarIconStyle
     @Published private(set) var ambientBackgroundEnabled: Bool
-    @Published private(set) var liquidGlassEnabled: Bool
+    @Published private(set) var popoverStyle: PopoverStyle
     @Published private(set) var frostedUpcomingEnabled: Bool
     @Published private(set) var upcomingRowCount: Int
     @Published private(set) var upcomingHiddenChannelIds: [Int]
@@ -62,7 +62,7 @@ final class SettingsViewModel: ObservableObject {
         self.appearance = snapshot.appearance
         self.menuBarIconStyle = snapshot.menuBarIconStyle
         self.ambientBackgroundEnabled = snapshot.ambientBackgroundEnabled
-        self.liquidGlassEnabled = snapshot.liquidGlassEnabled
+        self.popoverStyle = snapshot.popoverStyle
         self.frostedUpcomingEnabled = snapshot.frostedUpcomingEnabled
         self.upcomingRowCount = snapshot.upcomingRowCount
         self.upcomingHiddenChannelIds = snapshot.upcomingHiddenChannelIds
@@ -88,7 +88,8 @@ final class SettingsViewModel: ObservableObject {
                     self.appearance = snapshot.appearance
                     self.menuBarIconStyle = snapshot.menuBarIconStyle
                     self.ambientBackgroundEnabled = snapshot.ambientBackgroundEnabled
-                    self.liquidGlassEnabled = snapshot.liquidGlassEnabled
+                    self.popoverStyle = snapshot.popoverStyle
+
                     self.frostedUpcomingEnabled = snapshot.frostedUpcomingEnabled
                     self.upcomingRowCount = snapshot.upcomingRowCount
                     self.upcomingHiddenChannelIds = snapshot.upcomingHiddenChannelIds
@@ -170,8 +171,14 @@ final class SettingsViewModel: ObservableObject {
         await update { $0.ambientBackgroundEnabled = value }
     }
 
-    func setLiquidGlassEnabled(_ value: Bool) async {
-        await update { $0.liquidGlassEnabled = value }
+    func setPopoverStyle(_ value: PopoverStyle) async {
+        // Keep ambientBackgroundEnabled in sync so existing palette-extraction
+        // logic in MiniPlayer/PastSong VMs (which still keys off the bool)
+        // doesn't need restructuring.
+        await update { settings in
+            settings.popoverStyle = value
+            settings.ambientBackgroundEnabled = (value == .ambient)
+        }
     }
 
     func setFrostedUpcomingEnabled(_ value: Bool) async {

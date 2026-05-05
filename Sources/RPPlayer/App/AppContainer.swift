@@ -422,7 +422,7 @@ extension AppContainer {
             api: api,
             albumArtCache: cache,
             keychainAuth: keychainAuth,
-            pastSongPopoverController: PopoverController(rootView: AnyView(EmptyView())),
+            pastSongPopoverController: PopoverController(rootView: AnyView(EmptyView()), configStore: store ?? NoopConfigStore()),
             upcomingWindowController: upcomingWindowController,
             configStore: store ?? NoopConfigStore(),
             nowPlayingCenterController: nowPlayingCenterController,

@@ -11,7 +11,7 @@ final class StatusItemControllerTests: XCTestCase {
     private var closeCount = 0
 
     override func setUp() async throws {
-        popoverController = PopoverController(rootView: AnyView(EmptyView()))
+        popoverController = PopoverController(rootView: AnyView(EmptyView()), configStore: StubConfigStore(initial: .default))
         createdControllers = []
         showCount = 0
         closeCount = 0
@@ -53,7 +53,7 @@ final class StatusItemControllerTests: XCTestCase {
         final class AlwaysShownPopover: PopoverController {
             override var isShown: Bool { true }
         }
-        let stub = AlwaysShownPopover(rootView: AnyView(EmptyView()))
+        let stub = AlwaysShownPopover(rootView: AnyView(EmptyView()), configStore: StubConfigStore(initial: .default))
         let controller = StatusItemController(
             popover: stub,
             show: { [unowned self] _ in self.showCount += 1 },
@@ -66,7 +66,7 @@ final class StatusItemControllerTests: XCTestCase {
     }
 
     func testStatusItemUsesRpIconAsButtonImage() throws {
-        let popover = PopoverController(rootView: AnyView(EmptyView()))
+        let popover = PopoverController(rootView: AnyView(EmptyView()), configStore: StubConfigStore(initial: .default))
         let controller = StatusItemController(popover: popover)
         createdControllers.append(controller)
         let image = try XCTUnwrap(controller.statusItem.button?.image, "status item must have an image")

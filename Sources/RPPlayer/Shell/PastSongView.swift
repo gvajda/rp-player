@@ -4,10 +4,6 @@ import SwiftUI
 struct PastSongView: View {
     @ObservedObject var viewModel: PastSongViewModel
 
-    private var effectiveLiquidGlassEnabled: Bool {
-        LiquidGlassBackground.isAvailable && viewModel.liquidGlassEnabled
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             PopoverAlbumArt(image: viewModel.currentArt)
@@ -26,12 +22,16 @@ struct PastSongView: View {
         }
         .frame(width: 342)
         .background {
-            if !effectiveLiquidGlassEnabled {
+            switch viewModel.popoverStyle {
+            case .none:
+                Color(nsColor: .windowBackgroundColor)
+            case .ambient:
                 AmbientGradientBackground(topColor: viewModel.ambientTopColor)
+            case .frosty:
+                Color.clear
             }
         }
         .animation(.easeInOut(duration: 0.4), value: viewModel.ambientTopColor)
-        .modifier(LiquidGlassBackgroundIfEnabled(enabled: effectiveLiquidGlassEnabled))
         .task { await viewModel.start() }
     }
 }

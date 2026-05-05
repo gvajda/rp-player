@@ -6,6 +6,7 @@ final class UpcomingWindowController {
     private let viewModel: UpcomingProgramViewModel
     private let configStore: any ConfigStore
     private var window: NSWindow?
+    private var hostingController: NSHostingController<UpcomingProgramView>?
     private var frostedView: NSVisualEffectView?
     private var settingsTask: Task<Void, Never>?
 
@@ -18,25 +19,58 @@ final class UpcomingWindowController {
 
     func show() async {
         if window == nil {
-            let rootView = UpcomingProgramView(viewModel: viewModel)
-            let hosting = NSHostingController(rootView: rootView)
-            let w = NSWindow(contentViewController: hosting)
+            let hosting = NSHostingController(rootView: UpcomingProgramView(viewModel: viewModel))
+            self.hostingController = hosting
+
+            let container = NSView()
+            container.wantsLayer = true
+
+            let frosted = NSVisualEffectView()
+            frosted.material = .hudWindow
+            frosted.blendingMode = .behindWindow
+            frosted.state = .active
+            frosted.translatesAutoresizingMaskIntoConstraints = false
+            frosted.isHidden = true
+            container.addSubview(frosted)
+            NSLayoutConstraint.activate([
+                frosted.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+                frosted.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+                frosted.topAnchor.constraint(equalTo: container.topAnchor),
+                frosted.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            ])
+
+            hosting.view.translatesAutoresizingMaskIntoConstraints = false
+            container.addSubview(hosting.view)
+            NSLayoutConstraint.activate([
+                hosting.view.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+                hosting.view.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+                hosting.view.topAnchor.constraint(equalTo: container.topAnchor),
+                hosting.view.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            ])
+
+            let w = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 720, height: 480),
+                styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                backing: .buffered,
+                defer: false
+            )
             w.title = "Upcoming Program"
-            w.styleMask = [.titled, .closable, .miniaturizable, .resizable]
-            w.setContentSize(NSSize(width: 720, height: 480))
             w.minSize = NSSize(width: 480, height: 300)
             w.setFrameAutosaveName("UpcomingProgram")
             w.isReleasedWhenClosed = false
+            w.contentView = container
             window = w
+            frostedView = frosted
         }
 
         if settingsTask == nil {
-            await applyFrosted(await configStore.settings.frostedUpcomingEnabled)
+            applyFrosted(await configStore.settings.frostedUpcomingEnabled)
             let stream = await configStore.changes
             settingsTask = Task { [weak self] in
                 for await snapshot in stream {
-                    guard let self else { return }
-                    await self.applyFrosted(snapshot.frostedUpcomingEnabled)
+                    await MainActor.run { [weak self] in
+                        self?.applyFrosted(snapshot.frostedUpcomingEnabled)
+                    }
                 }
             }
         }
@@ -57,26 +91,16 @@ final class UpcomingWindowController {
     }
 
     private func applyFrosted(_ enabled: Bool) {
-        guard let window, let contentView = window.contentView else { return }
+        guard let window, let frostedView else { return }
+        frostedView.isHidden = !enabled
         if enabled {
-            if frostedView == nil {
-                let v = NSVisualEffectView()
-                v.material = .hudWindow
-                v.blendingMode = .behindWindow
-                v.state = .active
-                v.translatesAutoresizingMaskIntoConstraints = false
-                contentView.addSubview(v, positioned: .below, relativeTo: contentView.subviews.first)
-                NSLayoutConstraint.activate([
-                    v.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-                    v.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
-                    v.topAnchor.constraint(equalTo: contentView.topAnchor),
-                    v.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
-                ])
-                frostedView = v
-            }
+            // .behindWindow blur needs the window to be transparent; otherwise the effect view
+            // samples the window's opaque backing.
+            window.isOpaque = false
+            window.backgroundColor = .clear
         } else {
-            frostedView?.removeFromSuperview()
-            frostedView = nil
+            window.isOpaque = true
+            window.backgroundColor = .windowBackgroundColor
         }
     }
 }
