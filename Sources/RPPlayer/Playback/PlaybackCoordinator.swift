@@ -127,12 +127,26 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         await ensureEventSubscription()
         let bitrate = await bitrateProvider()
         logger.debug("play resolved bitrate=\(bitrate)")
-        let block = try await api.play(
+        var block = try await api.play(
             channel: channelId, bitrate: bitrate, event: 0, action: .start,
             audioType: nil, episodeId: nil, sliceNum: nil
         )
-        let songs = BlockSongs.orderedSongs(from: block)
+        var songs = BlockSongs.orderedSongs(from: block)
         guard !songs.isEmpty else { throw PlaybackCoordinatorError.blockHasNoSongs }
+
+        if BlockSongs.isStale(songs: songs, cue: block.cue) {
+            let lastSong = songs.last
+            let lastEvent: Int = Int(lastSong?.event ?? "") ?? Int(block.endEvent ?? "") ?? 0
+            let audioType = lastSong?.type ?? "M"
+            let sliceNum = lastSong?.sliceNum
+            logger.info("bootstrap returned stale block (cue=0, all elapsed<=0); advancing via action=play event=\(lastEvent) audioType=\(audioType) sliceNum=\(sliceNum ?? "null")")
+            block = try await api.play(
+                channel: channelId, bitrate: bitrate, event: lastEvent, action: .play,
+                audioType: audioType, episodeId: 0, sliceNum: sliceNum
+            )
+            songs = BlockSongs.orderedSongs(from: block)
+            guard !songs.isEmpty else { throw PlaybackCoordinatorError.blockHasNoSongs }
+        }
 
         let starts = BlockSongs.startsAtSeconds(songs: songs)
         logger.debug("play block (expiration=\(block.expiration)):\n\(describeBlock(url: block.url, songs: songs, starts: starts))")

@@ -108,6 +108,87 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         let np = await coordinator.nowPlaying
         XCTAssertNil(np)
     }
+
+    func testPlayDetectsStaleBlockAndAdvancesViaActionPlay() async throws {
+        // Server returned a "stale" bootstrap block: cue=0, all elapsed <= 0 with at
+        // least one strictly negative. Coordinator must follow up with a single
+        // action=play advance call, using the last song's event/type/sliceNum,
+        // and play the resulting block.
+        let staleSong = PlayListSong(
+            songId: "old", artist: "A", title: "T", album: "Al", duration: 289_400,
+            event: "2870247", schedTime: nil, chan: "0", year: nil, asin: nil,
+            rating: nil, userRating: nil, cover: nil, elapsed: -289_400, slideshow: nil,
+            type: "M", sliceNum: "5"
+        )
+        let staleBlock = makeBlock(
+            url: "https://example.com/stale.flac",
+            cue: 0, endEvent: "2870247", prebuiltSongs: [staleSong]
+        )
+        let freshBlock = makeBlock(
+            url: "https://example.com/fresh.flac",
+            songs: [("s1", 60_000), ("s2", 60_000)]
+        )
+
+        let api = MockRpApiClient()
+        await api.setBlockResponses([staleBlock, freshBlock])
+        let engine = MockPlayerEngine()
+        let coord = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
+        )
+        try await coord.play(channelId: 0)
+
+        let calls = await api.calls
+        XCTAssertEqual(calls.count, 2, "expected bootstrap + 1 advance")
+        XCTAssertEqual(calls[0], .play(channel: 0, bitrate: 4, event: 0, action: .start,
+                                       audioType: nil, episodeId: nil, sliceNum: nil))
+        guard case let .play(_, _, event2, action2, audioType2, episodeId2, sliceNum2) = calls[1] else {
+            return XCTFail("expected second call to be .play")
+        }
+        XCTAssertEqual(action2, .play)
+        XCTAssertEqual(event2, 2_870_247)
+        XCTAssertEqual(audioType2, "M")
+        XCTAssertEqual(episodeId2, 0)
+        XCTAssertEqual(sliceNum2, "5")
+
+        let engineCalls = await engine.recordedCalls()
+        XCTAssertEqual(engineCalls.last,
+                       .play(url: URL(string: "https://example.com/fresh.flac")!, startSeconds: nil),
+                       "engine should play the fresh (post-advance) block, not the stale one")
+    }
+
+    func testPlayDoesNotAdvanceTwiceIfAdvanceAlsoReturnsStale() async throws {
+        // Defense-in-depth: if both the bootstrap AND the action=play advance
+        // return stale, we accept the second response rather than recursing.
+        let staleA = PlayListSong(
+            songId: "a", artist: "A", title: "T", album: "Al", duration: 100_000,
+            event: "100", schedTime: nil, chan: "0", year: nil, asin: nil,
+            rating: nil, userRating: nil, cover: nil, elapsed: -100_000, slideshow: nil,
+            type: "M", sliceNum: "1"
+        )
+        let staleB = PlayListSong(
+            songId: "b", artist: "A", title: "T", album: "Al", duration: 100_000,
+            event: "200", schedTime: nil, chan: "0", year: nil, asin: nil,
+            rating: nil, userRating: nil, cover: nil, elapsed: -100_000, slideshow: nil,
+            type: "M", sliceNum: "1"
+        )
+        let staleBlockA = makeBlock(url: "https://example.com/staleA.flac", cue: 0,
+                                    endEvent: "100", prebuiltSongs: [staleA])
+        let staleBlockB = makeBlock(url: "https://example.com/staleB.flac", cue: 0,
+                                    endEvent: "200", prebuiltSongs: [staleB])
+        let api = MockRpApiClient()
+        await api.setBlockResponses([staleBlockA, staleBlockB])
+        let engine = MockPlayerEngine()
+        let coord = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
+        )
+        try await coord.play(channelId: 0)
+
+        let calls = await api.calls
+        XCTAssertEqual(calls.count, 2, "expected exactly one advance retry, not infinite recursion")
+        let engineCalls = await engine.recordedCalls()
+        XCTAssertEqual(engineCalls.last,
+                       .play(url: URL(string: "https://example.com/staleB.flac")!, startSeconds: nil))
+    }
 }
 
 extension LivePlaybackCoordinatorTests {
