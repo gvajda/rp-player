@@ -36,6 +36,7 @@ struct MiniPlayerView: View {
         .frame(width: 342)
         .background(AmbientGradientBackground(topColor: viewModel.ambientTopColor))
         .animation(.easeInOut(duration: 0.4), value: viewModel.ambientTopColor)
+        .modifier(LiquidGlassBackgroundIfEnabled(enabled: viewModel.liquidGlassEnabled))
         .task { await viewModel.start() }
     }
 
