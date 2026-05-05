@@ -100,7 +100,7 @@ final class MiniPlayerViewModel: ObservableObject {
 
         if let snapshot = await coordinator.nowPlaying {
             self.nowPlaying = snapshot
-            self.isPlaying = true
+            self.isPlaying = await coordinator.currentPlaybackState == .playing
         }
 
         let stream = await coordinator.nowPlayingUpdates
@@ -109,7 +109,6 @@ final class MiniPlayerViewModel: ObservableObject {
                 guard let self else { return }
                 let coverChanged = await MainActor.run { () -> Bool in
                     self.nowPlaying = np
-                    self.isPlaying = true
                     self.isSignedIn = self.auth.isLoggedIn
                     self.currentRating = Self.parseRating(from: np.song.userRating)
                     self.currentBitrateLabel = BlockBitrateLabel.display(np.blockBitrate)

@@ -427,8 +427,8 @@ final class MiniPlayerViewModelTests: XCTestCase {
     }
 
     func testSystemPauseSyncsIsPlaying() async throws {
-        await coordinator.fireState(.playing)
         await sut.start()
+        await coordinator.fireState(.playing)
         try await Task.sleep(nanoseconds: 50_000_000)
         XCTAssertTrue(sut.isPlaying, "stateUpdates .playing should set isPlaying=true")
 
