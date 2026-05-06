@@ -29,6 +29,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     // When true, the popover is shown as a movable always-visible floating
     // panel (no outside-click dismissal, draggable). Toggled from the menu.
     public var popoverFloating: Bool
+    public var audioProfiles: [String: AudioProfile]
 
     public init(
         selectedChannelId: Int = 0,
@@ -49,7 +50,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         playerId: String? = nil,
         upcomingRowCount: Int = 5,
         upcomingHiddenChannelIds: [Int] = [],
-        popoverFloating: Bool = false
+        popoverFloating: Bool = false,
+        audioProfiles: [String: AudioProfile] = [:]
     ) {
         self.selectedChannelId = selectedChannelId
         self.hogModeEnabled = hogModeEnabled
@@ -70,6 +72,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.upcomingRowCount = upcomingRowCount
         self.upcomingHiddenChannelIds = upcomingHiddenChannelIds
         self.popoverFloating = popoverFloating
+        self.audioProfiles = audioProfiles
     }
 
     public init(from decoder: Decoder) throws {
@@ -93,6 +96,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.upcomingRowCount = try c.decodeIfPresent(Int.self, forKey: .upcomingRowCount) ?? 5
         self.upcomingHiddenChannelIds = try c.decodeIfPresent([Int].self, forKey: .upcomingHiddenChannelIds) ?? []
         self.popoverFloating = try c.decodeIfPresent(Bool.self, forKey: .popoverFloating) ?? false
+        self.audioProfiles = try c.decodeIfPresent([String: AudioProfile].self, forKey: .audioProfiles) ?? [:]
     }
 
     public static let `default` = AppSettings()
