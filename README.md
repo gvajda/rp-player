@@ -37,12 +37,16 @@ The app installs a status item in the menu bar (no Dock icon, no main window). C
 - **Plays every Radio Paradise channel**
   - Channel list fetched live from `api/list_chan`; new/removed channels appear automatically.
   - ⭐ Includes the **My Paradise** (a.k.a. Favorites) channel once you log in.
+
 - **Every bitrate the API offers**
   - 32k / 64k / 128k / 320k AAC, 128k / 320k MP3, FLAC.
   - Selectable from Settings; takes effect on the next channel switch or block boundary.
+
 - **Song rating**
   - Click ☆ to rate songs, or see your rating (★ N) displayed in the title row. Disabled when signed out. Ratings POST to `api/rate` and update the local `userRating` immediately on success.
+  - Click on a notification in the Notification Center to rate a song played in the past.
   - Sign in via Settings → Sign in. The login window is a `WKWebView` pointed at the official login page; the auth cookies stay in the macOS Keychain.
+
 - **Behaviour matches the official player**
   - Bootstrap and advance both go through `api/play` with the personalised per-listener cursor, so the same blocks/songs play in the same order as the web player.
   - Cross-session resume: the backend remembers where you left off per channel. Restarting the app picks up where you stopped.
@@ -65,14 +69,17 @@ The app installs a status item in the menu bar (no Dock icon, no main window). C
   - Hardware **Play/Pause** and **Next Track** keys on Mac and Bluetooth keyboards control the stream.
   - macOS **Now Playing** widget (Control Center, lock-screen-style controls) shows current title/artist/album/artwork plus elapsed time, and reflects play/pause state.
   - Previous-track and seek are intentionally disabled — Radio Paradise is forward-only.
+
 - **Per-device audio settings**:
   - Each output device stores its own profile (hog mode, release-on-pause, force-max volume, ReplayGain, bitrate).
   - Switching devices instantly restores that device's saved profile. Devices seen for the first time start from safe defaults — all toggles off, 320k AAC — so a DAC profile with Force Max Volume on can never bleed over to built-in speakers.
+
 - **Bit-perfect output via CoreAudio hog mode**
   - The app acquires the audio device exclusively (`kAudioDevicePropertyHogMode`) and feeds it the decoded sample stream untouched — no system mixer, no resampling.
   - Hog mode is opt-out in Settings if you'd rather share the device with other apps.
   - **Release on Pause** (default on): the device returns to shared use whenever you pause, so other apps and Mac calls work normally without quitting RP Player.
   - **Force Max Volume** (for external DACs): pins the device's CoreAudio volume to 100% and locks `volume-max` so no software attenuation is in the signal path. Confirmation alert before enabling — set your DAC/amp/headphone volume first.
+
 - **Apply ReplayGain**
   - Per-track loudness normalisation when on, untouched audio when off.
   - default off; force-max overrides it.
@@ -87,28 +94,34 @@ The app installs a status item in the menu bar (no Dock icon, no main window). C
   - Playback control: play–pause + skip-forward (skip respects the per-block song list and falls through to the prefetched next block).
   - Channel picker centred under the controls; bitrate label to the right (verbatim from the API: "FLAC", "320k AAC", etc.).
   - Hamburger menu with: Settings, Open Song in Browser, Upcoming Program, Floating Window, About, Quit.
+
 - **Floating window mode**
   - Toggle from the menu (right-click icon or in-popover hamburger). Item shows a checkmark when active.
   - The popover detaches from the menu-bar anchor: stays visible across other-app interactions, joins all Spaces, and is draggable from any background area.
   - Click anywhere to dismiss is disabled; toggle off (or close from the icon click) returns it to anchored mode.
   - Setting persists across launches — turn it on once, the panel comes back on the next start.
+
 - **Album art + ambient background**
   - Album art is fetched from `img.radioparadise.com`, validated as a real image, and cached on disk (LRU, ~10 MB cap).
   - The next song's art is **prefetched** as soon as it's known (within-block from the song list, across blocks from the prefetched next block), so the cover swap at song boundaries is instant — no blank tile.
   - Optional **ambient background**: samples a representative colour from the bottom edge of the cover and fades the popover background between that colour and the system window colour. Toggle in Settings.
+
 - **Appearance Setting**
   - System / Light / Dark mode picker.
   - **Popover style** picker (None / Ambient / Frosty): None is the default opaque window background, Ambient paints a 2-stop gradient sampled from the current album art, Frosty drops a `NSVisualEffectView` (`.hudWindow`, `.behindWindow`) behind the SwiftUI host so the desktop blurs through.
   - **Frosted Upcoming Program window** — same `NSVisualEffectView` blur behind the upcoming-cards layout (macOS 14+).
+
 - **Notifications**
   - One macOS notification per song change (banner + tray entry) with cover thumbnail.
   - Clicking a notification:
     - For the currently playing song → opens the popover.
     - For a song that finished playing recently → opens a small "past song" panel with the same metadata + rating row, so you can rate a track you only noticed after it ended.
   - Toggle in Settings; needs the system notification permission granted on first launch.
+
 - **Hover tooltip on the menu-bar icon**
   - Hovering the icon (after a 300 ms delay) shows a two-line tooltip: "RP Player" plus a live `-mm:ss` countdown to the end of the current song.
   - The countdown ticks every second while the cursor stays over the icon. No song playing → second line hidden.
+
 - **Right-click context menu**
   - Same items as the in-popover hamburger menu (sourced from one shared NSMenu builder).
   - "Open Song in Browser" auto-disables when nothing is playing.
@@ -121,6 +134,7 @@ The app installs a status item in the menu bar (no Dock icon, no main window). C
   - **Decoder:** libmpv 0.36.0, vendored under `Vendor/libmpv/` (universal binaries via `media-kit/libmpv-darwin-build`).
   - **Output:** mpv's plain `coreaudio` AO. The app does not use `coreaudio_exclusive` — it opens hog mode itself via `AudioObjectSetPropertyData` on `kAudioDevicePropertyHogMode` *before* mpv opens the device, then hands the device back on shutdown. This avoids the format-negotiation failures observed on USB DACs (e.g. Qudelix-5K) when mpv tries to own exclusive mode itself.
   - **Block-cued seek:** `loadfile <url> replace start=<seconds>` for the initial cue, instead of a post-`fileLoaded` seek, so the UI doesn't briefly show the cue position while the HTTP buffer is still catching up.
+
 - **Resilience**
   - mpv occasionally fails to decode a block (e.g. some short promo `.m4a` files return `MPV_ERROR_NOTHING_TO_PLAY`). Instead of stalling the channel, the app advances past the bad block via `api/play` and tries the next one, up to a small retry budget. The cursor moves forward, the listener doesn't get stuck.
   - Audio device unplug surfaces a clear banner ("Audio device unavailable…") and stops cleanly so re-plugging + clicking play recovers without a relaunch.
@@ -132,7 +146,9 @@ The app installs a status item in the menu bar (no Dock icon, no main window). C
 A menu-bar app should disappear into the background. RP Player aims for a ~4% avg / ~7% max single CPU core footprint and an ~80 MB RAM ceiling (measured on an M1 laptop during active FLAC playback).
 
 - **mpv position events at 1 Hz, not 10–25 Hz.** mpv's `time-pos` property is observed as `MPV_FORMAT_INT64` instead of `MPV_FORMAT_DOUBLE`, so the engine only emits a tick when the whole-second value changes. The progress bar, OS Now Playing widget, and song-boundary detection all run off the same low-rate stream.
+
 - **HTTP demuxer buffers sized for radio, not video.** mpv's defaults (~150 MB forward buffer, ~75 MB backward) are tuned for video scrubbing. RP Player caps them at 8 MiB / 1 MiB with a 10-second cache window — plenty for a live audio stream that is never rewound.
+
 - **Idle pump wakeups minimized.** The libmpv event pump uses a 5-second wait timeout (vs. the original 0.5 s) so an idle / paused player nearly never wakes the CPU; shutdown still calls `mpv_wakeup` so quitting is instant.
 
 ### Cookie-based authentication
