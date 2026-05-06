@@ -118,6 +118,7 @@ extension AppContainer {
             safe.outputDeviceUID = nil
             return safe
         }()
+        let startupProfile = initial.outputDeviceUID.flatMap { initial.audioProfiles[$0] } ?? AudioProfile.safeDefault
 
         let playerId: String
         if let existing = initial.playerId, !existing.isEmpty {
@@ -151,10 +152,10 @@ extension AppContainer {
         do {
             // Force-max forces replaygain out of the signal path regardless of the
             // user's stored replaygain intent (which is preserved for restore).
-            let effectiveReplayGain = initial.applyReplayGainEnabled && !initial.forceMaxVolumeEnabled
+            let effectiveReplayGain = startupProfile.applyReplayGainEnabled && !startupProfile.forceMaxVolumeEnabled
             engine = try MpvPlayerEngine(
                 initialDeviceUID: initial.outputDeviceUID,
-                initialForceMaxVolume: initial.forceMaxVolumeEnabled,
+                initialForceMaxVolume: startupProfile.forceMaxVolumeEnabled,
                 initialApplyReplayGain: effectiveReplayGain,
                 logger: logger
             )
@@ -170,11 +171,11 @@ extension AppContainer {
         // Skip the launch-time acquire when release-on-pause is on: nothing is
         // playing yet, so grabbing the device would block other apps for no
         // benefit. The state-stream subscriber below acquires on first .playing.
-        if initial.hogModeEnabled, !initial.releaseHogOnPauseEnabled,
+        if startupProfile.hogModeEnabled, !startupProfile.releaseHogOnPauseEnabled,
            let uid = initial.outputDeviceUID, !uid.isEmpty {
             Task { _ = await hogController.acquire(deviceUID: uid) }
         }
-        if initial.forceMaxVolumeEnabled, let uid = initial.outputDeviceUID, !uid.isEmpty {
+        if startupProfile.forceMaxVolumeEnabled, let uid = initial.outputDeviceUID, !uid.isEmpty {
             Task { _ = await volumeController.setVolumeMax(deviceUID: uid) }
         }
 
@@ -215,11 +216,37 @@ extension AppContainer {
         if let store {
             Task { [engine, hogController, volumeController, coordinator, store] in
                 let stream = await store.changes
-                var lastForceMax = initial.forceMaxVolumeEnabled
-                var lastEffectiveRG = initial.applyReplayGainEnabled && !initial.forceMaxVolumeEnabled
+                var lastForceMax = startupProfile.forceMaxVolumeEnabled
+                var lastEffectiveRG = startupProfile.applyReplayGainEnabled && !startupProfile.forceMaxVolumeEnabled
                 var lastDeviceUID = initial.outputDeviceUID
-                var lastHog = initial.hogModeEnabled
+                var lastHog = startupProfile.hogModeEnabled
+                var previousBitrate = startupProfile.bitrate
                 for await settings in stream {
+                    // Device switch: load the saved profile for the new device (or safe
+                    // defaults) and atomically overwrite the top-level fields before any
+                    // controller write so no stale setting ever reaches the new device.
+                    if settings.outputDeviceUID != lastDeviceUID {
+                        let newUID = settings.outputDeviceUID
+                        let profile = newUID.flatMap { settings.audioProfiles[$0] } ?? AudioProfile.safeDefault
+                        try? await store.update { s in
+                            s.hogModeEnabled = profile.hogModeEnabled
+                            s.releaseHogOnPauseEnabled = profile.releaseHogOnPauseEnabled
+                            s.forceMaxVolumeEnabled = profile.forceMaxVolumeEnabled
+                            s.applyReplayGainEnabled = profile.applyReplayGainEnabled
+                            s.bitrate = profile.bitrate
+                            if let uid = newUID, s.audioProfiles[uid] == nil {
+                                s.audioProfiles[uid] = profile
+                            }
+                        }
+                        if profile.bitrate != previousBitrate,
+                           await coordinator.currentPlaybackState == .playing,
+                           let channelId = await coordinator.nowPlaying?.channelId {
+                            try? await coordinator.changeChannel(to: channelId)
+                        }
+                        previousBitrate = profile.bitrate
+                        lastDeviceUID = newUID
+                        continue
+                    }
                     // Hog acquire reflects current playback state: when release-on-pause
                     // is on AND we're paused/stopped, don't grab the device just because
                     // the user toggled hog ON. The state-stream subscriber below covers
@@ -268,6 +295,17 @@ extension AppContainer {
                     if effectiveRG != lastEffectiveRG {
                         try? await engine.setApplyReplayGain(effectiveRG)
                         lastEffectiveRG = effectiveRG
+                    }
+                    if let uid = settings.outputDeviceUID {
+                        try? await store.update { s in
+                            s.audioProfiles[uid] = AudioProfile(
+                                hogModeEnabled: s.hogModeEnabled,
+                                releaseHogOnPauseEnabled: s.releaseHogOnPauseEnabled,
+                                forceMaxVolumeEnabled: s.forceMaxVolumeEnabled,
+                                applyReplayGainEnabled: s.applyReplayGainEnabled,
+                                bitrate: s.bitrate
+                            )
+                        }
                     }
                 }
             }
