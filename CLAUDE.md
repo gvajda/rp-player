@@ -15,7 +15,47 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 ## Current state
 
 - Last merged: **PR 25** — Popover style picker (None / Ambient / Frosty) + Frosted Upcoming Program window. 355 tests passing on `main`.
-- **Next up: PR 26 — CPU / RAM footprint investigation.** Activity Monitor shows 15–25% CPU and up to ~230 MB RAM during active playback on an M1 Pro MBP — feels excessive for a lightweight menu-bar player. Goal: identify hot paths and trim the footprint. First task is figuring out *how* to measure: Instruments (time profiler, allocations, leaks), `os_signpost` traces, an internal debug overlay, or a dedicated profiling build with extra logging? Suspects to consider: libmpv decode/AO, position-update fan-out (1 Hz throttle vs raw mpv ticks), SwiftUI re-renders in the popover (ambient gradient + palette extraction on every art change), Now Playing center artwork conversions, AsyncStream subscriber counts. No fix work this PR — produce a measurement plan, gather numbers, and write up findings + a follow-up plan before any code changes.
+- **Next up: PR 26 — Per-device audio settings persistence.** See section below.
+- **After that: PR 27 — CPU / RAM footprint investigation (deep scan).** See section below. Pre-scan quick wins already landed on `main` (uncommitted); current footprint is acceptable (~1.5–7% CPU, ~80 MB RAM cap). Deep scan is now optional / lower priority.
+
+### PR 26 — Per-device audio settings persistence
+
+**Problem.** Audio settings (hog mode, force-max-volume, release-on-pause, replaygain) are global — one set across all output devices. Today's UI gates force-max-volume + release-on-pause behind hog mode (disabled when hog is OFF), but the *stored* values stay ON. Real-world failure mode: user has DAC selected with hog + force-max ON; system event (incoming call, sleep, device unplug) or a manual switch to laptop speakers turns hog OFF; the disabled-but-stored force-max setting still applies on the next channel change / resume → volume jumps to 100% on built-in speakers despite the UI saying force-max is disabled and recommending OFF. Bad and dangerous (hearing safety).
+
+**Goal.** Store the full audio-settings tuple `{ hogModeEnabled, forceMaxVolumeEnabled, applyReplayGainEnabled, releaseHogOnPauseEnabled }` keyed by `outputDeviceUID` in `config.json`. On device switch, restore that device's saved profile (or apply a sensible default for first-time devices: hog OFF, force-max OFF, replaygain ON, release-on-pause ON). Eliminates the cross-device leak.
+
+**UX surface (open question — pick one during PR 26 brainstorming).** Options:
+
+1. **Indent the audio settings under the Output Device picker** so visual hierarchy makes the per-device scope obvious. Smallest layout change.
+2. **Group into a labeled "Output device settings" section** with the device name in the section header (e.g. "Output device settings — Qudelix-5K"). Most explicit; matches the actual semantic.
+3. **Per-device settings sheet** opened from a gear icon next to the device picker. Cleanest but adds a click.
+
+Option 2 is probably the right call (explicit scope > implicit), but worth confirming with a brainstorm.
+
+**Implementation sketch (not a plan — just shape).**
+
+- `AppSettings`: add `audioProfiles: [String: AudioProfile]` (key = device UID) and a fallback `defaultAudioProfile`. Migration path: lift the four existing top-level fields into a default profile keyed by the current `outputDeviceUID` at first run on the new schema.
+- `AppContainer.live()` settings binder: on `outputDeviceUID` change, look up the matching profile, write it to `AppSettings`'s top-level fields *and* push to `HogModeController` / `DeviceVolumeController` / `MpvPlayerEngine` in one atomic step. If no profile exists, seed one from the safe-default tuple and persist.
+- `SettingsViewModel`: every audio-setting setter writes back to *both* the top-level field (for current UI bindings) and the active device's `AudioProfile` entry.
+- Hearing-safety: keep the existing destructive-confirmation alert for force-max ON. Restoring a saved profile that has force-max ON does NOT re-prompt — the user already confirmed when they originally enabled it on that device.
+- Tests: device-switch round-trip, first-time-device default seeding, force-max restore on hog ON→OFF→ON cycle, JSON migration from old schema.
+
+**Why this PR matters.** Current guardrails fail silently in the most common interruption scenarios (calls, sleep, plug/unplug). Per-device persistence is the durable fix.
+
+### PR 27 — CPU / RAM footprint investigation (deep scan)
+
+Originally pre-PR-26 ("Activity Monitor showed 15–25% CPU and up to ~300 MB RAM during active playback on an M1 Pro MBP"). User reassessed: the high CPU number was likely a misread of activity monitor process attribution; current footprint (~1.5–7% CPU, ~80 MB RAM cap) is fine. Deep scan is now optional follow-up.
+
+**Pre-scan quick wins landed 2026-05-06 (on `main`, uncommitted). 357 tests pass.**
+
+- **`time-pos` observer `MPV_FORMAT_DOUBLE` → `MPV_FORMAT_INT64`** ([MpvPlayerEngine.swift:85](Sources/RPPlayer/Player/MpvPlayerEngine.swift#L85), [MpvEventBridge.swift:20-22](Sources/RPPlayer/Player/MpvEventBridge.swift#L20-L22)). mpv emits position updates on whole-second changes (~1 Hz native) instead of per-frame rate (10–25 Hz). Bridge casts `Int64` → `Double` so the `PlayerEvent.positionUpdate(seconds: Double)` enum is unchanged. Single biggest CPU win.
+- **`mpv_wait_event` pump timeout 0.5s → 5.0s** ([MpvPlayerEngine.swift:144](Sources/RPPlayer/Player/MpvPlayerEngine.swift#L144)). Idle wakeups dropped 10×. Shutdown still uses `mpv_wakeup` so termination latency unchanged.
+- **Removed redundant `MainActor.run` in `MiniPlayerViewModel` position handler** ([MiniPlayerViewModel.swift:141-149](Sources/RPPlayer/Shell/MiniPlayerViewModel.swift#L141-L149)). VM is `@MainActor`; enclosing `Task` already inherits.
+- **mpv demuxer buffers capped** ([MpvPlayerEngine.swift:35-39](Sources/RPPlayer/Player/MpvPlayerEngine.swift#L35-L39)): `demuxer-max-bytes=8MiB`, `demuxer-max-back-bytes=1MiB`, `cache-secs=10`. mpv defaults (150M / 75M) sized for video scrubbing — wasted on a live stream we never rewind. Brought RAM ceiling from ~300 MB → ~80 MB.
+- **`NowPlayingCenterController`'s 1 Hz throttle** is now redundant (source is 1 Hz). Harmless; kept as defense in depth.
+- **Test `testTimePosPropertyChangeBecomesPositionUpdate`** feeds `MPV_FORMAT_INT64` now.
+
+**If a deep scan happens later:** Instruments Allocations / Leaks. Open suspects if RAM still grows: NSImage retention (popover state, `MPMediaItemArtwork` closures), SwiftUI hosting-view leaks across popover open/close, URLSession.shared response data, NSHostingView / NSVisualEffectView retention in `PopoverController` container view. Past-song popover's bounded ≤1 VM leak (Notifications section) — close-callback follow-up still tracked. SwiftUI re-render audit (ambient gradient + frosted view) only worth doing if a hot path is found.
 
 ## PR status
 

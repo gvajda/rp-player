@@ -17,9 +17,9 @@ enum MpvEventBridge {
         guard let namePtr = prop.name else { return nil }
         let name = String(cString: namePtr)
         switch (name, prop.format) {
-        case ("time-pos", MPV_FORMAT_DOUBLE):
-            guard let dataPtr = prop.data?.assumingMemoryBound(to: Double.self) else { return nil }
-            return .positionUpdate(seconds: dataPtr.pointee)
+        case ("time-pos", MPV_FORMAT_INT64):
+            guard let dataPtr = prop.data?.assumingMemoryBound(to: Int64.self) else { return nil }
+            return .positionUpdate(seconds: Double(dataPtr.pointee))
         default:
             return nil
         }

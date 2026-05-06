@@ -35,17 +35,17 @@ final class MpvEventBridgeTests: XCTestCase {
     }
 
     func testTimePosPropertyChangeBecomesPositionUpdate() {
-        var pos: Double = 42.5
+        var pos: Int64 = 42
         let event = withUnsafeMutablePointer(to: &pos) { posPtr -> PlayerEvent? in
             "time-pos".withCString { namePtr in
                 var prop = mpv_event_property()
                 prop.name = namePtr
-                prop.format = MPV_FORMAT_DOUBLE
+                prop.format = MPV_FORMAT_INT64
                 prop.data = UnsafeMutableRawPointer(posPtr)
                 return MpvEventBridge.propertyChange(from: prop)
             }
         }
-        XCTAssertEqual(event, .positionUpdate(seconds: 42.5))
+        XCTAssertEqual(event, .positionUpdate(seconds: 42.0))
     }
 
     func testNonTimePosPropertyChangeReturnsNil() {

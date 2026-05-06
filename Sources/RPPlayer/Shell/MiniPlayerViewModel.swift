@@ -141,13 +141,11 @@ final class MiniPlayerViewModel: ObservableObject {
         positionSubscriptionTask = Task { [weak self] in
             for await pos in positionStream {
                 guard let self else { return }
-                await MainActor.run {
-                    guard let np = self.nowPlaying else { return }
-                    let duration = max(0, np.songEndSeconds - np.songStartSeconds)
-                    let elapsed = max(0, pos - np.songStartSeconds)
-                    self.songElapsedSeconds = min(elapsed, duration)
-                    self.songDurationSeconds = duration
-                }
+                guard let np = self.nowPlaying else { continue }
+                let duration = max(0, np.songEndSeconds - np.songStartSeconds)
+                let elapsed = max(0, pos - np.songStartSeconds)
+                self.songElapsedSeconds = min(elapsed, duration)
+                self.songDurationSeconds = duration
             }
         }
 

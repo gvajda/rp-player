@@ -33,6 +33,13 @@ public actor MpvPlayerEngine: PlayerEngine {
             ("audio-display", "no"),
             ("audio-pitch-correction", "no"),
             ("audio-channels", "auto"),
+            // Cap mpv's HTTP demuxer buffers. Defaults are 150M forward + 75M
+            // backward — sized for video scrubbing, wasted on a live radio
+            // stream we never rewind. 8M forward + 1M backward keeps a few
+            // seconds of FLAC ahead and bounds steady-state RAM growth.
+            ("demuxer-max-bytes", "8MiB"),
+            ("demuxer-max-back-bytes", "1MiB"),
+            ("cache-secs", "10"),
         ]
         if underXCTest {
             baseline.append(("ao", "null"))
@@ -79,8 +86,10 @@ public actor MpvPlayerEngine: PlayerEngine {
             throw PlayerEngineError.initializeFailed(code: Int(initStatus), message: message)
         }
 
-        // Subscribe to time-pos so position updates flow through the pump.
-        _ = mpv_observe_property(h, /*reply_userdata*/ 0, "time-pos", MPV_FORMAT_DOUBLE)
+        // Subscribe to time-pos as INT64 so mpv only emits on whole-second
+        // changes (~1 Hz) instead of the per-frame rate of FORMAT_DOUBLE. The
+        // UI progress bar and song-boundary checks only need second resolution.
+        _ = mpv_observe_property(h, /*reply_userdata*/ 0, "time-pos", MPV_FORMAT_INT64)
 
         // Required for MPV_EVENT_LOG_MESSAGE delivery; without this the bridge's
         // .error(message:) translation path is unreachable.
@@ -134,13 +143,14 @@ public actor MpvPlayerEngine: PlayerEngine {
     /// pushes parsed events back to the actor via `deliver`. Exits when the
     /// MPV_EVENT_SHUTDOWN event arrives, or when the task is cancelled and the
     /// next mpv_wait_event returns (shutdown calls mpv_wakeup to break the wait).
-    /// Uses a 0.5s timeout so cancellation is observed even if mpv produces no events.
+    /// Uses a 5s timeout so the pump rarely wakes when mpv is idle (paused/stopped);
+    /// shutdown calls mpv_wakeup explicitly so termination latency stays low.
     private static func pump(
         handle: OpaquePointer,
         deliver: @Sendable @escaping (PlayerEvent) async -> Void
     ) async {
         while !Task.isCancelled {
-            guard let eventPtr = mpv_wait_event(handle, /*timeout*/ 0.5) else { continue }
+            guard let eventPtr = mpv_wait_event(handle, /*timeout*/ 5.0) else { continue }
             let event = eventPtr.pointee
             if event.event_id == MPV_EVENT_NONE { continue }
             if let translated = MpvEventBridge.playerEvent(from: event) {

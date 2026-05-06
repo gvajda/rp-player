@@ -137,6 +137,14 @@ The app installs a status item in the menu bar (no Dock icon, no main window). C
 - Stale-bootstrap recovery: when the listener has been idle long enough that the server's per-`(player_id, chan)` cursor has lagged real-time, `api/play?action=start` can return a block whose audio file already finished broadcasting (encoded as `cue=0` with all song offsets non-positive and at least one strictly negative). Naively playing that file would resurrect already-aired content while the UI latched onto a song that never matched the audio. The app detects this signature and follows up with a single `api/play?action=play` advance to fetch the live block; one retry max so the user is never caught in a loop.
 - Long-idle resume refetch: when resuming after a pause of 59 minutes or more, the app refetches the block via the bootstrap path instead of asking mpv to resume the existing stream. The threshold sits just under typical 1-hour CDN/server TCP idle eviction, so the listener never hears mpv hit "stream ends prematurely" on a connection the CDN already closed. Composes with stale-bootstrap recovery — if the refetched block is also stale, the same single advance retry kicks in.
 
+### Optimized performance
+
+A menu-bar app should disappear into the background. RP Player aims for a ~4% avg / ~7% max single CPU core footprint and an ~80 MB RAM ceiling (measured on an M1 laptop during active FLAC playback).
+
+- **mpv position events at 1 Hz, not 10–25 Hz.** mpv's `time-pos` property is observed as `MPV_FORMAT_INT64` instead of `MPV_FORMAT_DOUBLE`, so the engine only emits a tick when the whole-second value changes. The progress bar, OS Now Playing widget, and song-boundary detection all run off the same low-rate stream.
+- **HTTP demuxer buffers sized for radio, not video.** mpv's defaults (~150 MB forward buffer, ~75 MB backward) are tuned for video scrubbing. RP Player caps them at 8 MiB / 1 MiB with a 10-second cache window — plenty for a live audio stream that is never rewound.
+- **Idle pump wakeups minimized.** The libmpv event pump uses a 5-second wait timeout (vs. the original 0.5 s) so an idle / paused player nearly never wakes the CPU; shutdown still calls `mpv_wakeup` so quitting is instant.
+
 ### Cookie-based authentication
 
 If you sign in, the app stores the same session cookies your browser stores after a Radio Paradise login (`C_username`, `C_passwd`, `C_validated`, plus the session/PHPSESSID cookies needed by `api/rate`). Storage is the macOS Keychain.
