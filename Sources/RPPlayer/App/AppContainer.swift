@@ -220,7 +220,6 @@ extension AppContainer {
                 var lastEffectiveRG = startupProfile.applyReplayGainEnabled && !startupProfile.forceMaxVolumeEnabled
                 var lastDeviceUID = initial.outputDeviceUID
                 var lastHog = startupProfile.hogModeEnabled
-                var previousBitrate = startupProfile.bitrate
                 for await settings in stream {
                     // Device switch: load the saved profile for the new device (or safe
                     // defaults) and atomically overwrite the top-level fields before any
@@ -238,12 +237,15 @@ extension AppContainer {
                                 s.audioProfiles[uid] = profile
                             }
                         }
-                        if profile.bitrate != previousBitrate,
+                        if profile.bitrate != settings.bitrate,
                            await coordinator.currentPlaybackState == .playing,
                            let channelId = await coordinator.nowPlaying?.channelId {
                             try? await coordinator.changeChannel(to: channelId)
                         }
-                        previousBitrate = profile.bitrate
+                        // Force force-max re-evaluation on the next iteration so that
+                        // switching between two devices that both have force-max ON still
+                        // pins the volume on the new device.
+                        lastForceMax = !profile.forceMaxVolumeEnabled
                         lastDeviceUID = newUID
                         continue
                     }
