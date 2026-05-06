@@ -12,6 +12,7 @@ struct SettingsView: View {
                 .padding(.bottom, 4)
             Form {
                 audioSection
+                deviceSettingsSection
                 notificationsSection
                 appearanceSection
                 upcomingProgramSection
@@ -105,6 +106,24 @@ struct SettingsView: View {
                 .buttonStyle(.borderless)
                 .help("Rescan audio devices")
             }
+        }
+    }
+
+    private var deviceSettingsSectionTitle: String {
+        viewModel.currentDeviceName.map { "Output device settings — \($0)" } ?? "Output device settings"
+    }
+
+    private var deviceSettingsSection: some View {
+        Section(deviceSettingsSectionTitle) {
+            Picker("Bitrate", selection: bitrateBinding) {
+                Text("32K AAC").tag(0)
+                Text("64K AAC").tag(1)
+                Text("128K AAC").tag(2)
+                Text("128K MP3").tag(5)
+                Text("320K AAC").tag(3)
+                Text("320K MP3").tag(6)
+                Text("FLAC").tag(4)
+            }
             Toggle("Hog mode (bit-perfect)", isOn: hogModeBinding)
             Toggle("Release on Pause", isOn: releaseHogOnPauseBinding)
                 .padding(.leading, 20)
@@ -124,15 +143,6 @@ struct SettingsView: View {
                 }
             }
             .disabled(viewModel.forceMaxVolumeEnabled)
-            Picker("Bitrate", selection: bitrateBinding) {
-                Text("32K AAC").tag(0)
-                Text("64K AAC").tag(1)
-                Text("128K AAC").tag(2)
-                Text("128K MP3").tag(5)
-                Text("320K AAC").tag(3)
-                Text("320K MP3").tag(6)
-                Text("FLAC").tag(4)
-            }
         }
     }
 
