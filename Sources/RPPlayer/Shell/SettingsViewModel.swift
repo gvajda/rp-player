@@ -23,6 +23,7 @@ final class SettingsViewModel: ObservableObject {
     @Published private(set) var devices: [AudioDevice] = []
     @Published private(set) var isSignedIn: Bool = false
     @Published private(set) var currentUsername: String?
+    @Published private(set) var currentDeviceName: String?
 
     private let configStore: any ConfigStore
     private let deviceCatalog: any AudioDeviceCatalog
@@ -93,6 +94,7 @@ final class SettingsViewModel: ObservableObject {
                     self.frostedUpcomingEnabled = snapshot.frostedUpcomingEnabled
                     self.upcomingRowCount = snapshot.upcomingRowCount
                     self.upcomingHiddenChannelIds = snapshot.upcomingHiddenChannelIds
+                    self.currentDeviceName = self.devices.first(where: { $0.uid == snapshot.outputDeviceUID })?.name
                 }
             }
         }
@@ -101,7 +103,10 @@ final class SettingsViewModel: ObservableObject {
             for await devices in deviceStream {
                 guard let self else { return }
                 if Task.isCancelled { return }
-                await MainActor.run { self.devices = devices }
+                await MainActor.run {
+                    self.devices = devices
+                    self.currentDeviceName = devices.first(where: { $0.uid == self.outputDeviceUID })?.name
+                }
             }
         }
         refreshAuthState()
@@ -124,23 +129,38 @@ final class SettingsViewModel: ObservableObject {
     }
 
     func setBitrate(_ value: Int) async {
-        await update { $0.bitrate = value }
+        await update { s in
+            s.bitrate = value
+            if let uid = s.outputDeviceUID { s.audioProfiles[uid, default: .safeDefault].bitrate = value }
+        }
     }
 
     func setHogModeEnabled(_ value: Bool) async {
-        await update { $0.hogModeEnabled = value }
+        await update { s in
+            s.hogModeEnabled = value
+            if let uid = s.outputDeviceUID { s.audioProfiles[uid, default: .safeDefault].hogModeEnabled = value }
+        }
     }
 
     func setReleaseHogOnPauseEnabled(_ value: Bool) async {
-        await update { $0.releaseHogOnPauseEnabled = value }
+        await update { s in
+            s.releaseHogOnPauseEnabled = value
+            if let uid = s.outputDeviceUID { s.audioProfiles[uid, default: .safeDefault].releaseHogOnPauseEnabled = value }
+        }
     }
 
     func setForceMaxVolumeEnabled(_ value: Bool) async {
-        await update { $0.forceMaxVolumeEnabled = value }
+        await update { s in
+            s.forceMaxVolumeEnabled = value
+            if let uid = s.outputDeviceUID { s.audioProfiles[uid, default: .safeDefault].forceMaxVolumeEnabled = value }
+        }
     }
 
     func setApplyReplayGainEnabled(_ value: Bool) async {
-        await update { $0.applyReplayGainEnabled = value }
+        await update { s in
+            s.applyReplayGainEnabled = value
+            if let uid = s.outputDeviceUID { s.audioProfiles[uid, default: .safeDefault].applyReplayGainEnabled = value }
+        }
     }
 
     func setNotificationsEnabled(_ value: Bool) async {
