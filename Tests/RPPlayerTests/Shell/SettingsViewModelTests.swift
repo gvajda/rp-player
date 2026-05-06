@@ -368,4 +368,47 @@ final class SettingsViewModelTests: XCTestCase {
         XCTAssertTrue(store.current.frostedUpcomingEnabled)
         await sut.stop()
     }
+
+    func testSetBitrateWritesToAudioProfile() async throws {
+        var initial = AppSettings.default
+        initial.outputDeviceUID = "uid-dac"
+        let store = StubConfigStore(initial: initial)
+        let sut = SettingsViewModel(
+            configStore: store, deviceCatalog: deviceCatalog, auth: auth,
+            openLoginWindow: {}, openApplicationData: {}
+        )
+        await sut.start()
+        await sut.setBitrate(4)
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(store.current.audioProfiles["uid-dac"]?.bitrate, 4)
+        await sut.stop()
+    }
+
+    func testSetHogModeEnabledWritesToAudioProfile() async throws {
+        var initial = AppSettings.default
+        initial.outputDeviceUID = "uid-dac"
+        let store = StubConfigStore(initial: initial)
+        let sut = SettingsViewModel(
+            configStore: store, deviceCatalog: deviceCatalog, auth: auth,
+            openLoginWindow: {}, openApplicationData: {}
+        )
+        await sut.start()
+        await sut.setHogModeEnabled(false)
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(store.current.audioProfiles["uid-dac"]?.hogModeEnabled, false)
+        await sut.stop()
+    }
+
+    func testNoProfileWriteWhenNoDevice() async throws {
+        let store = StubConfigStore(initial: .default)
+        let sut = SettingsViewModel(
+            configStore: store, deviceCatalog: deviceCatalog, auth: auth,
+            openLoginWindow: {}, openApplicationData: {}
+        )
+        await sut.start()
+        await sut.setBitrate(1)
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertTrue(store.current.audioProfiles.isEmpty)
+        await sut.stop()
+    }
 }

@@ -121,4 +121,60 @@ final class AppSettingsCodableTests: XCTestCase {
         let decoded = try JSONDecoder().decode(AppSettings.self, from: json)
         XCTAssertFalse(decoded.frostedUpcomingEnabled)
     }
+
+    func testAudioProfileSafeDefaultValues() {
+        let d = AudioProfile.safeDefault
+        XCTAssertFalse(d.hogModeEnabled)
+        XCTAssertFalse(d.releaseHogOnPauseEnabled)
+        XCTAssertFalse(d.forceMaxVolumeEnabled)
+        XCTAssertFalse(d.applyReplayGainEnabled)
+        XCTAssertEqual(d.bitrate, 3)
+    }
+
+    func testAudioProfileRoundTrip() throws {
+        let profile = AudioProfile(
+            hogModeEnabled: true,
+            releaseHogOnPauseEnabled: false,
+            forceMaxVolumeEnabled: true,
+            applyReplayGainEnabled: false,
+            bitrate: 4
+        )
+        let data = try JSONEncoder().encode(profile)
+        let decoded = try JSONDecoder().decode(AudioProfile.self, from: data)
+        XCTAssertEqual(decoded, profile)
+    }
+
+    func testMissingAudioProfilesKeyDecodesAsEmpty() throws {
+        let json = """
+        {"selectedChannelId":0}
+        """.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: json)
+        XCTAssertTrue(decoded.audioProfiles.isEmpty)
+    }
+
+    func testAudioProfilesRoundTripInAppSettings() throws {
+        var settings = AppSettings.default
+        settings.outputDeviceUID = "uid-dac"
+        settings.audioProfiles["uid-dac"] = AudioProfile(
+            hogModeEnabled: true,
+            releaseHogOnPauseEnabled: true,
+            forceMaxVolumeEnabled: false,
+            applyReplayGainEnabled: true,
+            bitrate: 4
+        )
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
+        XCTAssertEqual(decoded.audioProfiles["uid-dac"], settings.audioProfiles["uid-dac"])
+    }
+
+    func testNoCrossDeviceBleedInAudioProfiles() throws {
+        var settings = AppSettings.default
+        settings.audioProfiles["uid-a"] = AudioProfile(
+            hogModeEnabled: true, releaseHogOnPauseEnabled: true,
+            forceMaxVolumeEnabled: true, applyReplayGainEnabled: true, bitrate: 4
+        )
+        settings.audioProfiles["uid-b"] = AudioProfile.safeDefault
+        settings.audioProfiles["uid-a"]?.bitrate = 2
+        XCTAssertEqual(settings.audioProfiles["uid-b"]?.bitrate, 3, "device B must not be affected")
+    }
 }
