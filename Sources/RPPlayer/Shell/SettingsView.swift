@@ -47,7 +47,7 @@ struct SettingsView: View {
                 )
             )
             supportButton(
-                title: "Buy me a coffee",
+                title: "Buy Dev a coffee",
                 subtitle: "buymeacoffee.com",
                 url: "https://buymeacoffee.com/gvajda",
                 icon: AnyView(bmcIcon)
@@ -110,7 +110,8 @@ struct SettingsView: View {
     }
 
     private var deviceSettingsSectionTitle: String {
-        viewModel.currentDeviceName.map { "Output device settings — \($0)" } ?? "Output device settings"
+        viewModel.currentDeviceName.map { "Output device settings — \($0)" }
+            ?? "Output device settings"
     }
 
     private var deviceSettingsSection: some View {
