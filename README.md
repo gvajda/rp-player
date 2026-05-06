@@ -51,6 +51,7 @@ The app installs a status item in the menu bar (no Dock icon, no main window). C
   - **Force Max Volume** (for external DACs): pins the device's CoreAudio volume to 100% and locks `volume-max` so no software attenuation is in the signal path. Confirmation alert before enabling — set your DAC/amp/headphone volume first.
   - **Apply ReplayGain** toggle (default off; force-max overrides it): per-track loudness normalisation when on, untouched audio when off.
   - Output device picker reads from `AudioDeviceCatalog`; refresh button next to the picker rescans on demand for newly paired Bluetooth or hot-plugged devices.
+  - **Per-device audio settings**: each output device stores its own profile (hog mode, release-on-pause, force-max volume, ReplayGain, bitrate). Switching devices instantly restores that device's saved profile. Devices seen for the first time start from safe defaults — all toggles off, 320k AAC — so a DAC profile with Force Max Volume on can never bleed over to built-in speakers.
 - **Behaviour matches the official player**
   - Bootstrap and advance both go through `api/play` with the personalised per-listener cursor, so the same blocks/songs play in the same order as the web player.
   - Cross-session resume: the backend remembers where you left off per channel. Restarting the app picks up where you stopped.
@@ -156,7 +157,7 @@ If you sign in, the app stores the same session cookies your browser stores afte
 
 `~/Library/Application Support/RP Player/` contains:
 
-- `config.json` — user-visible settings (selected channel, bitrate, hog mode, appearance, ambient toggle, upcoming row count, hidden channels, floating-window state, output device UID, etc.). Editing this file by hand is equivalent to changing the setting via the UI.
+- `config.json` — user-visible settings (selected channel, appearance, ambient toggle, upcoming row count, hidden channels, floating-window state, output device UID, etc.) plus an `audioProfiles` map keyed by device UID that stores per-device audio settings (hog mode, release-on-pause, force-max volume, ReplayGain, bitrate). Editing this file by hand is equivalent to changing the setting via the UI.
 - `Logs/RPPlayer.log` — rotating log file (info-level by default; flip "Verbose logging" in Settings for full coordinator/engine traces).
 - `AlbumArtCache/` — covers indexed by SHA-256 of the cover path. Capped at 100 files / 10 MB; oldest evicted on every write.
 
