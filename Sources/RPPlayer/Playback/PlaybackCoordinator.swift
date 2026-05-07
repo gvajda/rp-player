@@ -425,7 +425,12 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             for c in positionContinuations.values { c.yield(seconds) }
             guard !startsAt.isEmpty else { return }
             let newIndex = BlockSongs.indexOfSong(at: seconds, in: startsAt)
-            if newIndex != currentSongIndex {
+            // Strictly forward: mpv processes seek async, so after skipForward
+            // optimistically advances currentSongIndex, stale pre-seek time-pos
+            // events can land with a position in the previous song's range.
+            // Treat any backward newIndex as stale to avoid re-emitting the
+            // old song's NowPlaying (which flashes the previous album art).
+            if newIndex > currentSongIndex {
                 logger.debug("song boundary crossed: \(currentSongIndex) -> \(newIndex) at pos=\(seconds)")
                 currentSongIndex = newIndex
                 emitNowPlaying(forSongIndex: newIndex)

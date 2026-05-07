@@ -272,6 +272,43 @@ extension LivePlaybackCoordinatorTests {
         XCTAssertEqual(calls.last, .seek(seconds: 60.05))
     }
 
+    func testStalePositionUpdateAfterSkipForwardDoesNotRevertSongIndex() async throws {
+        // mpv's seek command is async internally — after skipForward sets
+        // currentSongIndex=N+1, mpv can still emit one or more time-pos
+        // property-changes whose value sits in song N's range. The handler
+        // must treat those as stale (no backward re-emit) so the VM does not
+        // flash song N's album art between the skip and the real new-position
+        // update landing.
+        let api = MockRpApiClient()
+        let block = makeBlock(songs: [("s1", 60_000), ("s2", 120_000), ("s3", 90_000), ("s4", 100_000)])
+        await api.setBlockResponses([block])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 0 }
+        )
+
+        let stream = await coordinator.nowPlayingUpdates
+        let collector = Task { () -> [Int] in
+            var indexes: [Int] = []
+            for await np in stream {
+                indexes.append(np.songIndexInBlock)
+            }
+            return indexes
+        }
+
+        try await coordinator.play(channelId: 0)             // emits song 0
+        await engine.fire(.positionUpdate(seconds: 40.0))    // song 0 — no re-emit
+        try await coordinator.skipForward()                  // emits song 1
+        await engine.fire(.positionUpdate(seconds: 45.0))    // STALE: pre-seek leftover; must not revert
+        await engine.fire(.positionUpdate(seconds: 60.0))    // real post-seek pos; song 1 (no re-emit)
+        await engine.fire(.positionUpdate(seconds: 75.0))    // song 1 (no re-emit)
+
+        try await Task.sleep(nanoseconds: 100_000_000)
+        await coordinator.shutdown()
+        let result = await collector.value
+        XCTAssertEqual(result, [0, 1])
+    }
+
     // post-Task-3 this exercises the gapless advance-to-queued path; cancel-and-fetch path covered by testSkipForwardPastLastSongCancelsPrefetchAndIssuesAdvanceCall
     func testSkipForwardOnLastSongFetchesNextBlock() async throws {
         let api = MockRpApiClient()
