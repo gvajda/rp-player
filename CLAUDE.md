@@ -58,6 +58,14 @@ Originally pre-PR-26 ("Activity Monitor showed 15–25% CPU and up to ~300 MB RA
 
 **If a deep scan happens later:** Instruments Allocations / Leaks. Open suspects if RAM still grows: NSImage retention (popover state, `MPMediaItemArtwork` closures), SwiftUI hosting-view leaks across popover open/close, URLSession.shared response data, NSHostingView / NSVisualEffectView retention in `PopoverController` container view. Past-song popover's bounded ≤1 VM leak (Notifications section) — close-callback follow-up still tracked. SwiftUI re-render audit (ambient gradient + frosted view) only worth doing if a hot path is found.
 
+### PR 28 follow-ups (deferred, non-blocking)
+
+Surfaced by the final review on `claude/pr28-gapless-block-transitions` after smoke-test sign-off. None block merge; pick up if a related area is touched.
+
+- **Fallback path emits NowPlaying + telemetry before `engine.play(replace)` succeeds.** `swapToPrefetchedBlockIfAvailable` calls `swapToPrefetchedBlockState` (which fires `emitNowPlaying` + `update_history` telemetry) BEFORE `engine.play`. If the fallback play throws, recovery wipes state — but a spurious `update_history` and a brief NP emission have already gone out for a song that never started. Cosmetic; the recovery surfaces an error, so the user isn't stranded. Cleanest fix: split `swapToPrefetchedBlockState` into pure mutation + emit/telemetry, and gate the latter on engine success in the fallback path. Touch this if the swap helpers grow another caller.
+- **Defensive `prefetchedBlock = nil` in the orphan-clear branch of `absorbPrefetchResult`.** Today the post-await `currentBlock != nil` race guard relies on the concurrent cleanup site having already nilled `prefetchedBlock`. Cleanup sites do, so this works — but adding `prefetchedBlock = nil` next to the `clearPlaylist` orphan call would make the invariant explicit and survive future cleanup-site changes that forget to nil it. Pure clarity win.
+- **Real-mpv smoke verification of `prefetch-playlist=yes` + `playlist-clear` + `playlist-pos` semantics.** Engine tests run with `ao=null`; the Task 1 reviewer noted `playlist-clear` keeps the implicit current entry at count 1 (rather than 0) in the no-AO sandbox, and `playlist-next force` doesn't cleanly verify in unit tests. Pick up if a transition regression turns up that mocks didn't catch.
+
 ## PR status
 
 | PR   | Branch         | Status | Contents                                                                    |
