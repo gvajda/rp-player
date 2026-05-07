@@ -1530,8 +1530,19 @@ extension LivePlaybackCoordinatorTests {
         )
 
         try await coordinator.play(channelId: 0)
+        // Wait for eager prefetch on single-song bootstrap to consume
+        // blockResponses[1] (= prefetchedAfterPromo) BEFORE firing -16.
+        // Otherwise the advance call races with prefetch and on slow CI runners
+        // can consume prefetchedAfterPromo itself, leaving np = "ignored".
+        for _ in 0..<200 {
+            if await api.calls.count >= 2 { break }
+            try await Task.sleep(nanoseconds: 5_000_000)
+        }
         await engine.fire(.fileEnded(reason: .error(code: -16)))
-        try await Task.sleep(nanoseconds: 150_000_000)
+        for _ in 0..<200 {
+            if await api.calls.count >= 4 { break }
+            try await Task.sleep(nanoseconds: 5_000_000)
+        }
 
         let np = await coordinator.nowPlaying
         XCTAssertEqual(np?.song.songId, "good", "must advance to recovery block, not wipe state")
