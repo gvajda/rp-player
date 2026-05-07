@@ -164,6 +164,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         startsAt = starts
         currentSongIndex = 0
         currentPositionSeconds = startPos
+        queuedToEngine = false
 
         let startSeconds: Double? = startPos > 0 ? startPos : nil
         guard let url = URL(string: block.url) else {
@@ -647,16 +648,14 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     }
 
     private func absorbPrefetchResult(_ block: GetBlock?) async {
-        // If cleanup (stop / changeChannel) ran during the fetch, prefetchTask
-        // was nilled — discard the late result so we don't resurrect a stale block.
+        // Cleanup (stop / changeChannel) during the fetch nils prefetchTask — discard the late result.
         guard prefetchTask != nil else { return }
         prefetchTask = nil
         if let block = block, BlockSongs.orderedSongs(from: block).isEmpty == false {
-            // Defense: only queue when a current block is still active. If channelChange
-            // wiped state during the fetch, the queued URL would belong to a different channel.
             guard currentBlock != nil else { return }
             prefetchedBlock = block
             logger.debug("prefetch absorbed: url=\(block.url)")
+            // Warm cache for first song of next block so popover doesn't blank at swap.
             if let cover = BlockSongs.orderedSongs(from: block).first?.cover,
                !cover.isEmpty {
                 prefetchArt(cover)
@@ -666,6 +665,11 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             guard let url = URL(string: block.url) else { return }
             do {
                 try await engine.queueNext(url: url, startSeconds: startSeconds)
+                // Cleanup may have run during the queueNext await — orphan-cleanup playlist if so.
+                guard currentBlock != nil else {
+                    try? await engine.clearPlaylist()
+                    return
+                }
                 queuedToEngine = true
                 logger.debug("queued next block on engine: url=\(url.absoluteString) start=\(startSeconds.map { "\($0)s" } ?? "nil")")
             } catch {
@@ -717,6 +721,23 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             try await engine.play(url: url, startSeconds: startSeconds)
         } catch {
             logger.error("failed to play prefetched block: \(error)")
+            // Don't strand the user with frozen progress on a corrupted state — wipe and surface.
+            try? await engine.clearPlaylist()
+            prefetchTask?.cancel()
+            prefetchTask = nil
+            prefetchedBlock = nil
+            queuedToEngine = false
+            currentChannelId = nil
+            currentBlock = nil
+            orderedSongs = []
+            startsAt = []
+            currentSongIndex = 0
+            currentPositionSeconds = 0
+            pausedAt = nil
+            pausePositionMs = 0
+            current = nil
+            emitState(.stopped)
+            errorsContinuation?.yield("Playback stopped: \(error.localizedDescription)")
         }
     }
 }

@@ -451,8 +451,6 @@ extension LivePlaybackCoordinatorTests {
         try await coordinator.play(channelId: 0)
         await engine.fire(.positionUpdate(seconds: 232.0))
         try await Task.sleep(nanoseconds: 100_000_000)
-        // Gapless: prefetch queued the next block via queueNext; mpv auto-advances on EOF
-        // and emits fileStarted, which triggers the coordinator state swap.
         await engine.fire(.fileEnded(reason: .eof))
         await engine.fire(.fileStarted)
         try await Task.sleep(nanoseconds: 100_000_000)
@@ -1221,14 +1219,12 @@ extension LivePlaybackCoordinatorTests {
             api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 0 }
         )
         try await coord.play(channelId: 0)
-        // Single-song block triggers eager prefetch → queueNext lands.
         try await Task.sleep(nanoseconds: 100_000_000)
-        try await coord.skipForward()  // past last → engine.advanceToQueued (gapless)
-        // mpv reports fileStarted after auto-advance / advanceToQueued; that drives the swap + telemetry.
+        try await coord.skipForward()
         await engine.fire(.fileStarted)
         try await Task.sleep(nanoseconds: 50_000_000)
         let historyCalls = await api.updateHistoryCalls
-        XCTAssertEqual(historyCalls.count, 2)  // bootstrap + new block first song
+        XCTAssertEqual(historyCalls.count, 2)
         XCTAssertEqual(historyCalls.last?.songId, "s2")
         XCTAssertEqual(historyCalls.last?.playPositionMillis, 1)
     }
@@ -1967,9 +1963,8 @@ extension LivePlaybackCoordinatorTests {
         )
 
         try await coordinator.play(channelId: 0)
-        // Stub queueNext to throw on the first attempt; the absorbed block stays in
-        // prefetchedBlock but queuedToEngine remains false → EOF takes the fallback.
         struct StubError: Error {}
+        // relies on setNextError one-shot semantics: queueNext throws once, fallback play() succeeds
         await engine.setNextError(StubError())
         await engine.fire(.positionUpdate(seconds: 200.0))
         try await Task.sleep(nanoseconds: 150_000_000)
