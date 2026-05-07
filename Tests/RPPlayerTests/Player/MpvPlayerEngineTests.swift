@@ -203,19 +203,20 @@ extension MpvPlayerEngineTests {
         XCTAssertEqual(preClear, "2")
 
         try await engine.clearPlaylist()
-        // playlist-clear removes everything except the currently-playing entry;
-        // with nothing actually playing in the unit-test sandbox, mpv keeps the
-        // first entry as the implicit current and drops the rest -> count == 1.
+        // playlist-clear preserves the implicit current entry; sandbox has nothing playing -> count == 1, not 0.
         let postClear = await engine.playlistCountForTesting()
         XCTAssertEqual(postClear, "1")
     }
 
-    func testAdvanceToQueuedDoesNotThrow() async throws {
+    func testAdvanceToQueuedAdvancesPlaylistPos() async throws {
         let engine = try MpvPlayerEngine()
         defer { Task { await engine.shutdown() } }
 
         try await engine.queueNext(url: URL(string: "https://example.com/a.mp3")!, startSeconds: nil)
         try await engine.queueNext(url: URL(string: "https://example.com/b.mp3")!, startSeconds: nil)
+        let initialPos = await engine.playlistPosForTesting()
         try await engine.advanceToQueued()
+        let advancedPos = await engine.playlistPosForTesting()
+        XCTAssertNotEqual(advancedPos, initialPos, "advanceToQueued should change playlist-pos (initial=\(initialPos ?? "nil"), after=\(advancedPos ?? "nil"))")
     }
 }
