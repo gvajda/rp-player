@@ -195,16 +195,31 @@ extension AppContainer {
             },
             onDeviceUnavailable: { [store, hogController, logger] in
                 // Hearing-safety reset when mpv reports MPV_ERROR_AO_INIT_FAILED:
-                // drop hog mode + force-max so the next device the user picks
-                // (often built-in speakers) doesn't blast at 100%. Release hog
-                // explicitly too so we're not still holding the (now-gone) device.
+                // drop hog mode + force-max + the dead UID so the next device the
+                // user picks (often built-in speakers) doesn't blast at 100% and
+                // the Settings UI doesn't keep showing a device that's no longer
+                // present. Release hog explicitly too so we're not still holding
+                // the (now-gone) device.
                 guard let store else { return }
-                logger.info("device unavailable: clearing hogModeEnabled + forceMaxVolumeEnabled for safety")
+                logger.info("device unavailable: clearing hogModeEnabled + forceMaxVolumeEnabled + outputDeviceUID for safety")
                 try? await store.update {
                     $0.hogModeEnabled = false
                     $0.forceMaxVolumeEnabled = false
+                    $0.outputDeviceUID = nil
                 }
                 await hogController.release()
+            },
+            prePlayHook: { [store, hogController] in
+                // Acquire hog BEFORE mpv opens the CoreAudio AO. Without this,
+                // mpv's shared-mode AO open can race with hog acquisition (which
+                // currently fires on the .playing state transition, after engine.play
+                // returns) and end up registered but silent until the user toggles
+                // pause+play to force an AO recreate. Especially visible when another
+                // app (e.g. a YouTube tab) was already feeding the device.
+                guard let store else { return }
+                let s = await store.settings
+                guard s.hogModeEnabled, let uid = s.outputDeviceUID, !uid.isEmpty else { return }
+                _ = await hogController.acquire(deviceUID: uid)
             }
         )
 
@@ -351,6 +366,28 @@ extension AppContainer {
         }
 
         let deviceCatalog = CoreAudioDeviceCatalog(lister: CoreAudioDeviceLister())
+        // Observe CoreAudio hot-plug events so the Settings device list stays
+        // current AND so we can clear the saved UID when the user's selected
+        // device disappears at runtime (e.g. USB DAC unplug). Without this, the
+        // UI keeps showing the now-gone device and a replug doesn't restore it
+        // until the user manually switches channels.
+        Task { await deviceCatalog.startWatching() }
+        if let store {
+            Task { [logger] in
+                let stream = await deviceCatalog.changes
+                for await devices in stream {
+                    let s = await store.settings
+                    guard let uid = s.outputDeviceUID, !uid.isEmpty else { continue }
+                    if devices.contains(where: { $0.uid == uid }) { continue }
+                    logger.info("output device '\(uid)' disappeared at runtime; clearing hogModeEnabled + forceMaxVolumeEnabled + outputDeviceUID for safety")
+                    try? await store.update {
+                        $0.hogModeEnabled = false
+                        $0.forceMaxVolumeEnabled = false
+                        $0.outputDeviceUID = nil
+                    }
+                }
+            }
+        }
 
         // UNUserNotificationCenter.current() throws on unbundled processes
         // (no main bundle proxy). PR 12 ships the .app; until then `swift run`

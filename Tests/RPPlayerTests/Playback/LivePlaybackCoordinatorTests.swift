@@ -701,6 +701,63 @@ extension LivePlaybackCoordinatorTests {
             "should only have the initial play, not a re-fetch. calls=\(engineCalls)"
         )
     }
+
+    func testPrePlayHookFiresBeforeEnginePlayOnInitialPlay() async throws {
+        // Hog must be acquired before mpv opens its CoreAudio AO. The hook fires
+        // synchronously inside coordinator.play(), checks the engine's recorded-calls
+        // list, and asserts it is still empty — i.e. engine.play has NOT been called yet.
+        let api = MockRpApiClient()
+        await api.setBlockResponses([makeBlock(songs: [("s1", 60_000)])])
+        let engine = MockPlayerEngine()
+        let log = HookOrderLog()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 },
+            prePlayHook: { [engine, log] in
+                let calls = await engine.recordedCalls()
+                await log.append("hook(engineCalls=\(calls.count))")
+            }
+        )
+        try await coordinator.play(channelId: 0)
+        let trace = await log.records
+        XCTAssertEqual(trace, ["hook(engineCalls=0)"])
+        let engineCalls = await engine.recordedCalls()
+        XCTAssertEqual(engineCalls.filter { if case .play = $0 { return true } else { return false } }.count, 1)
+    }
+
+    func testPrePlayHookFiresBeforeEngineResume() async throws {
+        // Re-acquiring hog on resume has the same race as initial play when
+        // release-on-pause is on (hog was released; mpv's resume reopens the AO).
+        let api = MockRpApiClient()
+        let futureTimestamp = Int(Date().timeIntervalSince1970) + 600
+        let block = makeBlock(channel: "0", url: "https://example.com/r.flac",
+                              cue: 0, expiration: futureTimestamp,
+                              songs: [("a", 60_000)])
+        await api.setBlockResponses([block])
+        let engine = MockPlayerEngine()
+        let log = HookOrderLog()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 },
+            prePlayHook: { [engine, log] in
+                let calls = await engine.recordedCalls()
+                let resumeCount = calls.filter { $0 == .resume }.count
+                await log.append("hook(resumeCount=\(resumeCount))")
+            }
+        )
+        try await coordinator.play(channelId: 0)
+        try await coordinator.pause()
+        try await coordinator.resume()
+        let trace = await log.records
+        // Two hook calls expected: one before initial play, one before resume.
+        // Both observe resumeCount=0 because the hook fires BEFORE engine.resume.
+        XCTAssertEqual(trace, ["hook(resumeCount=0)", "hook(resumeCount=0)"])
+        let engineCalls = await engine.recordedCalls()
+        XCTAssertEqual(engineCalls.filter { $0 == .resume }.count, 1)
+    }
+}
+
+private actor HookOrderLog {
+    private(set) var records: [String] = []
+    func append(_ s: String) { records.append(s) }
 }
 
 private actor BitrateBox {

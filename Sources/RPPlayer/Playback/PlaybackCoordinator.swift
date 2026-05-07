@@ -57,6 +57,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     public var errors: AsyncStream<String>
 
     private let onDeviceUnavailable: (@Sendable () async -> Void)?
+    private let prePlayHook: @Sendable () async -> Void
 
     public init(
         api: any RpApiClient,
@@ -65,7 +66,8 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         bitrateProvider: @escaping @Sendable () async -> Int,
         clock: @escaping @Sendable () -> Date = { Date() },
         prefetchArt: @escaping @Sendable (String) -> Void = { _ in },
-        onDeviceUnavailable: (@Sendable () async -> Void)? = nil
+        onDeviceUnavailable: (@Sendable () async -> Void)? = nil,
+        prePlayHook: @escaping @Sendable () async -> Void = {}
     ) {
         self.api = api
         self.engine = engine
@@ -74,6 +76,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         self.clock = clock
         self.prefetchArt = prefetchArt
         self.onDeviceUnavailable = onDeviceUnavailable
+        self.prePlayHook = prePlayHook
         var cont: AsyncStream<String>.Continuation!
         self.errors = AsyncStream { cont = $0 }
         self.errorsContinuation = cont
@@ -166,6 +169,11 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             throw PlaybackCoordinatorError.engineError(message: "invalid block url: \(block.url)")
         }
         logger.debug("play engine.play url=\(url.absoluteString) startSeconds=\(startSeconds.map { "\($0)s" } ?? "nil (beginning)")")
+        // Acquire hog (when enabled) BEFORE mpv opens its CoreAudio AO. Otherwise
+        // mpv's shared-mode AO can race with hog acquisition and end up registered
+        // but silent — the user sees the progress bar advance but hears nothing
+        // until pause+play forces an AO recreate.
+        await prePlayHook()
         do {
             try await engine.play(url: url, startSeconds: startSeconds)
         } catch {
@@ -223,6 +231,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             return
         }
         logger.debug("resume: block fresh, engine.resume()")
+        await prePlayHook()
         do { try await engine.resume() } catch { throw PlaybackCoordinatorError.engineError(message: String(describing: error)) }
         emitState(.playing)
         guard pausedAt != nil, let channelId = currentChannelId,
