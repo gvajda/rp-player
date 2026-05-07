@@ -183,8 +183,16 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         )
         try await coord.play(channelId: 0)
 
+        // staleB is single-song so emitNowPlaying triggers an eager prefetch (count==3); intent here is "no infinite recursion in stale-detection itself".
         let calls = await api.calls
-        XCTAssertEqual(calls.count, 2, "expected exactly one advance retry, not infinite recursion")
+        XCTAssertGreaterThanOrEqual(calls.count, 2, "expected at least bootstrap + 1 advance")
+        XCTAssertLessThanOrEqual(calls.count, 3, "expected at most one stale-advance + one eager prefetch on staleB single-song; not infinite recursion")
+        XCTAssertEqual(calls[0], .play(channel: 0, bitrate: 4, event: 0, action: .start,
+                                       audioType: nil, episodeId: nil, sliceNum: nil))
+        guard case let .play(_, _, _, action2, _, _, _) = calls[1] else {
+            return XCTFail("expected second call to be .play")
+        }
+        XCTAssertEqual(action2, .play, "second call must be the stale-advance retry")
         let engineCalls = await engine.recordedCalls()
         XCTAssertEqual(engineCalls.last,
                        .play(url: URL(string: "https://example.com/staleB.flac")!, startSeconds: nil))
