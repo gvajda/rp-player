@@ -12,6 +12,9 @@ actor MockPlayerEngine: PlayerEngine {
         case setForceMaxVolume(enabled: Bool)
         case setApplyReplayGain(enabled: Bool)
         case setMute(muted: Bool)
+        case queueNext(url: URL, startSeconds: Double?)
+        case advanceToQueued
+        case clearPlaylist
         case shutdown
     }
 
@@ -65,6 +68,15 @@ actor MockPlayerEngine: PlayerEngine {
     }
     func setMute(_ muted: Bool) async throws {
         try recordOrThrow(.setMute(muted: muted))
+    }
+    func queueNext(url: URL, startSeconds: Double?) async throws {
+        try recordOrThrow(.queueNext(url: url, startSeconds: startSeconds))
+    }
+    func advanceToQueued() async throws {
+        try recordOrThrow(.advanceToQueued)
+    }
+    func clearPlaylist() async throws {
+        try recordOrThrow(.clearPlaylist)
     }
     func shutdown() async {
         calls.append(.shutdown)

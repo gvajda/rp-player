@@ -12,6 +12,9 @@ public protocol PlayerEngine: Sendable {
     func setForceMaxVolume(_ enabled: Bool) async throws
     func setApplyReplayGain(_ enabled: Bool) async throws
     func setMute(_ muted: Bool) async throws
+    func queueNext(url: URL, startSeconds: Double?) async throws
+    func advanceToQueued() async throws
+    func clearPlaylist() async throws
     func shutdown() async
 }
 
@@ -24,6 +27,7 @@ public extension PlayerEngine {
 public enum PlayerEvent: Sendable, Equatable {
     case positionUpdate(seconds: Double)
     case fileLoaded
+    case fileStarted
     case fileEnded(reason: PlayerEndReason)
     case error(message: String)
     case outputDeviceChanged(uid: String?)

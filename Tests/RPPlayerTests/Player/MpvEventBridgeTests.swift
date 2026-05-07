@@ -62,6 +62,13 @@ final class MpvEventBridgeTests: XCTestCase {
         XCTAssertNil(event)
     }
 
+    func testStartFileEventTranslatesToFileStarted() {
+        var event = mpv_event()
+        event.event_id = MPV_EVENT_START_FILE
+        event.data = nil
+        XCTAssertEqual(MpvEventBridge.playerEvent(from: event), .fileStarted)
+    }
+
     func testTimePosWithWrongFormatReturnsNil() {
         var prop = mpv_event_property()
         "time-pos".withCString { namePtr in

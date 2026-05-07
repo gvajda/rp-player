@@ -40,6 +40,7 @@ public actor MpvPlayerEngine: PlayerEngine {
             ("demuxer-max-bytes", "8MiB"),
             ("demuxer-max-back-bytes", "1MiB"),
             ("cache-secs", "10"),
+            ("prefetch-playlist", "yes"),
         ]
         if underXCTest {
             baseline.append(("ao", "null"))
@@ -199,6 +200,25 @@ public actor MpvPlayerEngine: PlayerEngine {
         try runCommand(["seek", String(seconds), "absolute"])
     }
 
+    public func queueNext(url: URL, startSeconds: Double?) async throws {
+        try requireHandle()
+        if let start = startSeconds, start > 0 {
+            try runCommand(["loadfile", url.absoluteString, "append-play", "start=\(start)"])
+        } else {
+            try runCommand(["loadfile", url.absoluteString, "append-play"])
+        }
+    }
+
+    public func advanceToQueued() async throws {
+        try requireHandle()
+        try runCommand(["playlist-next", "force"])
+    }
+
+    public func clearPlaylist() async throws {
+        try requireHandle()
+        try runCommand(["playlist-clear"])
+    }
+
     public func setForceMaxVolume(_ enabled: Bool) async throws {
         try requireHandle()
         try setStringProperty("volume", "100")
@@ -237,6 +257,27 @@ public actor MpvPlayerEngine: PlayerEngine {
     func currentAudioDeviceForTesting() -> String? {
         guard let h = handle else { return nil }
         guard let raw = mpv_get_property_string(h, "audio-device") else { return nil }
+        defer { mpv_free(raw) }
+        return String(cString: raw)
+    }
+
+    func prefetchPlaylistOptionForTesting() -> String? {
+        guard let h = handle else { return nil }
+        guard let raw = mpv_get_property_string(h, "prefetch-playlist") else { return nil }
+        defer { mpv_free(raw) }
+        return String(cString: raw)
+    }
+
+    func playlistCountForTesting() -> String? {
+        guard let h = handle else { return nil }
+        guard let raw = mpv_get_property_string(h, "playlist-count") else { return nil }
+        defer { mpv_free(raw) }
+        return String(cString: raw)
+    }
+
+    func playlistPosForTesting() -> String? {
+        guard let h = handle else { return nil }
+        guard let raw = mpv_get_property_string(h, "playlist-pos") else { return nil }
         defer { mpv_free(raw) }
         return String(cString: raw)
     }

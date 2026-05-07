@@ -25,6 +25,9 @@ final class MpvPlayerEngineTests: XCTestCase {
             ("stop",            { try await engine.stop() }),
             ("seek",            { try await engine.seek(to: 1.0) }),
             ("setOutputDevice", { try await engine.setOutputDevice(uid: nil) }),
+            ("queueNext",       { try await engine.queueNext(url: url, startSeconds: nil) }),
+            ("advanceToQueued", { try await engine.advanceToQueued() }),
+            ("clearPlaylist",   { try await engine.clearPlaylist() }),
         ]
         for (name, call) in invocations {
             do {
@@ -166,4 +169,53 @@ extension MpvPlayerEngineTests {
         XCTAssertEqual(device, "auto", "no initial UID should leave the default 'auto'")
     }
 
+}
+
+extension MpvPlayerEngineTests {
+    func testPrefetchPlaylistOptionSetAtInit() async throws {
+        let engine = try MpvPlayerEngine()
+        defer { Task { await engine.shutdown() } }
+
+        let value = await engine.prefetchPlaylistOptionForTesting()
+        XCTAssertEqual(value, "yes")
+    }
+
+    func testQueueNextRunsLoadfileAppendPlay() async throws {
+        let engine = try MpvPlayerEngine()
+        defer { Task { await engine.shutdown() } }
+
+        try await engine.queueNext(url: URL(string: "https://example.com/a.mp3")!, startSeconds: nil)
+        let countAfterFirst = await engine.playlistCountForTesting()
+        XCTAssertEqual(countAfterFirst, "1")
+
+        try await engine.queueNext(url: URL(string: "https://example.com/b.mp3")!, startSeconds: nil)
+        let countAfterSecond = await engine.playlistCountForTesting()
+        XCTAssertEqual(countAfterSecond, "2")
+    }
+
+    func testClearPlaylistResetsPlaylistCount() async throws {
+        let engine = try MpvPlayerEngine()
+        defer { Task { await engine.shutdown() } }
+
+        try await engine.queueNext(url: URL(string: "https://example.com/a.mp3")!, startSeconds: nil)
+        try await engine.queueNext(url: URL(string: "https://example.com/b.mp3")!, startSeconds: nil)
+        let preClear = await engine.playlistCountForTesting()
+        XCTAssertEqual(preClear, "2")
+
+        try await engine.clearPlaylist()
+        // playlist-clear removes everything except the currently-playing entry;
+        // with nothing actually playing in the unit-test sandbox, mpv keeps the
+        // first entry as the implicit current and drops the rest -> count == 1.
+        let postClear = await engine.playlistCountForTesting()
+        XCTAssertEqual(postClear, "1")
+    }
+
+    func testAdvanceToQueuedDoesNotThrow() async throws {
+        let engine = try MpvPlayerEngine()
+        defer { Task { await engine.shutdown() } }
+
+        try await engine.queueNext(url: URL(string: "https://example.com/a.mp3")!, startSeconds: nil)
+        try await engine.queueNext(url: URL(string: "https://example.com/b.mp3")!, startSeconds: nil)
+        try await engine.advanceToQueued()
+    }
 }

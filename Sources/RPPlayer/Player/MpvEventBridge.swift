@@ -29,6 +29,8 @@ enum MpvEventBridge {
         switch event.event_id {
         case MPV_EVENT_FILE_LOADED:
             return .fileLoaded
+        case MPV_EVENT_START_FILE:
+            return .fileStarted
         case MPV_EVENT_END_FILE:
             let endPtr = event.data.assumingMemoryBound(to: mpv_event_end_file.self)
             return .fileEnded(reason: endReason(from: endPtr.pointee))

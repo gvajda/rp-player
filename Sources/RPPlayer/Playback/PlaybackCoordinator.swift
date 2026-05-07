@@ -398,6 +398,8 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         case .fileLoaded:
             logger.debug("engine fileLoaded")
             consecutivePlaybackFailures = 0
+        case .fileStarted:
+            break
         case .positionUpdate(let seconds):
             currentPositionSeconds = seconds
             for c in positionContinuations.values { c.yield(seconds) }
