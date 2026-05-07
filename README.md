@@ -19,16 +19,39 @@ My goal was a tiny menu-bar [Radio Paradise](https://radioparadise.com/) player 
 
 The app ships as a notarisation-free `.app` bundle. Download `RP Player-<version>.dmg` from the [Releases](https://github.com/gvajda/rp-player/releases/latest) page, open the DMG, and drag `RP Player.app` into the `Applications` shortcut.
 
-**First launch:** macOS Gatekeeper blocks apps that aren't notarised. Right-click `RP Player.app` in Finder and choose **Open**, then confirm. Or, from a terminal:
+### First launch
+
+MacOS Gatekeeper blocks apps that aren't notarised. You have two options:
+
+**Option A — System Settings (macOS Sequoia / Tahoe 26 and later):**
+
+1. Double-click `RP Player.app` — macOS will block it and show a warning. Click **Done**.
+2. Open **System Settings → Privacy & Security** and scroll down to the **Security** section.
+3. Click **Open Anyway** next to the message about RP Player, then authenticate with your admin password.
+4. Launch `RP Player.app` again and confirm the final prompt.
+
+> ⚠️ You must complete step 2 within an hour of the first blocked attempt.
+
+**Option B — Terminal:**
 
 ```sh
 xattr -dr com.apple.quarantine "/Applications/RP Player.app"
 open "/Applications/RP Player.app"
 ```
 
-The app installs a status item in the menu bar (no Dock icon, no main window). Click the icon to open the mini player; right-click for the context menu. On first run all settings are at defaults (FLAC bitrate, hog mode on, system appearance) — no setup required to start listening.
+Either approach only needs to be done once — subsequent launches will work normally.
 
-**Keychain prompt on launch (after first sign-in):** once you've signed in (Settings → Sign In), your session cookies are stored in the macOS Keychain. Because the released `.app` is self-signed (not codesigned with a stable Apple Developer identity), macOS asks "RP Player wants to access [item] in your keychain" on every launch from then on — click **Always Allow** to suppress it for that build. A new release replaces the signing identity, so the prompt returns once after each upgrade. First-ever launch (before sign-in) is silent.
+> **Note:** The old right-click → Open trick no longer works on macOS Sequoia (15) or later.
+
+### Keychain prompt on launch
+
+Once you've signed in (Settings → Sign In), your session cookies are stored in the macOS Keychain. Because the released `.app` is self-signed (not codesigned with a stable Apple Developer identity), macOS asks "RP Player wants to access [item] in your keychain" on every launch from then on — click **Always Allow** to suppress it for that build. A new release replaces the signing identity, so the prompt returns once after each upgrade. First-ever launch (before sign-in) is silent.
+
+> The RP Player app reads **only** the cookie it saved to your Keychain — storing it there ensures no other app can access it.
+
+### After install
+
+The app installs a status item in the menu bar (no Dock icon, no main window). Click the icon to open the mini player; right-click for the context menu. On first run all settings are at defaults (FLAC bitrate, hog mode on, system appearance) — no setup required to start listening.
 
 ## Features
 
@@ -136,7 +159,7 @@ The app installs a status item in the menu bar (no Dock icon, no main window). C
   - **Block-cued seek:** `loadfile <url> replace start=<seconds>` for the initial cue, instead of a post-`fileLoaded` seek, so the UI doesn't briefly show the cue position while the HTTP buffer is still catching up.
 
 - **Resilience**
-  - Gapless block transitions. Music → promo → music used to have an audible silence at each boundary while mpv tore down the audio device, opened the next URL, and refilled its buffer (200 ms – 2 s, depending on network and DAC). The app now queues the next block onto mpv's playlist as soon as the prefetch lands, so mpv pre-opens the URL on a background thread while the current block is still playing. At end-of-file mpv switches without rebuilding the audio device — no audible gap. If the prefetch ever misses the deadline (slow network, queue failure), playback falls back to the old replace path so listening continues either way.
+  - Gapless block transitions. The app queues the next block onto mpv's playlist as soon as the prefetch lands, so mpv pre-opens the URL on a background thread while the current block is still playing. At end-of-file mpv switches without rebuilding the audio device — no audible gap. If the prefetch ever misses the deadline (slow network, queue failure), playback falls back to the old replace path so listening continues either way.
   - mpv occasionally fails to decode a block (e.g. some short promo `.m4a` files return `MPV_ERROR_NOTHING_TO_PLAY`). Instead of stalling the channel, the app advances past the bad block via `api/play` and tries the next one, up to a small retry budget. The cursor moves forward, the listener doesn't get stuck.
   - Reliable handoff when another app is already using the speaker. If a YouTube tab (or anything else) is feeding the audio device when you press play, the app claims hog mode *before* mpv opens the device, so playback starts cleanly the first time instead of going silent until you toggle pause.
   - Live sync when a device disappears. Unplug your USB DAC mid-listening and the app notices, drops hog mode and force-max for hearing safety, and clears the device selection so the Settings panel reflects reality. Plug the DAC back in and pick it again — your saved per-device profile (hog / force-max / ReplayGain / bitrate) is restored automatically.
@@ -145,7 +168,7 @@ The app installs a status item in the menu bar (no Dock icon, no main window). C
 
 ### Optimized performance
 
-A menu-bar app should disappear into the background. RP Player aims for a ~4% avg / ~7% max single CPU core footprint and an ~80 MB RAM ceiling (measured on an M1 laptop during active FLAC playback).
+A menu-bar app should disappear into the background. RP Player aims for a ~4% avg / ~7% max single CPU core footprint and an ~120 MB RAM ceiling (measured on an M1 laptop during active FLAC playback).
 
 - **mpv position events at 1 Hz, not 10–25 Hz.** mpv's `time-pos` property is observed as `MPV_FORMAT_INT64` instead of `MPV_FORMAT_DOUBLE`, so the engine only emits a tick when the whole-second value changes. The progress bar, OS Now Playing widget, and song-boundary detection all run off the same low-rate stream.
 
