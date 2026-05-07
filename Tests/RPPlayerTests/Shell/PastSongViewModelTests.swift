@@ -118,7 +118,9 @@ final class PastSongViewModelTests: XCTestCase {
     func testStartSkipsAmbientExtractionWhenDisabled() async {
         let cache = StubAlbumArtCache()
         cache.imageByPath["covers/l/x.jpg"] = NSImage(size: NSSize(width: 16, height: 16))
-        let store = StubConfigStore(initial: .default)
+        var settings = AppSettings.default
+        settings.ambientBackgroundEnabled = false
+        let store = StubConfigStore(initial: settings)
         let extractor = StubAmbientPaletteExtractor(
             nextResult: ExtractedColor(red: 0.5, green: 0.25, blue: 0.75)
         )
@@ -198,7 +200,7 @@ final class PastSongViewModelTests: XCTestCase {
             paletteExtractor: StubAmbientPaletteExtractor()
         )
         await sut.start()
-        XCTAssertEqual(sut.popoverStyle, .none)
+        XCTAssertEqual(sut.popoverStyle, .ambient)
         try await store.update { $0.popoverStyle = .frosty }
         try await Task.sleep(nanoseconds: 50_000_000)
         XCTAssertEqual(sut.popoverStyle, .frosty)

@@ -164,7 +164,7 @@ final class SettingsViewModelTests: XCTestCase {
         XCTAssertEqual(sut.appearance, .dark)
     }
 
-    func testAmbientBackgroundEnabledDefaultsToFalse() async {
+    func testAmbientBackgroundEnabledDefaultsToTrue() async {
         let store = StubConfigStore(initial: .default)
         let catalog = StubAudioDeviceCatalog(initial: [])
         let auth = StubKeychainAuth()
@@ -175,7 +175,7 @@ final class SettingsViewModelTests: XCTestCase {
             openLoginWindow: { },
             openApplicationData: { }
         )
-        XCTAssertFalse(sut.ambientBackgroundEnabled)
+        XCTAssertTrue(sut.ambientBackgroundEnabled)
     }
 
     func testSetAmbientBackgroundEnabledPersistsAndUpdatesViewModel() async throws {
@@ -296,7 +296,7 @@ final class SettingsViewModelTests: XCTestCase {
         await vm.stop()
     }
 
-    func testPopoverStyleDefaultsToNone() async throws {
+    func testPopoverStyleDefaultsToAmbient() async throws {
         let store = StubConfigStore(initial: .default)
         let catalog = StubAudioDeviceCatalog(initial: [])
         let auth = StubKeychainAuth()
@@ -307,7 +307,7 @@ final class SettingsViewModelTests: XCTestCase {
             openLoginWindow: { },
             openApplicationData: { }
         )
-        XCTAssertEqual(sut.popoverStyle, .none)
+        XCTAssertEqual(sut.popoverStyle, .ambient)
     }
 
     func testSetPopoverStylePersistsAndSyncsAmbientFlag() async throws {

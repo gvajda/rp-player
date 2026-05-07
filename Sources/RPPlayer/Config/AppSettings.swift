@@ -40,8 +40,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         notificationsEnabled: Bool = true,
         appearance: AppearanceMode = .system,
         menuBarIconStyle: MenuBarIconStyle = .template,
-        ambientBackgroundEnabled: Bool = false,
-        popoverStyle: PopoverStyle = .none,
+        ambientBackgroundEnabled: Bool = true,
+        popoverStyle: PopoverStyle = .ambient,
         frostedUpcomingEnabled: Bool = false,
         bitrate: Int = 4,
         outputDeviceUID: String? = nil,
@@ -85,8 +85,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.notificationsEnabled = try c.decodeIfPresent(Bool.self, forKey: .notificationsEnabled) ?? true
         self.appearance = try c.decodeIfPresent(AppearanceMode.self, forKey: .appearance) ?? .system
         self.menuBarIconStyle = try c.decodeIfPresent(MenuBarIconStyle.self, forKey: .menuBarIconStyle) ?? .template
-        self.ambientBackgroundEnabled = try c.decodeIfPresent(Bool.self, forKey: .ambientBackgroundEnabled) ?? false
-        self.popoverStyle = try c.decodeIfPresent(PopoverStyle.self, forKey: .popoverStyle) ?? .none
+        self.ambientBackgroundEnabled = try c.decodeIfPresent(Bool.self, forKey: .ambientBackgroundEnabled) ?? true
+        self.popoverStyle = try c.decodeIfPresent(PopoverStyle.self, forKey: .popoverStyle) ?? .ambient
         self.frostedUpcomingEnabled = try c.decodeIfPresent(Bool.self, forKey: .frostedUpcomingEnabled) ?? false
         self.bitrate = try c.decodeIfPresent(Int.self, forKey: .bitrate) ?? 4
         self.outputDeviceUID = try c.decodeIfPresent(String.self, forKey: .outputDeviceUID)

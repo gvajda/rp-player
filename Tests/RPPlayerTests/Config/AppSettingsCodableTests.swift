@@ -52,12 +52,12 @@ final class AppSettingsCodableTests: XCTestCase {
         XCTAssertTrue(decoded.ambientBackgroundEnabled)
     }
 
-    func testMissingAmbientBackgroundEnabledKeyDecodesAsFalse() throws {
+    func testMissingAmbientBackgroundEnabledKeyDecodesAsTrue() throws {
         let json = """
         {"selectedChannelId":0}
         """.data(using: .utf8)!
         let decoded = try JSONDecoder().decode(AppSettings.self, from: json)
-        XCTAssertFalse(decoded.ambientBackgroundEnabled)
+        XCTAssertTrue(decoded.ambientBackgroundEnabled)
     }
 
     func testMissingUpcomingRowCountDecodesAsFive() throws {
@@ -98,12 +98,12 @@ final class AppSettingsCodableTests: XCTestCase {
         }
     }
 
-    func testMissingPopoverStyleKeyDecodesAsNone() throws {
+    func testMissingPopoverStyleKeyDecodesAsAmbient() throws {
         let json = """
         {"selectedChannelId":0}
         """.data(using: .utf8)!
         let decoded = try JSONDecoder().decode(AppSettings.self, from: json)
-        XCTAssertEqual(decoded.popoverStyle, .none)
+        XCTAssertEqual(decoded.popoverStyle, .ambient)
     }
 
     func testRoundTripPreservesFrostedUpcomingEnabled() throws {
