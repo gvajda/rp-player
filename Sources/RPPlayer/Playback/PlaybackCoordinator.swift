@@ -145,7 +145,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             let lastEvent: Int = Int(lastSong?.event ?? "") ?? Int(block.endEvent ?? "") ?? 0
             let audioType = lastSong?.type ?? "M"
             let sliceNum = lastSong?.sliceNum
-            logger.info("bootstrap returned stale block (cue=0, all elapsed<=0); advancing via action=play event=\(lastEvent) audioType=\(audioType) sliceNum=\(sliceNum ?? "null")")
+            logger.info("bootstrap returned stale block (cue=\(block.cue), totalMs=\((songs.last?.elapsed ?? 0) + (songs.last?.duration ?? 0))); advancing via action=play event=\(lastEvent) audioType=\(audioType) sliceNum=\(sliceNum ?? "null")")
             block = try await api.play(
                 channel: channelId, bitrate: bitrate, event: lastEvent, action: .play,
                 audioType: audioType, episodeId: 0, sliceNum: sliceNum

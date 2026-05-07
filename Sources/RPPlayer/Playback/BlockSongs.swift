@@ -37,13 +37,21 @@ enum BlockSongs {
         return result
     }
 
-    // True when the bootstrap response is for a block whose audio file has
-    // already played past its end (server cursor lagged real-time). Detected
-    // by cue == 0 AND every song's elapsed offset being <= 0 with at least
-    // one strictly negative — distinguishing stale blocks from fresh promo
-    // blocks (single song, elapsed=0).
+    // True when the bootstrap response is a block whose audio file has already
+    // played past its end (server cursor lagged real-time). Two observed shapes:
+    //
+    //  1. cue == 0, every song's elapsed <= 0 with at least one strictly negative
+    //     (distinguishes from fresh promo: single song, cue=0, elapsed=0).
+    //
+    //  2. cue >= totalDurationMs — the seek point is at or past the end of the
+    //     audio file. Naive playback seeks beyond the file length, mpv errors
+    //     out (~9s later) with code -16 after briefly displaying art for the
+    //     song that emitNowPlaying(0) selected.
     static func isStale(songs: [PlayListSong], cue: Int) -> Bool {
-        guard !songs.isEmpty, cue == 0 else { return false }
+        guard !songs.isEmpty else { return false }
+        let totalMs = (songs.last?.elapsed ?? 0) + (songs.last?.duration ?? 0)
+        if totalMs > 0 && cue >= totalMs { return true }
+        guard cue == 0 else { return false }
         let elapsedValues = songs.map { $0.elapsed ?? 0 }
         return elapsedValues.allSatisfy { $0 <= 0 } && elapsedValues.contains { $0 < 0 }
     }

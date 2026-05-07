@@ -117,12 +117,37 @@ final class BlockSongsTests: XCTestCase {
         XCTAssertFalse(BlockSongs.isStale(songs: songs, cue: 0))
     }
 
-    func testIsStaleReturnsFalseWhenCueNonZero() {
+    func testIsStaleReturnsFalseWhenCueWithinFreshBlock() {
+        // cue within the block's audio file range; not stale.
         let songs = [
-            song(id: "x", duration: 60_000, elapsed: -1_000),
-            song(id: "x", duration: 60_000, elapsed: -500),
+            song(id: "x", duration: 60_000, elapsed: 0),
+            song(id: "x", duration: 60_000, elapsed: 60_000),
         ]
-        XCTAssertFalse(BlockSongs.isStale(songs: songs, cue: 357_800))
+        XCTAssertFalse(BlockSongs.isStale(songs: songs, cue: 30_000))
+    }
+
+    func testIsStaleReturnsTrueWhenCuePastBlockEnd() {
+        // Real-data scenario: server returned a block whose audio file ends at
+        // 1806600ms but cue is set to 2417499ms (well past end). Naive playback
+        // seeks beyond file length and mpv errors out ~9s later.
+        let songs = [
+            song(id: "a", duration: 275_300, elapsed: 190_500),
+            song(id: "b", duration: 339_400, elapsed: 465_800),
+            song(id: "c", duration: 265_200, elapsed: 805_200),
+            song(id: "d", duration: 223_100, elapsed: 1_070_400),
+            song(id: "e", duration: 165_800, elapsed: 1_293_500),
+            song(id: "f", duration: 347_300, elapsed: 1_459_300),
+        ]
+        XCTAssertTrue(BlockSongs.isStale(songs: songs, cue: 2_417_499))
+    }
+
+    func testIsStaleReturnsTrueWhenCueExactlyAtBlockEnd() {
+        // cue == totalMs is past the last playable frame; treat as stale.
+        let songs = [
+            song(id: "x", duration: 60_000, elapsed: 0),
+            song(id: "x", duration: 60_000, elapsed: 60_000),
+        ]
+        XCTAssertTrue(BlockSongs.isStale(songs: songs, cue: 120_000))
     }
 
     func testIsStaleReturnsFalseForEmptySongs() {
