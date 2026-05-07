@@ -264,6 +264,7 @@ extension LivePlaybackCoordinatorTests {
         XCTAssertEqual(calls.last, .seek(seconds: 60.05))
     }
 
+    // post-Task-2 this exercises the prefetched-block-adoption branch; cancel-and-fetch path covered by testSkipForwardPastLastSongCancelsPrefetchAndIssuesAdvanceCall
     func testSkipForwardOnLastSongFetchesNextBlock() async throws {
         let api = MockRpApiClient()
         let firstBlock = makeBlock(
@@ -307,6 +308,7 @@ extension LivePlaybackCoordinatorTests {
             api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 2 }
         )
         try await coord.play(channelId: 0)
+        // wait for eager prefetch to populate prefetchedBlock so skipForward adopts it; cancel-and-fetch path covered by testSkipForwardPastLastSongCancelsPrefetchAndIssuesAdvanceCall
         try await Task.sleep(nanoseconds: 100_000_000)
         try await coord.skipForward()
 
@@ -890,9 +892,7 @@ extension LivePlaybackCoordinatorTests {
 
     func testSkipForwardPastLastSongCancelsInFlightPrefetchAndFetches() async throws {
         let api = MockRpApiClient()
-        // Two-song block so eager prefetch (single-song path on play()) doesn't
-        // race ahead of setPlayDelay; prefetch fires only when positionUpdate
-        // crosses into the last song, where the delay is already in effect.
+        // Two-song block so eager prefetch fires only after setPlayDelay is in effect (single-song play() would race the delay).
         let block1 = makeBlock(
             endEvent: "700",
             prebuiltSongs: [
@@ -923,6 +923,54 @@ extension LivePlaybackCoordinatorTests {
         XCTAssertEqual(cancellations, 1, "in-flight prefetch must be cancelled by skipForward past-last")
         let np = await coordinator.nowPlaying
         XCTAssertNotNil(np, "coordinator must have nowPlaying after skip")
+    }
+
+    func testSkipForwardPastLastSongCancelsPrefetchAndIssuesAdvanceCall() async throws {
+        let api = MockRpApiClient()
+        let song1 = PlayListSong(
+            songId: "1", artist: "A", title: "T", album: "Al", duration: 11_000,
+            event: "799", schedTime: nil, chan: "0", year: nil, asin: nil,
+            rating: nil, userRating: nil, cover: nil, elapsed: 0, slideshow: nil,
+            type: "M", sliceNum: "7"
+        )
+        let song2 = PlayListSong(
+            songId: "2", artist: "A", title: "T", album: "Al", duration: 11_000,
+            event: "800", schedTime: nil, chan: "0", year: nil, asin: nil,
+            rating: nil, userRating: nil, cover: nil, elapsed: 11_000, slideshow: nil,
+            type: "M", sliceNum: "8"
+        )
+        let firstBlock = makeBlock(endEvent: "800", prebuiltSongs: [song1, song2])
+        // multi-song to suppress trailing eager prefetch so calls.last is the synchronous advance
+        let secondBlock = makeBlock(songs: [("b1", 60_000), ("b2", 60_000)])
+        await api.setBlockResponses([firstBlock, secondBlock])
+        let engine = MockPlayerEngine()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine,
+            logger: AppLogger(category: "test"),
+            bitrateProvider: { 3 }
+        )
+
+        try await coordinator.play(channelId: 0)
+        await api.setPlayDelay(nanos: 2_000_000_000)
+        await engine.fire(.positionUpdate(seconds: 12.0))
+        try await Task.sleep(nanoseconds: 50_000_000)
+        await api.setPlayDelay(nanos: 0)
+        try await coordinator.skipForward()
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        let calls = await api.calls
+        // bootstrap + cancelled prefetch (records before the cancel takes effect) + synchronous advance
+        let advanceCall = calls.last
+        guard case let .play(channel, bitrate, event, action, audioType, episodeId, sliceNum) = advanceCall else {
+            return XCTFail("expected last call to be .play, got \(String(describing: advanceCall))")
+        }
+        XCTAssertEqual(channel, 0)
+        XCTAssertEqual(bitrate, 3)
+        XCTAssertEqual(event, 800)
+        XCTAssertEqual(action, .play)
+        XCTAssertEqual(audioType, "M")
+        XCTAssertEqual(episodeId, 0)
+        XCTAssertEqual(sliceNum, "8")
     }
 }
 
@@ -1439,9 +1487,7 @@ extension LivePlaybackCoordinatorTests {
         XCTAssertTrue(engineCalls.contains(.play(url: URL(string: "https://example.com/recovery.flac")!, startSeconds: nil)))
 
         let calls = await api.calls
-        // Four play calls: bootstrap (event=0,start) + eager prefetch on
-        // single-song promo + advance (event=999,play) after -16 cancels prefetch
-        // + eager prefetch on the post-advance single-song recovery block.
+        // Bootstrap + eager prefetch on single-song promo + advance after -16 + trailing eager prefetch on recovery (consumed by silent throw).
         XCTAssertEqual(calls.count, 4)
         guard case let .play(_, _, event, action, audioType, _, _) = calls[2] else {
             return XCTFail("expected third .play call")
@@ -1501,16 +1547,7 @@ extension LivePlaybackCoordinatorTests {
             endEvent: "3",
             prebuiltSongs: [makeSong(id: "recovery", duration: 60_000, elapsed: 0, event: "3")]
         )
-        // Single-song blocks trigger eager prefetch on every emit; each prefetch
-        // consumes a block that the next -16 advance cancels and discards.
-        // Filler blocks absorb those wasted reads. Real responses interleaved:
-        //   [0]=bad bootstrap, [1]=filler (prefetch),
-        //   [2]=bad (advance#1), [3]=filler, [4]=bad (advance#2), [5]=filler,
-        //   [6]=mid (advance#3, lands here),
-        //   [7]=filler (prefetch on mid before fileLoaded),
-        //   [8]=bad (advance#4 after counter reset), [9]=filler,
-        //   [10]=bad (advance#5), [11]=filler,
-        //   [12]=recovery (advance#6, lands here).
+        // Six filler responses absorb the eager prefetch each unplayable block triggers; behavioral assertion is on the recovery song, not call ordering.
         let filler = makeBlock(
             url: "https://example.com/filler.flac",
             endEvent: "0",
@@ -1564,8 +1601,7 @@ extension LivePlaybackCoordinatorTests {
         try await Task.sleep(nanoseconds: 100_000_000)
 
         let calls = await api.calls
-        // Bootstrap + eager prefetch on single-song block; -14 takes the no-advance
-        // path (handlePlaybackError, no api call) so total stays at 2.
+        // -14 routes through handlePlaybackError (no api call), so count stays at bootstrap + eager prefetch.
         XCTAssertEqual(calls.count, 2, "device errors must not trigger advance")
         let np = await coordinator.nowPlaying
         XCTAssertNil(np)
@@ -1597,9 +1633,7 @@ extension LivePlaybackCoordinatorTests {
 
     func testFileEndedWithErrorCancelsPrefetchTask() async throws {
         let api = MockRpApiClient()
-        // Two-song first block so the eager-on-emit prefetch (single-song path)
-        // doesn't fire on play(). Prefetch is gated on positionUpdate crossing
-        // into the last song, where setPlayDelay is already in effect.
+        // Two-song block so eager prefetch fires only after setPlayDelay is in effect (single-song play() would race the delay).
         let firstBlock = makeBlock(
             endEvent: "500",
             prebuiltSongs: [
