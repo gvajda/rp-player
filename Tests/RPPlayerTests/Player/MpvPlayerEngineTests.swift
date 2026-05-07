@@ -219,4 +219,24 @@ extension MpvPlayerEngineTests {
         let advancedPos = await engine.playlistPosForTesting()
         XCTAssertNotEqual(advancedPos, initialPos, "advanceToQueued should change playlist-pos (initial=\(initialPos ?? "nil"), after=\(advancedPos ?? "nil"))")
     }
+
+    func testMuteImmediatelySetsMuteProperty() async throws {
+        let engine = try MpvPlayerEngine()
+        defer { Task { await engine.shutdown() } }
+
+        let initial = await engine.muteForTesting()
+        XCTAssertEqual(initial, "no")
+
+        engine.muteImmediately()
+
+        let after = await engine.muteForTesting()
+        XCTAssertEqual(after, "yes")
+    }
+
+    func testMuteImmediatelyAfterShutdownIsNoop() async throws {
+        let engine = try MpvPlayerEngine()
+        await engine.shutdown()
+        // Must not crash on a freed handle.
+        engine.muteImmediately()
+    }
 }

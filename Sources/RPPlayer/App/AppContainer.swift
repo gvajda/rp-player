@@ -22,6 +22,8 @@ final class AppContainer {
     let nowPlayingCenterController: NowPlayingCenterController
     let initialMenuBarIconStyle: MenuBarIconStyle
 
+    let quietNow: @Sendable () -> Void
+
     private let coordinatorShutdown: @Sendable () async -> Void
     private let onLaunchTasksClosures: [@Sendable () async -> Void]
 
@@ -42,6 +44,7 @@ final class AppContainer {
         nowPlayingCenterController: NowPlayingCenterController,
         initialMenuBarIconStyle: MenuBarIconStyle = .template,
         coordinatorShutdown: @escaping @Sendable () async -> Void,
+        quietNow: @escaping @Sendable () -> Void = {},
         onLaunchTasks: [@Sendable () async -> Void] = []
     ) {
         self.viewModel = viewModel
@@ -60,6 +63,7 @@ final class AppContainer {
         self.nowPlayingCenterController = nowPlayingCenterController
         self.initialMenuBarIconStyle = initialMenuBarIconStyle
         self.coordinatorShutdown = coordinatorShutdown
+        self.quietNow = quietNow
         self.onLaunchTasksClosures = onLaunchTasks
     }
 
@@ -505,6 +509,7 @@ extension AppContainer {
             nowPlayingCenterController: nowPlayingCenterController,
             initialMenuBarIconStyle: initial.menuBarIconStyle,
             coordinatorShutdown: { await coordinator.shutdown(); await hogController.release() },
+            quietNow: { engine.muteImmediately() },
             onLaunchTasks: onLaunchTasks
         )
     }

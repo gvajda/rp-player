@@ -127,6 +127,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         guard let container else { return }
+        // Mute mpv synchronously FIRST. The shutdown sequence below can take up
+        // to ~2s (event-pump drain + 150ms AO buffer drain + mpv_terminate_destroy);
+        // without this, audio plays through the entire window and the AudioUnit
+        // gets hard-cut at process exit (audible glitch). mpv's client API is
+        // thread-safe — calling mpv_set_property off-actor is fine.
+        container.quietNow()
         Task { await container.notificationCoordinator.stop() }
         container.nowPlayingCenterController.stop()
 

@@ -16,12 +16,14 @@ public protocol PlayerEngine: Sendable {
     func advanceToQueued() async throws
     func clearPlaylist() async throws
     func shutdown() async
+    func muteImmediately()
 }
 
 public extension PlayerEngine {
     func play(url: URL) async throws {
         try await play(url: url, startSeconds: nil)
     }
+    func muteImmediately() {}
 }
 
 public enum PlayerEvent: Sendable, Equatable {

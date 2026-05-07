@@ -1,5 +1,6 @@
 import CMpv
 import Foundation
+import os
 
 public actor MpvPlayerEngine: PlayerEngine {
     private var handle: OpaquePointer?
@@ -8,6 +9,18 @@ public actor MpvPlayerEngine: PlayerEngine {
     private var isShutdown = false
     private var currentDeviceUID: String?
     private let logger: (any Logging)?
+
+    // Lock-guarded handle copy for `muteImmediately()`. The Quit path needs to
+    // mute mpv synchronously before AppKit's terminate sequence reaches
+    // `applicationWillTerminate` ~2s later — without this, audio plays for the
+    // full shutdown window and the AudioUnit gets hard-cut at process exit
+    // (audible glitch). mpv's client API is thread-safe except for
+    // mpv_wait_event, so calling mpv_set_property_string off-actor is fine.
+    // OSAllocatedUnfairLock-guarded copy of the mpv handle for `muteImmediately()`.
+    // OpaquePointer isn't Sendable, so we store the raw bit pattern instead and
+    // reconstruct the pointer inside the lock. NSLock can't be used here — it's
+    // unavailable in async contexts under Swift 6 strict concurrency.
+    private let quitHandleBits = OSAllocatedUnfairLock<UInt>(initialState: 0)
 
     public init(
         initialDeviceUID: String? = nil,
@@ -97,6 +110,8 @@ public actor MpvPlayerEngine: PlayerEngine {
         _ = mpv_request_log_messages(h, "error")
 
         self.handle = h
+        let bits = UInt(bitPattern: Int(bitPattern: UnsafeRawPointer(h)))
+        self.quitHandleBits.withLock { $0 = bits }
         self.currentDeviceUID = initialDeviceUID
         self.logger = logger
         logger?.debug("MpvPlayerEngine init done; initialDeviceUID=\(initialDeviceUID ?? "nil")")
@@ -225,6 +240,14 @@ public actor MpvPlayerEngine: PlayerEngine {
         try setStringProperty("volume-max", enabled ? "100" : "130")
     }
 
+    /// Synchronous, off-actor mute. Used by the Quit path so audio stops on
+    /// click instead of after the multi-second shutdown choreography.
+    public nonisolated func muteImmediately() {
+        let bits = quitHandleBits.withLock { $0 }
+        guard bits != 0, let h = OpaquePointer(bitPattern: bits) else { return }
+        _ = mpv_set_property_string(h, "mute", "yes")
+    }
+
     public func setMute(_ muted: Bool) async throws {
         try requireHandle()
         try setBoolProperty("mute", muted)
@@ -282,6 +305,13 @@ public actor MpvPlayerEngine: PlayerEngine {
         return String(cString: raw)
     }
 
+    func muteForTesting() -> String? {
+        guard let h = handle else { return nil }
+        guard let raw = mpv_get_property_string(h, "mute") else { return nil }
+        defer { mpv_free(raw) }
+        return String(cString: raw)
+    }
+
     public func shutdown() async {
         guard !isShutdown else { return }
         isShutdown = true
@@ -296,6 +326,9 @@ public actor MpvPlayerEngine: PlayerEngine {
         }
         await pumpTask?.value
         pumpTask = nil
+        // Clear the off-actor mute handle BEFORE mpv_terminate_destroy so a
+        // late `muteImmediately()` call can't touch a freed handle.
+        quitHandleBits.withLock { $0 = 0 }
         if let h = handle {
             mpv_terminate_destroy(h)
         }
