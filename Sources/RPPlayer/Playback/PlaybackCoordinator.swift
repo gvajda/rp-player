@@ -545,6 +545,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         current = np
         for c in continuations.values { c.yield(np) }
         prefetchUpcomingSongArt()
+        maybeStartPrefetch()
     }
 
     // Warm the album-art cache for the song that will play next so the popover
@@ -600,9 +601,6 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
               currentSongIndex == orderedSongs.count - 1,
               prefetchedBlock == nil,
               prefetchTask == nil else { return }
-        let totalSeconds = BlockSongs.totalDurationSeconds(songs: orderedSongs)
-        let remaining = totalSeconds - currentPositionSeconds
-        guard remaining < 10.0 else { return }
 
         let lastSong = orderedSongs.last
         let lastEvent: Int = Int(lastSong?.event ?? "") ?? Int(currentBlock?.endEvent ?? "") ?? 0
