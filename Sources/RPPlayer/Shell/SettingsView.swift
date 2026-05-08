@@ -14,6 +14,7 @@ struct SettingsView: View {
                 audioSection
                 deviceSettingsSection
                 notificationsSection
+                updatesSection
                 appearanceSection
                 upcomingProgramSection
                 accountSection
@@ -150,6 +151,30 @@ struct SettingsView: View {
     private var notificationsSection: some View {
         Section("Notifications") {
             Toggle("Show desktop notifications on song start", isOn: notificationsBinding)
+        }
+    }
+
+    private var updatesSection: some View {
+        Section("Updates") {
+            Toggle("Check for updates automatically", isOn: updateCheckEnabledBinding)
+            Text("Daily, while the app is running.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            HStack(alignment: .firstTextBaseline) {
+                Button("Check Now") {
+                    Task { await viewModel.checkNow() }
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("Last checked: \(viewModel.lastCheckedRelative)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(viewModel.currentVersionLine)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
     }
 
@@ -328,6 +353,13 @@ struct SettingsView: View {
         Binding(
             get: { viewModel.notificationsEnabled },
             set: { newValue in Task { await viewModel.setNotificationsEnabled(newValue) } }
+        )
+    }
+
+    private var updateCheckEnabledBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.updateCheckEnabled },
+            set: { value in Task { await viewModel.setUpdateCheckEnabled(value) } }
         )
     }
 
