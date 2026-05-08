@@ -24,7 +24,7 @@ enum ContextMenuBuilder {
         menu.addItem(.separator())
         if viewModel?.updateAvailableForMenu != nil {
             menu.addItem(item("Update Available…") {
-                Task { await viewModel?.requestOpenUpdatePanel() }
+                viewModel?.requestOpenUpdatePanelFromMenu()
             })
             menu.addItem(.separator())
         }

@@ -586,6 +586,27 @@ final class MiniPlayerViewModelTests: XCTestCase {
         let dismissed = await spy.dismissCount
         XCTAssertEqual(dismissed, 1)
     }
+
+    func testRequestOpenUpdatePanelFromMenuDoesNotDismiss() async throws {
+        let spy = SpyUpdateCheckerForMiniPlayer()
+        let vm = MiniPlayerViewModel(
+            coordinator: coordinator,
+            api: api,
+            initialChannelId: 0,
+            albumArtCache: StubAlbumArtCache(),
+            auth: auth,
+            configStore: StubConfigStore(initial: .default),
+            paletteExtractor: StubAmbientPaletteExtractor(),
+            openSettings: {},
+            updateChecker: spy
+        )
+        var openCount = 0
+        vm.openUpdatePanel = { openCount += 1 }
+        vm.requestOpenUpdatePanelFromMenu()
+        XCTAssertEqual(openCount, 1)
+        let dismissed = await spy.dismissCount
+        XCTAssertEqual(dismissed, 0)
+    }
 }
 
 private actor SpyUpdateCheckerForMiniPlayer: UpdateChecking {
