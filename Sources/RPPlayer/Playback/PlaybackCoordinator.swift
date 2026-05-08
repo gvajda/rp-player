@@ -239,6 +239,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             pausedAt = nil
             pausePositionMs = 0
             try await play(channelId: channelId)
+            armLongIdleStallWatchdog()
             return
         }
         logger.debug("resume: block fresh, engine.resume()")
@@ -638,6 +639,79 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     private func cancelStallWatchdog() {
         stallWatchdog?.cancel()
         stallWatchdog = nil
+    }
+
+    private func armLongIdleStallWatchdog() {
+        cancelStallWatchdog()
+        guard let block = currentBlock,
+              let blockUrl = URL(string: block.url) else { return }
+        // Capture state synchronously on the actor — Task closure must not race with concurrent state mutations.
+        let snapshot = currentPositionSeconds
+        let retryStart: Double? = currentSongIndex < startsAt.count ? startsAt[currentSongIndex] : nil
+        let timeoutNanoseconds = UInt64(Self.stallWatchdogTimeoutSeconds * 1_000_000_000)
+        stallWatchdog = Task { [weak self, blockUrl, snapshot, retryStart, timeoutNanoseconds] in
+            guard let self else { return }
+            if await self.waitForFirstPositionUpdate(snapshot: snapshot, timeoutNanoseconds: timeoutNanoseconds) { return }
+            if Task.isCancelled { return }
+            await self.logStallWatchdogTimeout(attempt: 1)
+            do {
+                try await self.engine.stop()
+                try await self.engine.play(url: blockUrl, startSeconds: retryStart)
+            } catch {
+                await self.surfaceStallError()
+                return
+            }
+            if await self.waitForFirstPositionUpdate(snapshot: snapshot, timeoutNanoseconds: timeoutNanoseconds) { return }
+            if Task.isCancelled { return }
+            await self.logStallWatchdogTimeout(attempt: 2)
+            await self.surfaceStallError()
+        }
+    }
+
+    private func waitForFirstPositionUpdate(snapshot: Double, timeoutNanoseconds: UInt64) async -> Bool {
+        let stream = positionUpdates
+        let sleep = self.sleep
+        return await withTaskGroup(of: Bool.self) { group in
+            group.addTask {
+                for await pos in stream {
+                    if pos != snapshot { return true }
+                }
+                return false
+            }
+            group.addTask {
+                await sleep(timeoutNanoseconds)
+                return false
+            }
+            let result = await group.next() ?? false
+            group.cancelAll()
+            return result
+        }
+    }
+
+    private func logStallWatchdogTimeout(attempt: Int) {
+        logger.info("stall watchdog: no positionUpdate within \(Int(Self.stallWatchdogTimeoutSeconds))s on attempt \(attempt)")
+    }
+
+    private func surfaceStallError() async {
+        logger.error("stall watchdog: surfacing error after retry timeout")
+        try? await engine.stop()
+        try? await engine.clearPlaylist()
+        cancelStallWatchdog()
+        prefetchTask?.cancel()
+        prefetchTask = nil
+        prefetchedBlock = nil
+        queuedToEngine = false
+        currentChannelId = nil
+        currentBlock = nil
+        orderedSongs = []
+        startsAt = []
+        currentSongIndex = 0
+        currentPositionSeconds = 0
+        pausedAt = nil
+        pausePositionMs = 0
+        current = nil
+        emitState(.stopped)
+        errorsContinuation?.yield("Playback stalled. Try Pause/Play to recover.")
     }
 
     private func unregister(id: UUID) { continuations.removeValue(forKey: id) }
