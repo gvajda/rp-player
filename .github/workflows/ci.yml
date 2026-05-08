@@ -98,6 +98,10 @@ jobs:
             -format UDZO \
             "build/RP Player-${GITHUB_REF_NAME}.dmg"
 
+      - name: Extract changelog notes
+        run: |
+          scripts/extract-changelog.sh "$GITHUB_REF_NAME" build/release-notes.md
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -108,6 +112,6 @@ jobs:
           fi
           gh release create "$GITHUB_REF_NAME" \
             --title "$GITHUB_REF_NAME" \
-            --generate-notes \
+            --notes-file build/release-notes.md \
             $PRERELEASE_FLAG \
             "build/RP Player-${GITHUB_REF_NAME}.dmg"

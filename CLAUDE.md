@@ -109,6 +109,10 @@ Surfaced by the final review on `claude/pr28-gapless-block-transitions` after sm
 - **Merge strategy:** fast-forward only (`git merge --ff-only`) to main after all reviews pass.
 - **Test command:** `swift test`
 - **Build command:** `swift build`
+- **Documentation updates are part of every PR.** When a PR ships, update all three docs:
+  - `CHANGELOG.md` — add entries under `## [Unreleased]` (sections: `Added` / `Changed` / `Fixed` / `Removed` / `Deprecated` / `Security`). Before tagging a release, rename the heading to `## [vX.Y.Z] - YYYY-MM-DD` and re-add an empty `## [Unreleased]` above it. CI's release job runs `scripts/extract-changelog.sh "$GITHUB_REF_NAME"` and fails the release if the section is missing or empty.
+  - `CLAUDE.md` — update the PR status table, *Test counts by PR* section, and any *Key technical decisions* entries that are non-obvious from the code.
+  - `README.md` — update user-facing instructions, screenshots, and feature lists when a PR changes them.
 
 ---
 
