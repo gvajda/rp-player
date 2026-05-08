@@ -95,9 +95,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.updatePanelController.show(release: info)
         }
 
-        container.settingsViewModel.openUpdatePanel = { [weak self, weak container] in
-            guard let self, let container else { return }
-            guard let info = container.viewModel.updateAvailableForMenu else { return }
+        container.settingsViewModel.openUpdatePanel = { [weak self] info in
+            guard let self else { return }
             self.updatePanelController.show(release: info)
         }
 

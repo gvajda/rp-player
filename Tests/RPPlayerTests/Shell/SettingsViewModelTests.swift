@@ -491,18 +491,39 @@ final class SettingsViewModelTests: XCTestCase {
     }
 
     func testOpenUpdateRunsCheckNowThenOpensPanel() async {
-        let spy = SpyUpdateChecker()
+        let info = ReleaseInfo(
+            tagName: "v0.5.0",
+            version: SemVer(major: 0, minor: 5, patch: 0),
+            publishedAt: Date(),
+            body: "",
+            htmlUrl: URL(string: "https://example.com")!,
+            dmgAssetUrl: nil
+        )
+        let spy = SpyUpdateChecker(initialState: .available(info, dismissedFromButton: false))
+        sut = SettingsViewModel(
+            configStore: configStore, deviceCatalog: deviceCatalog, auth: auth,
+            openLoginWindow: {}, openApplicationData: {},
+            updateChecker: spy
+        )
+        var openedTag: String?
+        sut.openUpdatePanel = { received in openedTag = received.tagName }
+        await sut.openUpdate()
+        let checkCount = await spy.checkNowCallCount
+        XCTAssertEqual(checkCount, 1)
+        XCTAssertEqual(openedTag, "v0.5.0")
+    }
+
+    func testOpenUpdateDoesNotOpenPanelWhenStateNotAvailable() async {
+        let spy = SpyUpdateChecker(initialState: .upToDate(checkedAt: Date()))
         sut = SettingsViewModel(
             configStore: configStore, deviceCatalog: deviceCatalog, auth: auth,
             openLoginWindow: {}, openApplicationData: {},
             updateChecker: spy
         )
         var openCount = 0
-        sut.openUpdatePanel = { openCount += 1 }
+        sut.openUpdatePanel = { _ in openCount += 1 }
         await sut.openUpdate()
-        let checkCount = await spy.checkNowCallCount
-        XCTAssertEqual(checkCount, 1)
-        XCTAssertEqual(openCount, 1)
+        XCTAssertEqual(openCount, 0)
     }
 }
 

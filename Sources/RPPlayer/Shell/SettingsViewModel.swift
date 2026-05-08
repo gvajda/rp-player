@@ -29,7 +29,7 @@ final class SettingsViewModel: ObservableObject {
     @Published private(set) var currentVersionLine: String = ""
     @Published private(set) var updateAvailable: Bool = false
 
-    var openUpdatePanel: @MainActor () -> Void = {}
+    var openUpdatePanel: @MainActor (ReleaseInfo) -> Void = { _ in }
 
     private let configStore: any ConfigStore
     private let deviceCatalog: any AudioDeviceCatalog
@@ -272,7 +272,10 @@ final class SettingsViewModel: ObservableObject {
 
     func openUpdate() async {
         await updateChecker.checkNow()
-        openUpdatePanel()
+        let state = await updateChecker.currentState
+        if case .available(let info, _) = state {
+            openUpdatePanel(info)
+        }
     }
 
     func applyUpdateState(_ state: UpdateState) {
