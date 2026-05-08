@@ -293,13 +293,6 @@ public actor MpvPlayerEngine: PlayerEngine {
         return String(cString: raw)
     }
 
-    func networkTimeoutOptionForTesting() -> String? {
-        guard let h = handle else { return nil }
-        guard let raw = mpv_get_property_string(h, "network-timeout") else { return nil }
-        defer { mpv_free(raw) }
-        return String(cString: raw)
-    }
-
     func playlistCountForTesting() -> String? {
         guard let h = handle else { return nil }
         guard let raw = mpv_get_property_string(h, "playlist-count") else { return nil }
