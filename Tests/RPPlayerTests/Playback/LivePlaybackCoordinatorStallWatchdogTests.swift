@@ -2,22 +2,33 @@ import XCTest
 @testable import RPPlayer
 
 // Controllable sleep stub — lets tests simulate the 10s watchdog timeout deterministically.
+// withTaskCancellationHandler is required so a cancelled Task (e.g. when withTaskGroup's
+// position-update child wins) resumes its parked continuation; without it, CheckedContinuation's
+// resume-exactly-once invariant is violated and the runtime aborts the process.
 final class ControllableSleep: @unchecked Sendable {
     private let lock = NSLock()
-    private var pendingContinuations: [(UInt64, CheckedContinuation<Void, Never>)] = []
+    private var pendingContinuations: [UUID: CheckedContinuation<Void, Never>] = [:]
     private var manualReleaseAll = false
 
     var sleep: @Sendable (UInt64) async -> Void {
-        { ns in
-            await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-                self.lock.lock()
-                if self.manualReleaseAll {
+        { _ in
+            let id = UUID()
+            await withTaskCancellationHandler {
+                await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+                    self.lock.lock()
+                    if self.manualReleaseAll || Task.isCancelled {
+                        self.lock.unlock()
+                        cont.resume()
+                        return
+                    }
+                    self.pendingContinuations[id] = cont
                     self.lock.unlock()
-                    cont.resume()
-                    return
                 }
-                self.pendingContinuations.append((ns, cont))
+            } onCancel: {
+                self.lock.lock()
+                let cont = self.pendingContinuations.removeValue(forKey: id)
                 self.lock.unlock()
+                cont?.resume()
             }
         }
     }
@@ -26,10 +37,10 @@ final class ControllableSleep: @unchecked Sendable {
     func releaseAll() {
         lock.lock()
         let pending = pendingContinuations
-        pendingContinuations = []
+        pendingContinuations = [:]
         manualReleaseAll = true
         lock.unlock()
-        for (_, cont) in pending { cont.resume() }
+        for cont in pending.values { cont.resume() }
     }
 
     var pendingCount: Int {
