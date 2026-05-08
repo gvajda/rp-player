@@ -239,4 +239,61 @@ final class UpdateCheckerTests: XCTestCase {
         let state = await checker.currentState
         XCTAssertEqual(state, .unknown)
     }
+
+    @MainActor
+    func testDismissedTagAutoResetsOnHigherRelease() async throws {
+        var settings = AppSettings.default
+        settings.dismissedUpdateVersion = "v0.5.0"
+        let store = StubConfigStore(initial: settings)
+
+        let bodySame = try loadFixture("release_latest")
+        StubURLProtocol.register(url: Self.endpoint, body: bodySame, status: 200)
+        let checker = makeChecker(
+            currentVersion: SemVer(major: 0, minor: 4, patch: 1),
+            store: store
+        )
+        await checker.checkNow()
+        let firstState = await checker.currentState
+        guard case .available(_, dismissedFromButton: true) = firstState else {
+            return XCTFail("expected dismissedFromButton=true (same tag), got \(firstState)")
+        }
+
+        StubURLProtocol.reset()
+        let bodyHigher = """
+        {"tag_name":"v0.6.0","name":"v0.6.0","body":"new","draft":false,"prerelease":false,
+         "published_at":"2026-05-09T10:00:00Z",
+         "html_url":"https://github.com/gvajda/rp-player/releases/tag/v0.6.0",
+         "assets":[
+           {"name":"RP Player-v0.6.0.dmg",
+            "browser_download_url":"https://example.com/x.dmg"}
+         ]}
+        """.data(using: .utf8)!
+        StubURLProtocol.register(url: Self.endpoint, body: bodyHigher, status: 200)
+        await checker.checkNow()
+        let secondState = await checker.currentState
+        guard case .available(let info, dismissedFromButton: false) = secondState else {
+            return XCTFail("expected dismissedFromButton=false on higher tag, got \(secondState)")
+        }
+        XCTAssertEqual(info.tagName, "v0.6.0")
+    }
+
+    @MainActor
+    func testDismissCurrentForButtonPersistsAndEmits() async throws {
+        let body = try loadFixture("release_latest")
+        StubURLProtocol.register(url: Self.endpoint, body: body, status: 200)
+        let store = StubConfigStore(initial: .default)
+        let checker = makeChecker(store: store)
+        await checker.checkNow()
+        let preState = await checker.currentState
+        guard case .available(_, dismissedFromButton: false) = preState else {
+            return XCTFail("setup: expected available, got \(preState)")
+        }
+        await checker.dismissCurrentForButton()
+        let dismissed = await store.settings.dismissedUpdateVersion
+        XCTAssertEqual(dismissed, "v0.5.0")
+        let postState = await checker.currentState
+        guard case .available(_, dismissedFromButton: true) = postState else {
+            return XCTFail("expected dismissedFromButton=true after dismiss, got \(postState)")
+        }
+    }
 }
