@@ -475,7 +475,8 @@ extension AppContainer {
             persistChannelId: { id in
                 guard let store else { return }
                 try? await store.update { $0.selectedChannelId = id }
-            }
+            },
+            updateChecker: updateChecker
         )
 
         let upcomingViewModel = UpcomingProgramViewModel(

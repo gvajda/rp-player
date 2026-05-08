@@ -19,6 +19,8 @@ final class MiniPlayerViewModel: ObservableObject {
     @Published private(set) var ambientTopColor: Color?
     @Published private(set) var popoverFloatingEnabled: Bool = false
     @Published private(set) var popoverStyle: PopoverStyle = .none
+    @Published private(set) var updateButtonVisible: Bool = false
+    @Published private(set) var updateAvailableForMenu: ReleaseInfo?
     private var ambientEnabled: Bool = false
 
     typealias PersistChannelId = @Sendable (Int) async -> Void
@@ -31,11 +33,13 @@ final class MiniPlayerViewModel: ObservableObject {
     private let paletteExtractor: any AmbientPaletteExtracting
     private let openSettingsAction: @MainActor () -> Void
     private let persistChannelId: PersistChannelId
+    private let updateChecker: any UpdateChecking
     private var subscriptionTask: Task<Void, Never>?
     private var positionSubscriptionTask: Task<Void, Never>?
     private var errorsSubscriptionTask: Task<Void, Never>?
     private var stateSubscriptionTask: Task<Void, Never>?
     private var settingsSubscriptionTask: Task<Void, Never>?
+    private var updateStateTask: Task<Void, Never>?
     private var paletteTask: Task<Void, Never>?
     private var inFlightChannelId: Int?
     private var lastLoadedCoverPath: String?
@@ -50,6 +54,7 @@ final class MiniPlayerViewModel: ObservableObject {
 
     var showPopoverIfNeeded: @MainActor () -> Void = {}
     var upcomingAction: @MainActor () -> Void = {}
+    var openUpdatePanel: @MainActor () -> Void = {}
 
     init(
         coordinator: any PlaybackCoordinator,
@@ -60,7 +65,8 @@ final class MiniPlayerViewModel: ObservableObject {
         configStore: any ConfigStore,
         paletteExtractor: any AmbientPaletteExtracting,
         openSettings: @escaping @MainActor () -> Void,
-        persistChannelId: @escaping PersistChannelId = { _ in }
+        persistChannelId: @escaping PersistChannelId = { _ in },
+        updateChecker: any UpdateChecking = NoopUpdateChecker()
     ) {
         self.coordinator = coordinator
         self.api = api
@@ -71,6 +77,7 @@ final class MiniPlayerViewModel: ObservableObject {
         self.openSettingsAction = openSettings
         self.selectedChannelId = initialChannelId
         self.persistChannelId = persistChannelId
+        self.updateChecker = updateChecker
     }
 
     func start() async {
@@ -189,6 +196,15 @@ final class MiniPlayerViewModel: ObservableObject {
                 }
             }
         }
+
+        let updateStream = await updateChecker.stateUpdates
+        updateStateTask = Task { [weak self] in
+            for await state in updateStream {
+                guard let self else { return }
+                if Task.isCancelled { return }
+                await MainActor.run { self.applyUpdateState(state) }
+            }
+        }
     }
 
     func togglePopoverFloating() {
@@ -205,6 +221,7 @@ final class MiniPlayerViewModel: ObservableObject {
         stateSubscriptionTask?.cancel(); stateSubscriptionTask = nil
         settingsSubscriptionTask?.cancel(); settingsSubscriptionTask = nil
         paletteTask?.cancel(); paletteTask = nil
+        updateStateTask?.cancel(); updateStateTask = nil
         hasStarted = false
     }
 
@@ -305,6 +322,22 @@ final class MiniPlayerViewModel: ObservableObject {
 
     func openUpcoming() {
         upcomingAction()
+    }
+
+    func applyUpdateState(_ state: UpdateState) {
+        switch state {
+        case .unknown, .upToDate:
+            updateButtonVisible = false
+            updateAvailableForMenu = nil
+        case .available(let info, let dismissedFromButton):
+            updateButtonVisible = !dismissedFromButton
+            updateAvailableForMenu = info
+        }
+    }
+
+    func requestOpenUpdatePanel() async {
+        openUpdatePanel()
+        await updateChecker.dismissCurrentForButton()
     }
 
     func refreshAuthState() {

@@ -531,4 +531,77 @@ final class MiniPlayerViewModelTests: XCTestCase {
 
         XCTAssertEqual(sut.remainingSecondsForTooltip, 0)
     }
+
+    func testUpdateButtonVisibleWhenAvailableAndNotDismissed() async throws {
+        let info = ReleaseInfo(
+            tagName: "v0.5.0",
+            version: SemVer(major: 0, minor: 5, patch: 0),
+            publishedAt: Date(),
+            body: "",
+            htmlUrl: URL(string: "https://example.com")!,
+            dmgAssetUrl: nil
+        )
+        sut.applyUpdateState(.available(info, dismissedFromButton: false))
+        XCTAssertTrue(sut.updateButtonVisible)
+        XCTAssertNotNil(sut.updateAvailableForMenu)
+    }
+
+    func testUpdateButtonHiddenWhenDismissedButMenuStays() async throws {
+        let info = ReleaseInfo(
+            tagName: "v0.5.0",
+            version: SemVer(major: 0, minor: 5, patch: 0),
+            publishedAt: Date(),
+            body: "",
+            htmlUrl: URL(string: "https://example.com")!,
+            dmgAssetUrl: nil
+        )
+        sut.applyUpdateState(.available(info, dismissedFromButton: true))
+        XCTAssertFalse(sut.updateButtonVisible)
+        XCTAssertNotNil(sut.updateAvailableForMenu)
+    }
+
+    func testUpdateButtonAndMenuHiddenWhenUpToDate() async throws {
+        sut.applyUpdateState(.upToDate(checkedAt: Date()))
+        XCTAssertFalse(sut.updateButtonVisible)
+        XCTAssertNil(sut.updateAvailableForMenu)
+    }
+
+    func testRequestOpenUpdatePanelInvokesClosureAndDismisses() async throws {
+        let spy = SpyUpdateCheckerForMiniPlayer()
+        let vm = MiniPlayerViewModel(
+            coordinator: coordinator,
+            api: api,
+            initialChannelId: 0,
+            albumArtCache: StubAlbumArtCache(),
+            auth: auth,
+            configStore: StubConfigStore(initial: .default),
+            paletteExtractor: StubAmbientPaletteExtractor(),
+            openSettings: {},
+            updateChecker: spy
+        )
+        var openCount = 0
+        vm.openUpdatePanel = { openCount += 1 }
+        await vm.requestOpenUpdatePanel()
+        XCTAssertEqual(openCount, 1)
+        let dismissed = await spy.dismissCount
+        XCTAssertEqual(dismissed, 1)
+    }
+}
+
+private actor SpyUpdateCheckerForMiniPlayer: UpdateChecking {
+    private(set) var dismissCount = 0
+    private var state: UpdateState = .unknown
+
+    func setState(_ next: UpdateState) { state = next }
+
+    func start() async {}
+    func checkNow() async {}
+    func dismissCurrentForButton() async { dismissCount += 1 }
+    var stateUpdates: AsyncStream<UpdateState> {
+        AsyncStream { continuation in
+            continuation.yield(state)
+            continuation.finish()
+        }
+    }
+    var currentState: UpdateState { state }
 }
