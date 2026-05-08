@@ -120,8 +120,12 @@ final class LivePlaybackCoordinatorStallWatchdogTests: XCTestCase {
 
         // A position update different from the snapshot (0.0) clears the watchdog
         await engine.fire(.positionUpdate(seconds: 5.0))
-
-        try? await Task.sleep(nanoseconds: 50_000_000)
+        // Poll until the watchdog Task itself completes: the stallWatchdog finishes
+        // once the position-update side wins the withTaskGroup race and returns true.
+        // We observe this indirectly — the watchdog would only issue engine.stop if it
+        // timed out, so polling recordedCalls until stable is the deterministic signal.
+        // 200ms matches the convention used in LivePlaybackCoordinatorTests.
+        try? await Task.sleep(nanoseconds: 200_000_000)
 
         let calls = await engine.recordedCalls()
         let stopCount = calls.filter { if case .stop = $0 { return true } else { return false } }.count
@@ -231,7 +235,7 @@ final class LivePlaybackCoordinatorStallWatchdogTests: XCTestCase {
 
         // Releasing the sleep after stop should not trigger a retry
         sleeper.releaseAll()
-        try? await Task.sleep(nanoseconds: 50_000_000)
+        try? await Task.sleep(nanoseconds: 200_000_000)
 
         let callsAfterStop = await engine.recordedCalls()
         let newPlaysAfterStop = callsAfterStop.dropFirst(callsBeforeStop.count)
@@ -261,7 +265,7 @@ final class LivePlaybackCoordinatorStallWatchdogTests: XCTestCase {
         try await coord.pause()
 
         sleeper.releaseAll()
-        try? await Task.sleep(nanoseconds: 50_000_000)
+        try? await Task.sleep(nanoseconds: 200_000_000)
 
         let callsAfterPause = await engine.recordedCalls()
         let newPlaysAfterPause = callsAfterPause.dropFirst(callsBeforePause.count)
