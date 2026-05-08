@@ -645,9 +645,10 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         cancelStallWatchdog()
         guard let block = currentBlock,
               let blockUrl = URL(string: block.url) else { return }
-        // Capture state synchronously on the actor — Task closure must not race with concurrent state mutations.
         let snapshot = currentPositionSeconds
-        let retryStart: Double? = currentSongIndex < startsAt.count ? startsAt[currentSongIndex] : nil
+        let retryStart: Double? = currentSongIndex < startsAt.count && startsAt[currentSongIndex] > 0
+            ? startsAt[currentSongIndex]
+            : nil
         let timeoutNanoseconds = UInt64(Self.stallWatchdogTimeoutSeconds * 1_000_000_000)
         stallWatchdog = Task { [weak self, blockUrl, snapshot, retryStart, timeoutNanoseconds] in
             guard let self else { return }
