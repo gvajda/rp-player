@@ -45,7 +45,7 @@ Either approach only needs to be done once — subsequent launches will work nor
 
 ### Keychain prompt on launch
 
-Once you've signed in (Settings → Sign In), your session cookies are stored in the macOS Keychain. Because the released `.app` is self-signed (not codesigned with a stable Apple Developer identity), macOS asks "RP Player wants to access [item] in your keychain" on every launch from then on — click **Always Allow** to suppress it for that build. A new release replaces the signing identity, so the prompt returns once after each upgrade. First-ever launch (before sign-in) is silent.
+Once you've signed in (Settings → Sign In), your session cookies are stored in the macOS Keychain. Because the released `.app` is self-signed (not codesigned with a stable Apple Developer identity), macOS asks "RP Player wants to access `com.gvajda.rpplayer` in your keychain" on every launch from then on — click **Always Allow** to suppress it for that build. A new release replaces the signing identity, so the prompt returns once after each upgrade. First-ever launch (before sign-in) is silent.
 
 > The RP Player app reads **only** the cookie it saved to your Keychain — storing it there ensures no other app can access it.
 
