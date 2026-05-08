@@ -895,7 +895,9 @@ extension LivePlaybackCoordinatorTests {
 extension LivePlaybackCoordinatorTests {
     func testPlayChannelInvokesPlayWithEventZero() async throws {
         let api = MockRpApiClient()
-        await api.setBlockResponses([makeBlock(songs: [("s1", 60_000)])])
+        // Two songs so PR 28's eager last-song-start prefetch doesn't fire on play() and
+        // race the assertion (a 1-song block makes song 0 the last song from the start).
+        await api.setBlockResponses([makeBlock(songs: [("s1", 60_000), ("s2", 60_000)])])
         let engine = MockPlayerEngine()
         let coordinator = LivePlaybackCoordinator(
             api: api, engine: engine,
@@ -906,8 +908,8 @@ extension LivePlaybackCoordinatorTests {
         try await coordinator.play(channelId: 0)
 
         let calls = await api.calls
-        XCTAssertEqual(calls.last, .play(channel: 0, bitrate: 4, event: 0, action: .start,
-                                         audioType: nil, episodeId: nil, sliceNum: nil))
+        XCTAssertEqual(calls.first, .play(channel: 0, bitrate: 4, event: 0, action: .start,
+                                          audioType: nil, episodeId: nil, sliceNum: nil))
     }
 
     func testSkipForwardPastLastSongAdoptsPrefetchedBlockWhenAvailable() async throws {
