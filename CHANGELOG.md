@@ -6,6 +6,14 @@ Section labels: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`
 
 ## [Unreleased]
 
+### Changed
+
+- Update panel renders the full release notes (was: truncated to 5 lines). Body is now scrollable and renders Markdown headings (`##`, `###`), bullet lists (`-`, `*`), and inline formatting (`**bold**`, `*italic*`, `` `code` ``). Panel grows to 460×540 to fit the longer body comfortably.
+
+### Fixed
+
+- Update panel line breaks were collapsed because `AttributedString(markdown:)` defaults to inline-only parsing. Replaced with a per-line renderer that splits on `\n`, treats blank lines as spacing, recognises heading + bullet prefixes, and applies inline Markdown to each line.
+
 ## [v0.5.1] - 2026-05-08
 
 ### Added

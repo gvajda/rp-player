@@ -31,12 +31,12 @@ public struct UpdatePanelView: View {
             Divider()
 
             ScrollView {
-                Text(truncatedNotes)
-                    .font(.body)
-                    .textSelection(.enabled)
+                ReleaseNotesView(markdown: release.body)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+                    .padding(.trailing, 4)
             }
-            .frame(maxHeight: 160)
+            .frame(minHeight: 200, maxHeight: 360)
 
             Text("You can come back to this from the menu → Update Available.")
                 .font(.caption)
@@ -53,7 +53,7 @@ public struct UpdatePanelView: View {
             }
         }
         .padding(20)
-        .frame(width: 420)
+        .frame(width: 460)
     }
 
     private var relativeDate: String {
@@ -61,19 +61,60 @@ public struct UpdatePanelView: View {
         f.unitsStyle = .full
         return f.localizedString(for: release.publishedAt, relativeTo: Date())
     }
+}
 
-    private var truncatedNotes: AttributedString {
-        let lines = release.body.split(separator: "\n", omittingEmptySubsequences: false)
-        let head = lines.prefix(5).joined(separator: "\n")
-        let display: String
-        if lines.count > 5 {
-            display = head + "\n…"
+private struct ReleaseNotesView: View {
+    let markdown: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(Array(lines.enumerated()), id: \.offset) { _, raw in
+                lineView(raw)
+            }
+        }
+    }
+
+    private var lines: [String] {
+        markdown.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+    }
+
+    @ViewBuilder
+    private func lineView(_ line: String) -> some View {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty {
+            Spacer().frame(height: 6)
+        } else if trimmed.hasPrefix("### ") {
+            Text(inline(String(trimmed.dropFirst(4))))
+                .font(.headline)
+                .padding(.top, 6)
+        } else if trimmed.hasPrefix("## ") {
+            Text(inline(String(trimmed.dropFirst(3))))
+                .font(.title3)
+                .padding(.top, 8)
+        } else if trimmed.hasPrefix("# ") {
+            Text(inline(String(trimmed.dropFirst(2))))
+                .font(.title2)
+                .padding(.top, 8)
+        } else if let bullet = bulletContent(trimmed) {
+            HStack(alignment: .top, spacing: 6) {
+                Text("•").foregroundStyle(.secondary)
+                Text(inline(bullet))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.leading, 4)
         } else {
-            display = head
+            Text(inline(line))
         }
-        if let attributed = try? AttributedString(markdown: display) {
-            return attributed
-        }
-        return AttributedString(display)
+    }
+
+    private func bulletContent(_ trimmed: String) -> String? {
+        if trimmed.hasPrefix("- ") { return String(trimmed.dropFirst(2)) }
+        if trimmed.hasPrefix("* ") { return String(trimmed.dropFirst(2)) }
+        return nil
+    }
+
+    private func inline(_ s: String) -> AttributedString {
+        if let a = try? AttributedString(markdown: s) { return a }
+        return AttributedString(s)
     }
 }

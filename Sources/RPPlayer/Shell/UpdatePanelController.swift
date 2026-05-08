@@ -36,7 +36,7 @@ public final class UpdatePanelController: NSObject {
         self.hosting = host
 
         let p = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 420, height: 360),
+            contentRect: NSRect(x: 0, y: 0, width: 460, height: 540),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
