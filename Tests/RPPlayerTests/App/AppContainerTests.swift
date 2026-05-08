@@ -176,6 +176,12 @@ final class AppContainerTests: XCTestCase {
         XCTAssertEqual(count, 2)
     }
 
+    func testDesignatedInitDefaultsToNoopUpdateChecker() async throws {
+        let (container, _, _, _) = makeStubContainer()
+        let state = await container.updateChecker.currentState
+        XCTAssertEqual(state, .unknown)
+    }
+
     func testGeneratePlayerIdMatchesRp3UuidShape() {
         let id = AppContainer.generatePlayerId()
         let pattern = "^rp3_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"

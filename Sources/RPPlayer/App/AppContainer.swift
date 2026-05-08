@@ -20,6 +20,7 @@ final class AppContainer {
     let upcomingWindowController: UpcomingWindowController
     let configStore: any ConfigStore
     let nowPlayingCenterController: NowPlayingCenterController
+    let updateChecker: any UpdateChecking
     let initialMenuBarIconStyle: MenuBarIconStyle
 
     let quietNow: @Sendable () -> Void
@@ -42,6 +43,7 @@ final class AppContainer {
         upcomingWindowController: UpcomingWindowController,
         configStore: any ConfigStore,
         nowPlayingCenterController: NowPlayingCenterController,
+        updateChecker: any UpdateChecking = NoopUpdateChecker(),
         initialMenuBarIconStyle: MenuBarIconStyle = .template,
         coordinatorShutdown: @escaping @Sendable () async -> Void,
         quietNow: @escaping @Sendable () -> Void = {},
@@ -61,6 +63,7 @@ final class AppContainer {
         self.upcomingWindowController = upcomingWindowController
         self.configStore = configStore
         self.nowPlayingCenterController = nowPlayingCenterController
+        self.updateChecker = updateChecker
         self.initialMenuBarIconStyle = initialMenuBarIconStyle
         self.coordinatorShutdown = coordinatorShutdown
         self.quietNow = quietNow
@@ -469,6 +472,24 @@ extension AppContainer {
             Task { @MainActor in await upcomingWindowController.show() }
         }
 
+        let updateChecker: any UpdateChecking
+        if let raw = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+           let version = SemVer.parse(raw) {
+            updateChecker = UpdateChecker(
+                currentVersion: version,
+                repoOwner: "gvajda",
+                repoName: "rp-player",
+                urlSession: .shared,
+                configStore: store ?? NoopConfigStore(),
+                logger: logger,
+                clock: { Date() }
+            )
+            logger.info("update checker: live (currentVersion=\(version.major).\(version.minor).\(version.patch))")
+        } else {
+            updateChecker = NoopUpdateChecker()
+            logger.info("update checker: noop (no CFBundleShortVersionString)")
+        }
+
         let onLaunchTasks: [@Sendable () async -> Void] = [
             { [logger] in
                 do {
@@ -483,6 +504,9 @@ extension AppContainer {
                     viewModel.refreshAuthState()
                     settingsViewModel.refreshAuthState()
                 }
+            },
+            { [updateChecker] in
+                await updateChecker.start()
             }
         ]
 
@@ -507,6 +531,7 @@ extension AppContainer {
             upcomingWindowController: upcomingWindowController,
             configStore: store ?? NoopConfigStore(),
             nowPlayingCenterController: nowPlayingCenterController,
+            updateChecker: updateChecker,
             initialMenuBarIconStyle: initial.menuBarIconStyle,
             coordinatorShutdown: { await coordinator.shutdown(); await hogController.release() },
             quietNow: { engine.muteImmediately() },
