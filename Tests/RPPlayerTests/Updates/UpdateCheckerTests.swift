@@ -155,4 +155,88 @@ final class UpdateCheckerTests: XCTestCase {
         let lastCheck = store.settings.lastUpdateCheckAt
         XCTAssertNil(lastCheck)
     }
+
+    @MainActor
+    func testStartSkipsCheckWhenToggleOff() async throws {
+        var settings = AppSettings.default
+        settings.updateCheckEnabled = false
+        let store = StubConfigStore(initial: settings)
+        StubURLProtocol.register(url: Self.endpoint, body: Data(), status: 200)
+        let checker = makeChecker(store: store)
+        await checker.start()
+        let state = await checker.currentState
+        XCTAssertEqual(state, .unknown)
+    }
+
+    @MainActor
+    func testStartSeedsStateFromCachedRelease() async throws {
+        let cached = ReleaseInfo(
+            tagName: "v0.5.0",
+            version: SemVer(major: 0, minor: 5, patch: 0),
+            publishedAt: Date(timeIntervalSince1970: 1_715_000_000),
+            body: "old notes",
+            htmlUrl: URL(string: "https://example.com")!,
+            dmgAssetUrl: nil
+        )
+        var settings = AppSettings.default
+        settings.cachedLatestRelease = cached
+        settings.lastUpdateCheckAt = fixedNow.addingTimeInterval(-3600)
+        settings.updateCheckEnabled = false
+        let store = StubConfigStore(initial: settings)
+        let checker = makeChecker(store: store)
+
+        await checker.start()
+
+        let state = await checker.currentState
+        guard case .available(let info, let dismissed) = state else {
+            return XCTFail("expected seeded .available, got \(state)")
+        }
+        XCTAssertEqual(info.tagName, "v0.5.0")
+        XCTAssertFalse(dismissed)
+    }
+
+    @MainActor
+    func testTickIfDueSkipsWhenLessThan24h() async throws {
+        var settings = AppSettings.default
+        settings.lastUpdateCheckAt = fixedNow.addingTimeInterval(-23 * 3600)
+        let store = StubConfigStore(initial: settings)
+        let body = try loadFixture("release_latest")
+        StubURLProtocol.register(url: Self.endpoint, body: body, status: 200)
+        let checker = makeChecker(store: store)
+        await checker.tickIfDue()
+        let state = await checker.currentState
+        XCTAssertEqual(state, .unknown)
+        let last = await store.settings.lastUpdateCheckAt
+        XCTAssertEqual(last, fixedNow.addingTimeInterval(-23 * 3600))
+    }
+
+    @MainActor
+    func testTickIfDueRunsWhen25hElapsed() async throws {
+        var settings = AppSettings.default
+        settings.lastUpdateCheckAt = fixedNow.addingTimeInterval(-25 * 3600)
+        let store = StubConfigStore(initial: settings)
+        let body = try loadFixture("release_latest")
+        StubURLProtocol.register(url: Self.endpoint, body: body, status: 200)
+        let checker = makeChecker(store: store)
+        await checker.tickIfDue()
+        let state = await checker.currentState
+        guard case .available = state else {
+            return XCTFail("expected check to fire and state to become .available, got \(state)")
+        }
+        let last = await store.settings.lastUpdateCheckAt
+        XCTAssertEqual(last, fixedNow)
+    }
+
+    @MainActor
+    func testTickIfDueSkipsWhenToggleOff() async throws {
+        var settings = AppSettings.default
+        settings.updateCheckEnabled = false
+        settings.lastUpdateCheckAt = fixedNow.addingTimeInterval(-48 * 3600)
+        let store = StubConfigStore(initial: settings)
+        StubURLProtocol.register(url: Self.endpoint, body: Data(), status: 200)
+        let checker = makeChecker(store: store)
+        await checker.tickIfDue()
+        let state = await checker.currentState
+        XCTAssertEqual(state, .unknown)
+    }
 }

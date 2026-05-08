@@ -69,6 +69,37 @@ public actor UpdateChecker: UpdateChecking {
     }
 
     public func start() async {
+        let snapshot = await configStore.settings
+        if let cached = snapshot.cachedLatestRelease, cached.version > currentVersion {
+            let dismissed = snapshot.dismissedUpdateVersion == cached.tagName
+            emit(.available(cached, dismissedFromButton: dismissed))
+        } else if let last = snapshot.lastUpdateCheckAt {
+            emit(.upToDate(checkedAt: last))
+        }
+
+        guard snapshot.updateCheckEnabled else { return }
+
+        await checkNow()
+        scheduleDailyTicker()
+    }
+
+    private func scheduleDailyTicker() {
+        Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: UInt64(3600 * 1_000_000_000))
+                guard let self else { return }
+                await self.tickIfDue()
+            }
+        }
+    }
+
+    func tickIfDue() async {
+        let snapshot = await configStore.settings
+        guard snapshot.updateCheckEnabled else { return }
+        let now = clock()
+        if let last = snapshot.lastUpdateCheckAt, now.timeIntervalSince(last) < 24 * 3600 {
+            return
+        }
         await checkNow()
     }
 
