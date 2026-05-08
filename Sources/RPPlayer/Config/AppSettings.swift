@@ -30,6 +30,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
     // panel (no outside-click dismissal, draggable). Toggled from the menu.
     public var popoverFloating: Bool
     public var audioProfiles: [String: AudioProfile]
+    public var updateCheckEnabled: Bool
+    public var lastUpdateCheckAt: Date?
+    public var dismissedUpdateVersion: String?
+    public var cachedLatestRelease: ReleaseInfo?
 
     public init(
         selectedChannelId: Int = 0,
@@ -51,7 +55,11 @@ public struct AppSettings: Codable, Equatable, Sendable {
         upcomingRowCount: Int = 5,
         upcomingHiddenChannelIds: [Int] = [],
         popoverFloating: Bool = false,
-        audioProfiles: [String: AudioProfile] = [:]
+        audioProfiles: [String: AudioProfile] = [:],
+        updateCheckEnabled: Bool = true,
+        lastUpdateCheckAt: Date? = nil,
+        dismissedUpdateVersion: String? = nil,
+        cachedLatestRelease: ReleaseInfo? = nil
     ) {
         self.selectedChannelId = selectedChannelId
         self.hogModeEnabled = hogModeEnabled
@@ -73,6 +81,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.upcomingHiddenChannelIds = upcomingHiddenChannelIds
         self.popoverFloating = popoverFloating
         self.audioProfiles = audioProfiles
+        self.updateCheckEnabled = updateCheckEnabled
+        self.lastUpdateCheckAt = lastUpdateCheckAt
+        self.dismissedUpdateVersion = dismissedUpdateVersion
+        self.cachedLatestRelease = cachedLatestRelease
     }
 
     public init(from decoder: Decoder) throws {
@@ -97,6 +109,10 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.upcomingHiddenChannelIds = try c.decodeIfPresent([Int].self, forKey: .upcomingHiddenChannelIds) ?? []
         self.popoverFloating = try c.decodeIfPresent(Bool.self, forKey: .popoverFloating) ?? false
         self.audioProfiles = try c.decodeIfPresent([String: AudioProfile].self, forKey: .audioProfiles) ?? [:]
+        self.updateCheckEnabled = try c.decodeIfPresent(Bool.self, forKey: .updateCheckEnabled) ?? true
+        self.lastUpdateCheckAt = try c.decodeIfPresent(Date.self, forKey: .lastUpdateCheckAt)
+        self.dismissedUpdateVersion = try c.decodeIfPresent(String.self, forKey: .dismissedUpdateVersion)
+        self.cachedLatestRelease = try c.decodeIfPresent(ReleaseInfo.self, forKey: .cachedLatestRelease)
     }
 
     public static let `default` = AppSettings()
