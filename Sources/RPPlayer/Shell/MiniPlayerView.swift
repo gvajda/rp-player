@@ -88,9 +88,30 @@ struct MiniPlayerView: View {
             channelPicker
                 .fixedSize()
             HStack {
-                Text("RP Player")
-                    .font(.caption2)
-                    .foregroundStyle(.primary)
+                if viewModel.updateButtonVisible {
+                    Button {
+                        Task { await viewModel.requestOpenUpdatePanel() }
+                    } label: {
+                        HStack(spacing: 3) {
+                            Text("Update Available")
+                            Image(systemName: "arrow.up.forward.square")
+                        }
+                        .font(.caption2)
+                        .foregroundStyle(.primary)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 5)
+                                .stroke(.secondary.opacity(0.5), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Update Available")
+                } else {
+                    Text("RP Player")
+                        .font(.caption2)
+                        .foregroundStyle(.primary)
+                }
                 Spacer()
                 HStack(spacing: 4) {
                     if let label = viewModel.currentBitrateLabel {

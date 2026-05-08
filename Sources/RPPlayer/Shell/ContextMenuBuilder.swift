@@ -22,6 +22,12 @@ enum ContextMenuBuilder {
         menu.addItem(.separator())
         menu.addItem(item("About RP Player") { viewModel?.openAbout() })
         menu.addItem(.separator())
+        if viewModel?.updateAvailableForMenu != nil {
+            menu.addItem(item("Update Available…") {
+                Task { await viewModel?.requestOpenUpdatePanel() }
+            })
+            menu.addItem(.separator())
+        }
         menu.addItem(item("Quit RP Player") { NSApp.terminate(nil) })
 
         return menu
