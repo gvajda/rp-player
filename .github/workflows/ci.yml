@@ -2,34 +2,54 @@ name: CI
 
 on:
   push:
-    branches: ['**']
-    tags: ['v*']
+    branches: ["**"]
+    tags: ["v*"]
   pull_request:
 
 jobs:
   test:
-    runs-on: macos-15
+    runs-on: macos-26
     permissions:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Select latest Xcode 16
         run: |
           XCODE=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
           echo "Using: $XCODE"
           sudo xcode-select -s "$XCODE/Contents/Developer"
           swift --version
+      - name: Install xcbeautify (JUnit converter)
+        run: brew install xcbeautify
       - name: Run tests with coverage
-        run: swift test --enable-code-coverage
+        run: |
+          set -o pipefail
+          mkdir -p build/reports
+          swift test --enable-code-coverage 2>&1 | tee build/reports/swift-test.log | xcbeautify --report junit --report-path build/reports
+      - name: Publish test report
+        if: success() || failure()
+        uses: dorny/test-reporter@v2
+        with:
+          name: Tests
+          path: build/reports/junit.xml
+          reporter: java-junit
+          fail-on-error: false
+      - name: Upload test logs
+        if: success() || failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs
+          path: build/reports/
+          retention-days: 14
       - name: Convert coverage to lcov
-        uses: sersoft-gmbh/swift-coverage-action@v4
+        uses: sersoft-gmbh/swift-coverage-action@v5
         id: cov
         with:
           search-paths: ./.build
           format: lcov
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v6
         with:
           files: ${{ join(fromJSON(steps.cov.outputs.files), ',') }}
           use_oidc: true
@@ -38,7 +58,7 @@ jobs:
   release:
     needs: test
     if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: macos-15
+    runs-on: macos-26
     permissions:
       contents: write
     steps:
