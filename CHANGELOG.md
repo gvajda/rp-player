@@ -6,6 +6,8 @@ Section labels: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`
 
 ## [Unreleased]
 
+## [v0.5.2] - 2026-05-08
+
 ### Changed
 
 - Update panel renders the full release notes (was: truncated to 5 lines). Body is now scrollable and renders Markdown headings (`##`, `###`), bullet lists (`-`, `*`), and inline formatting (`**bold**`, `*italic*`, `` `code` ``). Panel grows to 460×540 to fit the longer body comfortably.
