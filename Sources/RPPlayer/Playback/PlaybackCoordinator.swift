@@ -29,6 +29,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     private let logger: any Logging
     private let bitrateProvider: @Sendable () async -> Int
     private let clock: @Sendable () -> Date
+    private let sleep: @Sendable (UInt64) async -> Void
     private let prefetchArt: @Sendable (String) -> Void
     private var pausedAt: Date? = nil
     private var pausePositionMs: Int = 0
@@ -47,6 +48,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     private var eventTask: Task<Void, Never>?
     private var prefetchedBlock: GetBlock?
     private var prefetchTask: Task<Void, Never>?
+    private var stallWatchdog: Task<Void, Never>?
     private var queuedToEngine: Bool = false
     private var isShutdown = false
     private var errorsContinuation: AsyncStream<String>.Continuation?
@@ -54,6 +56,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     private static let maxConsecutivePlaybackFailures = 3
     // 59m, just under typical 1h CDN TCP idle eviction; observed mpv stream-end after 8.5h pause.
     private static let longIdleResumeThresholdSeconds: TimeInterval = 59 * 60
+    private static let stallWatchdogTimeoutSeconds: TimeInterval = 10
 
     public var errors: AsyncStream<String>
 
@@ -66,6 +69,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         logger: any Logging,
         bitrateProvider: @escaping @Sendable () async -> Int,
         clock: @escaping @Sendable () -> Date = { Date() },
+        sleep: @escaping @Sendable (UInt64) async -> Void = { ns in try? await Task.sleep(nanoseconds: ns) },
         prefetchArt: @escaping @Sendable (String) -> Void = { _ in },
         onDeviceUnavailable: (@Sendable () async -> Void)? = nil,
         prePlayHook: @escaping @Sendable () async -> Void = {}
@@ -75,6 +79,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         self.logger = logger
         self.bitrateProvider = bitrateProvider
         self.clock = clock
+        self.sleep = sleep
         self.prefetchArt = prefetchArt
         self.onDeviceUnavailable = onDeviceUnavailable
         self.prePlayHook = prePlayHook
@@ -130,6 +135,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
 
     public func play(channelId: Int) async throws {
         logger.debug("play(channelId: \(channelId))")
+        cancelStallWatchdog()
         await ensureEventSubscription()
         let bitrate = await bitrateProvider()
         logger.debug("play resolved bitrate=\(bitrate)")
@@ -188,6 +194,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
 
     public func pause() async throws {
         logger.debug("pause()")
+        cancelStallWatchdog()
         guard currentBlock != nil else { throw PlaybackCoordinatorError.notPlaying }
         do { try await engine.pause() } catch { throw PlaybackCoordinatorError.engineError(message: String(describing: error)) }
         emitState(.paused)
@@ -271,6 +278,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         // afterwards, a queued positionUpdate event processed during the
         // engine.stop suspension would see the still-active orderedSongs and
         // could spawn a fresh prefetch task that survives the cleanup.
+        cancelStallWatchdog()
         prefetchTask?.cancel()
         prefetchTask = nil
         prefetchedBlock = nil
@@ -364,6 +372,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     }
 
     public func changeChannel(to channelId: Int) async throws {
+        cancelStallWatchdog()
         try? await engine.clearPlaylist()
         prefetchTask?.cancel()
         prefetchTask = nil
@@ -376,6 +385,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     public func shutdown() async {
         guard !isShutdown else { return }
         isShutdown = true
+        cancelStallWatchdog()
         eventTask?.cancel()
         await eventTask?.value
         eventTask = nil
@@ -465,6 +475,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     private func handlePlaybackError(code: Int) async {
         logger.error("engine fileEnded with error code \(code)")
         try? await engine.clearPlaylist()
+        cancelStallWatchdog()
         prefetchTask?.cancel()
         prefetchTask = nil
         prefetchedBlock = nil
@@ -624,6 +635,11 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         return "url=\(url)\n" + lines.joined(separator: "\n")
     }
 
+    private func cancelStallWatchdog() {
+        stallWatchdog?.cancel()
+        stallWatchdog = nil
+    }
+
     private func unregister(id: UUID) { continuations.removeValue(forKey: id) }
     private func unregisterPosition(id: UUID) { positionContinuations.removeValue(forKey: id) }
     private func unregisterState(id: UUID) { stateContinuations.removeValue(forKey: id) }
@@ -709,6 +725,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         if let channelId = currentChannelId {
             fireSongStartTelemetry(song: orderedSongs[0], channelId: channelId)
         }
+        cancelStallWatchdog()
     }
 
     private func swapToPrefetchedBlockIfAvailable() async {
@@ -724,6 +741,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         logger.debug("swap engine.play url=\(url.absoluteString) startSeconds=\(startSeconds.map { "\($0)s" } ?? "nil")")
         do {
             try await engine.play(url: url, startSeconds: startSeconds)
+            cancelStallWatchdog()
         } catch {
             logger.error("failed to play prefetched block: \(error)")
             // Don't strand the user with frozen progress on a corrupted state — wipe and surface.
