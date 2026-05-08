@@ -54,8 +54,6 @@ public actor MpvPlayerEngine: PlayerEngine {
             ("demuxer-max-back-bytes", "1MiB"),
             ("cache-secs", "10"),
             ("prefetch-playlist", "yes"),
-            // Default 60s; cap at 15s so a stuck ffurl_read fails fast → handlePlaybackError recovery.
-            ("network-timeout", "15"),
         ]
         if underXCTest {
             baseline.append(("ao", "null"))

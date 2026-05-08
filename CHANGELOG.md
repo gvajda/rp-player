@@ -10,7 +10,7 @@ Section labels: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`
 
 ### Fixed
 
-- Long-idle resume could leave the player stuck after a 4h+ pause: the new HTTP connection to the audio CDN sometimes stalls mid-stream after demuxer headers, leaving mpv silent until the user pause/plays manually. PR 30 adds a 10-second watchdog after the long-idle refetch — if no audio frames arrive in time the player retries once, and if a second timeout hits surfaces "Playback stalled. Try Pause/Play to recover." Plus mpv `network-timeout` is capped at 15s (was 60s) so stuck reads fail fast through the existing recovery path.
+- Long-idle resume could leave the player stuck after a 4h+ pause: the new HTTP connection to the audio CDN sometimes stalls mid-stream after demuxer headers, leaving mpv silent until the user pause/plays manually. PR 30 adds a 10-second watchdog after the long-idle refetch — if no audio frames arrive in time the player retries once, and if a second timeout hits surfaces "Playback stalled. Try Pause/Play to recover."
 
 ## [v0.5.2] - 2026-05-08
 
