@@ -24,6 +24,9 @@ final class SettingsViewModel: ObservableObject {
     @Published private(set) var isSignedIn: Bool = false
     @Published private(set) var currentUsername: String?
     @Published private(set) var currentDeviceName: String?
+    @Published private(set) var updateCheckEnabled: Bool = true
+    @Published private(set) var lastCheckedRelative: String = "never"
+    @Published private(set) var currentVersionLine: String = ""
 
     private let configStore: any ConfigStore
     private let deviceCatalog: any AudioDeviceCatalog
@@ -31,9 +34,12 @@ final class SettingsViewModel: ObservableObject {
     private let openLoginWindowAction: @MainActor () -> Void
     private let openApplicationDataAction: @MainActor () -> Void
     private let listChannels: @Sendable () async throws -> [Channel]
+    private let updateChecker: any UpdateChecking
+    private let currentVersionString: String
 
     private var configTask: Task<Void, Never>?
     private var deviceTask: Task<Void, Never>?
+    private var updateStateTask: Task<Void, Never>?
 
     init(
         configStore: any ConfigStore,
@@ -41,7 +47,9 @@ final class SettingsViewModel: ObservableObject {
         auth: any KeychainAuth,
         openLoginWindow: @escaping @MainActor () -> Void,
         openApplicationData: @escaping @MainActor () -> Void,
-        listChannels: @Sendable @escaping () async throws -> [Channel] = { [] }
+        listChannels: @Sendable @escaping () async throws -> [Channel] = { [] },
+        updateChecker: any UpdateChecking = NoopUpdateChecker(),
+        currentVersionString: String = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "dev"
     ) {
         self.configStore = configStore
         self.deviceCatalog = deviceCatalog
@@ -49,6 +57,8 @@ final class SettingsViewModel: ObservableObject {
         self.openLoginWindowAction = openLoginWindow
         self.openApplicationDataAction = openApplicationData
         self.listChannels = listChannels
+        self.updateChecker = updateChecker
+        self.currentVersionString = currentVersionString
 
         let snapshot = AppSettings.default
         self.selectedChannelId = snapshot.selectedChannelId
@@ -67,6 +77,9 @@ final class SettingsViewModel: ObservableObject {
         self.frostedUpcomingEnabled = snapshot.frostedUpcomingEnabled
         self.upcomingRowCount = snapshot.upcomingRowCount
         self.upcomingHiddenChannelIds = snapshot.upcomingHiddenChannelIds
+
+        let versionPrefix = currentVersionString.hasPrefix("v") ? currentVersionString : "v" + currentVersionString
+        self.currentVersionLine = "\(versionPrefix) (status unknown)"
     }
 
     func start() async {
@@ -95,6 +108,8 @@ final class SettingsViewModel: ObservableObject {
                     self.upcomingRowCount = snapshot.upcomingRowCount
                     self.upcomingHiddenChannelIds = snapshot.upcomingHiddenChannelIds
                     self.currentDeviceName = self.devices.first(where: { $0.uid == snapshot.outputDeviceUID })?.name
+                    self.updateCheckEnabled = snapshot.updateCheckEnabled
+                    self.applyLastChecked(snapshot.lastUpdateCheckAt)
                 }
             }
         }
@@ -107,6 +122,14 @@ final class SettingsViewModel: ObservableObject {
                     self.devices = devices
                     self.currentDeviceName = devices.first(where: { $0.uid == self.outputDeviceUID })?.name
                 }
+            }
+        }
+        let updateStream = await updateChecker.stateUpdates
+        updateStateTask = Task { [weak self] in
+            for await state in updateStream {
+                guard let self else { return }
+                if Task.isCancelled { return }
+                await MainActor.run { self.applyUpdateState(state) }
             }
         }
         refreshAuthState()
@@ -126,6 +149,8 @@ final class SettingsViewModel: ObservableObject {
         configTask = nil
         deviceTask?.cancel()
         deviceTask = nil
+        updateStateTask?.cancel()
+        updateStateTask = nil
     }
 
     func setBitrate(_ value: Int) async {
@@ -232,6 +257,36 @@ final class SettingsViewModel: ObservableObject {
     func refreshAuthState() {
         isSignedIn = auth.isLoggedIn
         currentUsername = auth.currentUsername
+    }
+
+    func setUpdateCheckEnabled(_ value: Bool) async {
+        await update { $0.updateCheckEnabled = value }
+    }
+
+    func checkNow() async {
+        await updateChecker.checkNow()
+    }
+
+    func applyUpdateState(_ state: UpdateState) {
+        switch state {
+        case .unknown:
+            currentVersionLine = "\(displayVersion) (status unknown)"
+        case .upToDate:
+            currentVersionLine = "\(displayVersion) (up to date)"
+        case .available(let info, _):
+            currentVersionLine = "\(info.tagName) available — open Update Available menu"
+        }
+    }
+
+    func applyLastChecked(_ date: Date?) {
+        guard let date else { lastCheckedRelative = "never"; return }
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .full
+        lastCheckedRelative = f.localizedString(for: date, relativeTo: Date())
+    }
+
+    private var displayVersion: String {
+        currentVersionString.hasPrefix("v") ? currentVersionString : "v" + currentVersionString
     }
 
     private func update(_ mutate: @Sendable (inout AppSettings) -> Void) async {

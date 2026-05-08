@@ -411,4 +411,81 @@ final class SettingsViewModelTests: XCTestCase {
         XCTAssertTrue(store.current.audioProfiles.isEmpty)
         await sut.stop()
     }
+
+    func testSetUpdateCheckEnabledPersists() async throws {
+        sut = SettingsViewModel(
+            configStore: configStore, deviceCatalog: deviceCatalog, auth: auth,
+            openLoginWindow: {}, openApplicationData: {},
+            updateChecker: NoopUpdateChecker()
+        )
+        await sut.setUpdateCheckEnabled(false)
+        let snapshot = await configStore.settings
+        XCTAssertFalse(snapshot.updateCheckEnabled)
+        await sut.setUpdateCheckEnabled(true)
+        let snapshot2 = await configStore.settings
+        XCTAssertTrue(snapshot2.updateCheckEnabled)
+    }
+
+    func testCheckNowInvokesUpdateChecker() async throws {
+        let spy = SpyUpdateChecker()
+        sut = SettingsViewModel(
+            configStore: configStore, deviceCatalog: deviceCatalog, auth: auth,
+            openLoginWindow: {}, openApplicationData: {},
+            updateChecker: spy
+        )
+        await sut.checkNow()
+        let count = await spy.checkNowCallCount
+        XCTAssertEqual(count, 1)
+    }
+
+    func testCurrentVersionLineUpToDate() async {
+        sut = SettingsViewModel(
+            configStore: configStore, deviceCatalog: deviceCatalog, auth: auth,
+            openLoginWindow: {}, openApplicationData: {},
+            updateChecker: NoopUpdateChecker(),
+            currentVersionString: "v0.4.1"
+        )
+        sut.applyUpdateState(.upToDate(checkedAt: Date(timeIntervalSince1970: 1_715_100_000)))
+        XCTAssertEqual(sut.currentVersionLine, "v0.4.1 (up to date)")
+    }
+
+    func testCurrentVersionLineAvailable() async {
+        sut = SettingsViewModel(
+            configStore: configStore, deviceCatalog: deviceCatalog, auth: auth,
+            openLoginWindow: {}, openApplicationData: {},
+            updateChecker: NoopUpdateChecker(),
+            currentVersionString: "v0.4.1"
+        )
+        let info = ReleaseInfo(
+            tagName: "v0.5.0",
+            version: SemVer(major: 0, minor: 5, patch: 0),
+            publishedAt: Date(),
+            body: "",
+            htmlUrl: URL(string: "https://example.com")!,
+            dmgAssetUrl: nil
+        )
+        sut.applyUpdateState(.available(info, dismissedFromButton: false))
+        XCTAssertEqual(sut.currentVersionLine, "v0.5.0 available — open Update Available menu")
+    }
+}
+
+private actor SpyUpdateChecker: UpdateChecking {
+    private(set) var checkNowCallCount = 0
+    private(set) var dismissCallCount = 0
+    private var state: UpdateState
+
+    init(initialState: UpdateState = .unknown) {
+        self.state = initialState
+    }
+
+    func start() async {}
+    func checkNow() async { checkNowCallCount += 1 }
+    func dismissCurrentForButton() async { dismissCallCount += 1 }
+    var stateUpdates: AsyncStream<UpdateState> {
+        AsyncStream { continuation in
+            continuation.yield(state)
+            continuation.finish()
+        }
+    }
+    var currentState: UpdateState { state }
 }

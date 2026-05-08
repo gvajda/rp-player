@@ -428,6 +428,24 @@ extension AppContainer {
 
         let loginWindowController = LoginWindowController(keychainAuth: keychainAuth)
 
+        let updateChecker: any UpdateChecking
+        if let raw = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+           let version = SemVer.parse(raw) {
+            updateChecker = UpdateChecker(
+                currentVersion: version,
+                repoOwner: "gvajda",
+                repoName: "rp-player",
+                urlSession: .shared,
+                configStore: store ?? NoopConfigStore(),
+                logger: logger,
+                clock: { Date() }
+            )
+            logger.info("update checker: live (currentVersion=\(version.major).\(version.minor).\(version.patch))")
+        } else {
+            updateChecker = NoopUpdateChecker()
+            logger.info("update checker: noop (no CFBundleShortVersionString)")
+        }
+
         let settingsViewModel = SettingsViewModel(
             configStore: store ?? NoopConfigStore(),
             deviceCatalog: deviceCatalog,
@@ -439,7 +457,8 @@ extension AppContainer {
                 )
                 NSWorkspace.shared.open(ConfigPaths.applicationSupportRoot)
             },
-            listChannels: { [api] in try await api.listChannels() }
+            listChannels: { [api] in try await api.listChannels() },
+            updateChecker: updateChecker
         )
 
         let settingsWindowController = SettingsWindowController(viewModel: settingsViewModel)
@@ -470,24 +489,6 @@ extension AppContainer {
         let upcomingWindowController = UpcomingWindowController(viewModel: upcomingViewModel, configStore: store ?? NoopConfigStore())
         viewModel.upcomingAction = { [upcomingWindowController] in
             Task { @MainActor in await upcomingWindowController.show() }
-        }
-
-        let updateChecker: any UpdateChecking
-        if let raw = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
-           let version = SemVer.parse(raw) {
-            updateChecker = UpdateChecker(
-                currentVersion: version,
-                repoOwner: "gvajda",
-                repoName: "rp-player",
-                urlSession: .shared,
-                configStore: store ?? NoopConfigStore(),
-                logger: logger,
-                clock: { Date() }
-            )
-            logger.info("update checker: live (currentVersion=\(version.major).\(version.minor).\(version.patch))")
-        } else {
-            updateChecker = NoopUpdateChecker()
-            logger.info("update checker: noop (no CFBundleShortVersionString)")
         }
 
         let onLaunchTasks: [@Sendable () async -> Void] = [
