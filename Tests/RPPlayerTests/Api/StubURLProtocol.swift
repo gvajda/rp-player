@@ -13,6 +13,7 @@ final class StubURLProtocol: URLProtocol {
     /// Stub registry. Synchronised via `lock` because URLProtocol callbacks
     /// can come from any thread under URLSession's internal queues.
     nonisolated(unsafe) private static var stubs: [URL: (Data, HTTPURLResponse)] = [:]
+    nonisolated(unsafe) private static var errors: [URL: Error] = [:]
     private static let lock = NSLock()
 
     static func register(url: URL, body: Data, status: Int = 200, headers: [String: String] = [:]) {
@@ -28,9 +29,15 @@ final class StubURLProtocol: URLProtocol {
         stubs[url] = (body, response)
     }
 
+    static func registerError(url: URL, error: Error) {
+        lock.lock(); defer { lock.unlock() }
+        errors[url] = error
+    }
+
     static func reset() {
         lock.lock(); defer { lock.unlock() }
         stubs.removeAll()
+        errors.removeAll()
     }
 
     static func makeSession() -> URLSession {
@@ -42,7 +49,7 @@ final class StubURLProtocol: URLProtocol {
     override class func canInit(with request: URLRequest) -> Bool {
         guard let url = request.url else { return false }
         lock.lock(); defer { lock.unlock() }
-        return stubs[url] != nil
+        return stubs[url] != nil || errors[url] != nil
     }
 
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
@@ -53,8 +60,13 @@ final class StubURLProtocol: URLProtocol {
             return
         }
         Self.lock.lock()
+        let err = Self.errors[url]
         let entry = Self.stubs[url]
         Self.lock.unlock()
+        if let err {
+            client?.urlProtocol(self, didFailWithError: err)
+            return
+        }
         guard let (data, response) = entry else {
             client?.urlProtocol(self, didFailWithError: URLError(.fileDoesNotExist))
             return
