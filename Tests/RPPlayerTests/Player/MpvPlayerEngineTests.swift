@@ -180,6 +180,15 @@ extension MpvPlayerEngineTests {
         XCTAssertEqual(value, "yes")
     }
 
+    func testNetworkTimeoutOptionSetAtInit() async throws {
+        let engine = try MpvPlayerEngine()
+        defer { Task { await engine.shutdown() } }
+
+        // mpv returns the float representation of integer option values.
+        let value = await engine.networkTimeoutOptionForTesting()
+        XCTAssertEqual(value, "15.000000")
+    }
+
     func testQueueNextRunsLoadfileAppendPlay() async throws {
         let engine = try MpvPlayerEngine()
         defer { Task { await engine.shutdown() } }
