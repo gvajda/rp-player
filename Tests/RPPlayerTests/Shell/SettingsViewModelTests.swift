@@ -465,7 +465,44 @@ final class SettingsViewModelTests: XCTestCase {
             dmgAssetUrl: nil
         )
         sut.applyUpdateState(.available(info, dismissedFromButton: false))
-        XCTAssertEqual(sut.currentVersionLine, "v0.5.0 available — open Update Available menu")
+        XCTAssertEqual(sut.currentVersionLine, "v0.5.0 available")
+    }
+
+    func testUpdateAvailableFlagSetByApplyUpdateState() async {
+        sut = SettingsViewModel(
+            configStore: configStore, deviceCatalog: deviceCatalog, auth: auth,
+            openLoginWindow: {}, openApplicationData: {},
+            updateChecker: NoopUpdateChecker(),
+            currentVersionString: "v0.4.1"
+        )
+        XCTAssertFalse(sut.updateAvailable)
+        let info = ReleaseInfo(
+            tagName: "v0.5.0",
+            version: SemVer(major: 0, minor: 5, patch: 0),
+            publishedAt: Date(),
+            body: "",
+            htmlUrl: URL(string: "https://example.com")!,
+            dmgAssetUrl: nil
+        )
+        sut.applyUpdateState(.available(info, dismissedFromButton: false))
+        XCTAssertTrue(sut.updateAvailable)
+        sut.applyUpdateState(.upToDate(checkedAt: Date()))
+        XCTAssertFalse(sut.updateAvailable)
+    }
+
+    func testOpenUpdateRunsCheckNowThenOpensPanel() async {
+        let spy = SpyUpdateChecker()
+        sut = SettingsViewModel(
+            configStore: configStore, deviceCatalog: deviceCatalog, auth: auth,
+            openLoginWindow: {}, openApplicationData: {},
+            updateChecker: spy
+        )
+        var openCount = 0
+        sut.openUpdatePanel = { openCount += 1 }
+        await sut.openUpdate()
+        let checkCount = await spy.checkNowCallCount
+        XCTAssertEqual(checkCount, 1)
+        XCTAssertEqual(openCount, 1)
     }
 }
 

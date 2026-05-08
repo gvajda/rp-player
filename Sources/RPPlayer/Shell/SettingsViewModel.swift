@@ -27,6 +27,9 @@ final class SettingsViewModel: ObservableObject {
     @Published private(set) var updateCheckEnabled: Bool = true
     @Published private(set) var lastCheckedRelative: String = "never"
     @Published private(set) var currentVersionLine: String = ""
+    @Published private(set) var updateAvailable: Bool = false
+
+    var openUpdatePanel: @MainActor () -> Void = {}
 
     private let configStore: any ConfigStore
     private let deviceCatalog: any AudioDeviceCatalog
@@ -267,14 +270,22 @@ final class SettingsViewModel: ObservableObject {
         await updateChecker.checkNow()
     }
 
+    func openUpdate() async {
+        await updateChecker.checkNow()
+        openUpdatePanel()
+    }
+
     func applyUpdateState(_ state: UpdateState) {
         switch state {
         case .unknown:
             currentVersionLine = "\(displayVersion) (status unknown)"
+            updateAvailable = false
         case .upToDate:
             currentVersionLine = "\(displayVersion) (up to date)"
+            updateAvailable = false
         case .available(let info, _):
-            currentVersionLine = "\(info.tagName) available — open Update Available menu"
+            currentVersionLine = "\(info.tagName) available"
+            updateAvailable = true
         }
     }
 

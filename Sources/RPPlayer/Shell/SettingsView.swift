@@ -162,8 +162,14 @@ struct SettingsView: View {
                 .foregroundStyle(.secondary)
 
             HStack(alignment: .firstTextBaseline) {
-                Button("Check Now") {
-                    Task { await viewModel.checkNow() }
+                if viewModel.updateAvailable {
+                    Button("Open Update…") {
+                        Task { await viewModel.openUpdate() }
+                    }
+                } else {
+                    Button("Check Now") {
+                        Task { await viewModel.checkNow() }
+                    }
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {

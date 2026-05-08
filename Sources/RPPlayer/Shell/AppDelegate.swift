@@ -95,6 +95,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.updatePanelController.show(release: info)
         }
 
+        container.settingsViewModel.openUpdatePanel = { [weak self, weak container] in
+            guard let self, let container else { return }
+            guard let info = container.viewModel.updateAvailableForMenu else { return }
+            self.updatePanelController.show(release: info)
+        }
+
         if Bundle.main.bundleIdentifier != nil && Bundle.main.bundleURL.pathExtension == "app" {
             let router = NotificationClickRouter(
                 coordinator: container.coordinator,
