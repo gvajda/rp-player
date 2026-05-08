@@ -511,6 +511,8 @@ final class SettingsViewModelTests: XCTestCase {
         let checkCount = await spy.checkNowCallCount
         XCTAssertEqual(checkCount, 1)
         XCTAssertEqual(openedTag, "v0.5.0")
+        let dismissCount = await spy.dismissCallCount
+        XCTAssertEqual(dismissCount, 1)
     }
 
     func testOpenUpdateDoesNotOpenPanelWhenStateNotAvailable() async {

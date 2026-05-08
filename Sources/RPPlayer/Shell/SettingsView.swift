@@ -14,9 +14,9 @@ struct SettingsView: View {
                 audioSection
                 deviceSettingsSection
                 notificationsSection
-                updatesSection
                 appearanceSection
                 upcomingProgramSection
+                updatesSection
                 accountSection
                 dataSection
             }

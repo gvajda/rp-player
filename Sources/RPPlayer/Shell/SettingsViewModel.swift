@@ -275,6 +275,7 @@ final class SettingsViewModel: ObservableObject {
         let state = await updateChecker.currentState
         if case .available(let info, _) = state {
             openUpdatePanel(info)
+            await updateChecker.dismissCurrentForButton()
         }
     }
 

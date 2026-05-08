@@ -340,10 +340,6 @@ final class MiniPlayerViewModel: ObservableObject {
         await updateChecker.dismissCurrentForButton()
     }
 
-    func requestOpenUpdatePanelFromMenu() {
-        openUpdatePanel()
-    }
-
     func refreshAuthState() {
         isSignedIn = auth.isLoggedIn
     }
