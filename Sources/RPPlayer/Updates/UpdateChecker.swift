@@ -35,6 +35,7 @@ public actor UpdateChecker: UpdateChecking {
 
     private var state: UpdateState = .unknown
     private var continuations: [UUID: AsyncStream<UpdateState>.Continuation] = [:]
+    private var settingsTask: Task<Void, Never>?
 
     public init(
         currentVersion: SemVer,
@@ -81,6 +82,30 @@ public actor UpdateChecker: UpdateChecking {
 
         await checkNow()
         scheduleDailyTicker()
+
+        settingsTask?.cancel()
+        let stream = await configStore.changes
+        settingsTask = Task { [weak self] in
+            var lastEnabled: Bool?
+            for await snapshot in stream {
+                guard let self else { return }
+                let enabled = snapshot.updateCheckEnabled
+                if let last = lastEnabled, last == enabled { continue }
+                lastEnabled = enabled
+                if !enabled {
+                    await self.handleToggleOff()
+                }
+            }
+        }
+    }
+
+    private func handleToggleOff() async {
+        do {
+            try await configStore.update { $0.cachedLatestRelease = nil }
+        } catch {
+            logger.debug("update checker config write failed: \(error)")
+        }
+        emit(.unknown)
     }
 
     private func scheduleDailyTicker() {

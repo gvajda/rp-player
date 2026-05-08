@@ -296,4 +296,27 @@ final class UpdateCheckerTests: XCTestCase {
             return XCTFail("expected dismissedFromButton=true after dismiss, got \(postState)")
         }
     }
+
+    @MainActor
+    func testToggleOffResetsStateToUnknownAndClearsCache() async throws {
+        let body = try loadFixture("release_latest")
+        StubURLProtocol.register(url: Self.endpoint, body: body, status: 200)
+        let store = StubConfigStore(initial: .default)
+        let checker = makeChecker(store: store)
+        await checker.start()
+        let startState = await checker.currentState
+        guard case .available = startState else {
+            return XCTFail("setup: expected .available after start, got \(startState)")
+        }
+        let cachedBefore = store.settings.cachedLatestRelease
+        XCTAssertNotNil(cachedBefore)
+
+        try await store.update { $0.updateCheckEnabled = false }
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        let state = await checker.currentState
+        XCTAssertEqual(state, .unknown)
+        let cached = await store.settings.cachedLatestRelease
+        XCTAssertNil(cached)
+    }
 }
