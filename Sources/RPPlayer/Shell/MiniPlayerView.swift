@@ -89,24 +89,9 @@ struct MiniPlayerView: View {
                 .fixedSize()
             HStack {
                 if viewModel.updateButtonVisible {
-                    Button {
+                    UpdateAvailableButton {
                         Task { await viewModel.requestOpenUpdatePanel() }
-                    } label: {
-                        HStack(spacing: 3) {
-                            Text("Update Available")
-                            Image(systemName: "arrow.up.forward.square")
-                        }
-                        .font(.caption2)
-                        .foregroundStyle(.primary)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 5)
-                                .stroke(.secondary.opacity(0.5), lineWidth: 1)
-                        )
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Update Available")
                 } else {
                     Text("RP Player")
                         .font(.caption2)
@@ -189,6 +174,33 @@ struct MiniPlayerView: View {
         guard seconds.isFinite, seconds >= 0 else { return "0:00" }
         let s = Int(seconds.rounded(.down))
         return String(format: "%d:%02d", s / 60, s % 60)
+    }
+}
+
+private struct UpdateAvailableButton: View {
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Text("Update Available")
+                .font(.caption2)
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 5)
+                .padding(.vertical, 1)
+                .background(
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(.primary.opacity(hovering ? 0.12 : 0.0))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 5)
+                        .stroke(.primary.opacity(hovering ? 0.85 : 0.5), lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .animation(.easeInOut(duration: 0.12), value: hovering)
+        .accessibilityLabel("Update Available")
     }
 }
 
