@@ -6,6 +6,7 @@ public final class UpdatePanelController: NSObject {
     private var panel: NSPanel?
     private var hosting: NSHostingView<UpdatePanelView>?
     private var localKeyMonitor: Any?
+    private var globalClickMonitor: Any?
 
     public override init() {
         super.init()
@@ -20,10 +21,12 @@ public final class UpdatePanelController: NSObject {
         panel?.center()
         panel?.makeKeyAndOrderFront(nil)
         installKeyMonitor()
+        installClickMonitor()
     }
 
     public func close() {
         removeKeyMonitor()
+        removeClickMonitor()
         panel?.orderOut(nil)
     }
 
@@ -85,9 +88,26 @@ public final class UpdatePanelController: NSObject {
         }
     }
 
+    private func installClickMonitor() {
+        guard globalClickMonitor == nil else { return }
+        globalClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            self?.close()
+        }
+    }
+
+    private func removeClickMonitor() {
+        if let m = globalClickMonitor {
+            NSEvent.removeMonitor(m)
+            globalClickMonitor = nil
+        }
+    }
+
     @MainActor
     deinit {
         if let m = localKeyMonitor {
+            NSEvent.removeMonitor(m)
+        }
+        if let m = globalClickMonitor {
             NSEvent.removeMonitor(m)
         }
     }
