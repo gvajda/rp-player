@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // Esc dismissal of the past-song popover does not stop this VM eagerly —
     // it stops on the next interaction (new past-song click, or main popover open).
     private var pastSongViewModel: PastSongViewModel?
+    private let updatePanelController = UpdatePanelController()
 
     init(containerFactory: @escaping @MainActor () throws -> AppContainer = { try .live() }) {
         self.containerFactory = containerFactory
@@ -86,6 +87,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         container.viewModel.showPopoverIfNeeded = { [weak statusItemController] in
             statusItemController?.showPopoverIfNeeded()
+        }
+
+        container.viewModel.openUpdatePanel = { [weak self, weak container] in
+            guard let self, let container else { return }
+            guard let info = container.viewModel.updateAvailableForMenu else { return }
+            self.updatePanelController.show(release: info)
         }
 
         if Bundle.main.bundleIdentifier != nil && Bundle.main.bundleURL.pathExtension == "app" {
