@@ -10,8 +10,8 @@ Optimized for macOS 14+
 
 My goal was a tiny menu-bar [Radio Paradise](https://radioparadise.com/) player for macOS that actually plays the streams — bit-perfect to my DAC — and stays out of the way. The app drives the same `api/play` endpoint the official web player uses, so the channel order, song boundaries, and listener cursor match the web/mobile experience. Decoding goes through libmpv; output goes through CoreAudio in hog (exclusive) mode so other apps don't get to resample what reaches the DAC.
 
-> **Disclaimer**\
-> This is not an official Radio Paradise product. The Radio Paradise name and logo are owned by Radio Paradise. All displayed metadata and audio streams come from the public Radio Paradise REST API.
+> [!IMPORTANT]
+> **Disclaimer:** This is not an official Radio Paradise product. The Radio Paradise name and logo are owned by Radio Paradise. All displayed metadata and audio streams come from the public Radio Paradise REST API.
 
 <p align="center"><img src=".screenshots/player-panel.png" alt="popover with album art, ambient background, playback control, channel picker"/></p>
 
@@ -30,7 +30,8 @@ MacOS Gatekeeper blocks apps that aren't notarised. You have two options:
 3. Click **Open Anyway** next to the message about RP Player, then authenticate with your admin password.
 4. Launch `RP Player.app` again and confirm the final prompt.
 
-> ⚠️ You must complete step 2 within an hour of the first blocked attempt.
+> [!IMPORTANT]  
+> You must complete step 2 within an hour of the first blocked attempt.
 
 **Option B — Terminal:**
 
@@ -47,6 +48,7 @@ Either approach only needs to be done once — subsequent launches will work nor
 
 Once you've signed in (Settings → Sign In), your session cookies are stored in the macOS Keychain. Because the released `.app` is self-signed (not codesigned with a stable Apple Developer identity), macOS asks "RP Player wants to access `com.gvajda.rpplayer` in your keychain" on every launch from then on — click **Always Allow** to suppress it for that build. A new release replaces the signing identity, so the prompt returns once after each upgrade. First-ever launch (before sign-in) is silent.
 
+> [!NOTE]
 > The RP Player app reads **only** the cookie it saved to your Keychain — storing it there ensures no other app can access it.
 
 ### After install
@@ -210,11 +212,26 @@ This project supersedes the Windows tray app [RP_Notify](https://github.com/gvaj
 
 Requires Xcode 16 / Swift 6.2 on macOS 14+.
 
+#### Build and run directly (without `.app`)
+
+For development — build, test, and run as a raw process (no `.app` bundle, so media keys / Now Playing / notifications are unavailable):
+
 ```sh
 swift build
 swift test
 swift run RPPlayer       # raw process; status item appears in the menu bar
-scripts/make-app.sh      # produces a signed RP Player.app bundle
+```
+
+#### Build `RP Player.app` locally
+
+For day-to-day use — replace any installed copy in `/Applications` with a fresh release build and launch it:
+
+```sh
+pkill -f "RP Player" 2>/dev/null       # kill existing running instances
+scripts/make-app.sh release       # build .app - this script path is valid if run from project root
+rm -rf "/Applications/RP Player.app"
+cp -R "build/RP Player.app" /Applications/
+open "/Applications/RP Player.app"
 ```
 
 ## Support development

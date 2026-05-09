@@ -24,3 +24,6 @@ docs/superpowers/
 build/
 
 .vscode/
+
+
+scripts/local-build-copy-open.sh
