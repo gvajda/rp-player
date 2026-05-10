@@ -416,7 +416,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             // mpv fires START_FILE for both initial engine.play and auto-advance from playlist; only advance shifts queue.
             if !queueHeadIsPlaying {
                 queueHeadIsPlaying = true
-                logger.debug("fileStarted (initial): queue[0] event=\(queue[0].eventId) now playing")
+                logger.info("song.started (initial) \(describeSong(queue[0]))")
                 return
             }
             // queue[0] just ended (mpv auto-advanced to the queued entry).
@@ -446,7 +446,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
                 kickRefetch()
                 return
             }
-            logger.debug("gapless transition: advanced to queue[0] event=\(queue[0].eventId)")
+            logger.info("song.started (advance) \(describeSong(queue[0]))")
             emitNowPlaying(forSongAt: 0)
             if let channelId = currentChannelId {
                 fireSongStartTelemetry(song: queue[0], channelId: channelId)
@@ -644,6 +644,10 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
                 pauseFlag: false
             )
         }
+    }
+
+    private func describeSong(_ s: GaplessSong) -> String {
+        "event=\(s.eventId) type=\(s.type) cue=\(s.cue)ms duration=\(s.duration)ms slice=\(s.sliceNum) songId=\(s.songId) \(s.artist) — \(s.title) url=\(s.gaplessUrl)"
     }
 
     private func describeQueue(songs: [GaplessSong]) -> String {
