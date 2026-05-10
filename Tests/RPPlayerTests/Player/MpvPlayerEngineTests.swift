@@ -180,6 +180,24 @@ extension MpvPlayerEngineTests {
         XCTAssertEqual(value, "yes")
     }
 
+    func testGaplessAudioOptionSetAtInit() async throws {
+        let engine = try MpvPlayerEngine()
+        defer { Task { await engine.shutdown() } }
+
+        let value = await engine.gaplessAudioOptionForTesting()
+        XCTAssertEqual(value, "yes")
+    }
+
+    func testDemuxerMaxBytesOptionSetAtInit() async throws {
+        let engine = try MpvPlayerEngine()
+        defer { Task { await engine.shutdown() } }
+
+        let value = await engine.demuxerMaxBytesOptionForTesting()
+        XCTAssertEqual(value, "33554432")
+    }
+
+
+
     func testQueueNextRunsLoadfileAppendPlay() async throws {
         let engine = try MpvPlayerEngine()
         defer { Task { await engine.shutdown() } }

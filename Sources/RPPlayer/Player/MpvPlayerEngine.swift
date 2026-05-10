@@ -48,12 +48,20 @@ public actor MpvPlayerEngine: PlayerEngine {
             ("audio-channels", "auto"),
             // Cap mpv's HTTP demuxer buffers. Defaults are 150M forward + 75M
             // backward — sized for video scrubbing, wasted on a live radio
-            // stream we never rewind. 8M forward + 1M backward keeps a few
-            // seconds of FLAC ahead and bounds steady-state RAM growth.
-            ("demuxer-max-bytes", "8MiB"),
+            // stream we never rewind. 32MiB forward holds a whole FLAC song
+            // (~30–50 MB rarely exceeds it) so source EOF lands well before
+            // audio EOF — prefetch-playlist=yes then HTTP-opens the queued
+            // entry with tens of seconds of lead time.
+            ("demuxer-max-bytes", "32MiB"),
             ("demuxer-max-back-bytes", "1MiB"),
             ("cache-secs", "10"),
             ("prefetch-playlist", "yes"),
+            // Default is `weak` which keeps the AO open only when the next
+            // file's format matches; any mismatch closes+reopens the AO at
+            // the song boundary → audible gap. `yes` keeps the AO open
+            // unconditionally and resamples if needed. RP serves a single
+            // sample rate (44.1kHz) per channel so no resampling occurs.
+            ("gapless-audio", "yes"),
         ]
         if underXCTest {
             baseline.append(("ao", "null"))
@@ -306,6 +314,22 @@ public actor MpvPlayerEngine: PlayerEngine {
         defer { mpv_free(raw) }
         return String(cString: raw)
     }
+
+    func gaplessAudioOptionForTesting() -> String? {
+        guard let h = handle else { return nil }
+        guard let raw = mpv_get_property_string(h, "gapless-audio") else { return nil }
+        defer { mpv_free(raw) }
+        return String(cString: raw)
+    }
+
+    func demuxerMaxBytesOptionForTesting() -> String? {
+        guard let h = handle else { return nil }
+        guard let raw = mpv_get_property_string(h, "demuxer-max-bytes") else { return nil }
+        defer { mpv_free(raw) }
+        return String(cString: raw)
+    }
+
+
 
     func playlistCountForTesting() -> String? {
         guard let h = handle else { return nil }
