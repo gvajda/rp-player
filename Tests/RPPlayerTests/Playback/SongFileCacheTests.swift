@@ -169,7 +169,8 @@ final class SongFileCacheTests: XCTestCase {
             session: sessionWithStub(),
             logger: makeLogger()
         )
-        XCTAssertNil(await cache.localFile(for: song))
+        let result = await cache.localFile(for: song)
+        XCTAssertNil(result)
     }
 
     // Parallel-dedup verification is deferred to Task 3: it needs a `delayMs:`
