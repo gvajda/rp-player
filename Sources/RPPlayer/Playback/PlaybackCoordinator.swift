@@ -50,6 +50,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     private var currentState: PlaybackState = .stopped
     private var eventTask: Task<Void, Never>?
     private var refetchTask: Task<Void, Never>?
+    private var downloaderTask: Task<Void, Never>?
     private var stallWatchdog: Task<Void, Never>?
     private var isShutdown = false
     private var errorsContinuation: AsyncStream<String>.Continuation?
@@ -156,12 +157,14 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         let startSeconds: Double? = nil
         currentPositionSeconds = 0
 
-        guard let url = URL(string: head.gaplessUrl) else {
+        let resolvedHeadUrl = await songFileCache.localFile(for: head)
+            ?? URL(string: head.gaplessUrl)
+        guard let url = resolvedHeadUrl else {
             throw PlaybackCoordinatorError.engineError(message: "invalid gapless url: \(head.gaplessUrl)")
         }
 
         logger.debug("play queue:\n\(describeQueue(songs: queue))")
-        logger.debug("play engine.play url=\(url.absoluteString) startSeconds=\(startSeconds.map { "\($0)s" } ?? "nil (beginning)")")
+        logger.debug("play engine.play url=\(url.absoluteString) startSeconds=\(startSeconds.map { "\($0)s" } ?? "nil (beginning)") (cache hit=\(url.isFileURL))")
 
         // Acquire hog (when enabled) BEFORE mpv opens its CoreAudio AO. Otherwise
         // mpv's shared-mode AO can race with hog acquisition and end up registered
@@ -175,8 +178,13 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             throw PlaybackCoordinatorError.engineError(message: String(describing: error))
         }
 
-        if queue.count >= 2, let nextUrl = URL(string: queue[1].gaplessUrl) {
-            try? await engine.queueNext(url: nextUrl, startSeconds: nil)
+        if queue.count >= 2 {
+            let next = queue[1]
+            let nextUrl = await songFileCache.localFile(for: next)
+                ?? URL(string: next.gaplessUrl)
+            if let nextUrl {
+                try? await engine.queueNext(url: nextUrl, startSeconds: nil)
+            }
         }
 
         emitNowPlaying(forSongAt: 0)
@@ -185,6 +193,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         if queue.count < 3 {
             kickRefetch()
         }
+        kickSequentialDownload()
     }
 
     public func pause() async throws {
@@ -725,6 +734,19 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         refetchTask = Task { [weak self] in
             guard let self else { return }
             await self.runRefetch(channelId: channelId, headEvent: headEvent)
+        }
+    }
+
+    private func kickSequentialDownload() {
+        downloaderTask?.cancel()
+        let snapshot = queue
+        let cache = songFileCache
+        downloaderTask = Task { [weak self] in
+            for song in snapshot.dropFirst() {
+                if Task.isCancelled { return }
+                _ = await cache.localFile(for: song)
+                _ = self
+            }
         }
     }
 
