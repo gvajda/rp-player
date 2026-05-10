@@ -6,6 +6,15 @@ Section labels: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`
 
 ## [Unreleased]
 
+### Added
+
+- Pre-downloaded song file cache (`LiveSongFileCache`). Songs are downloaded to `~/Library/Application Support/RP Player/SongFileCache/` before being handed to mpv as `file://` URLs, eliminating the audible inter-song gap caused by HTTP body-fetch latency at the playlist boundary.
+
+### Changed
+
+- `LivePlaybackCoordinator` now resolves every play / queueNext URL through `SongFileCache`. Falls back to the remote `gaplessUrl` on cache failure so playback never breaks because of a download error.
+- mpv baseline tweaks (committed in `505f777`): `gapless-audio=yes` and `demuxer-max-bytes=32MiB`. Standalone these do not eliminate the inter-song gap (see Added above) but they reduce a separate small gap (AO format-mismatch reopen) and improve skip-forward smoothness on FLAC.
+
 ## [v0.6.0] - 2026-05-11
 
 ### Changed
