@@ -901,4 +901,87 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         XCTAssertEqual(lastPlayUrl, local,
                        "skipForward sync-refetch must engine.play the cache-resolved local URL. recorded=\(recorded)")
     }
+
+    // MARK: - Cache-clearing on lifecycle transitions (Task 11)
+
+    func testChangeChannelClearsSongFileCache() async throws {
+        let api = MockRpApiClient()
+        let engine = MockPlayerEngine()
+        let cache = MockSongFileCache()
+        let response = makeGaplessResponse(songs: [
+            makeGaplessSong(eventId: 1, gaplessUrl: "https://s.example.com/1.flac"),
+        ])
+        await api.setGaplessResponses([response, response, response, response])
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, songFileCache: cache, logger: silentLogger(), bitrateProvider: { 4 }
+        )
+        try await coordinator.play(channelId: 0)
+        let clearsBefore = await cache.clearCalls
+
+        try await coordinator.changeChannel(to: 1)
+
+        // Allow the detached Task { await cacheRef.clear() } to run.
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        let clearsAfter = await cache.clearCalls
+        XCTAssertGreaterThanOrEqual(clearsAfter, clearsBefore + 1)
+    }
+
+    func testStopClearsSongFileCache() async throws {
+        let api = MockRpApiClient()
+        let engine = MockPlayerEngine()
+        let cache = MockSongFileCache()
+        let response = makeGaplessResponse(songs: [
+            makeGaplessSong(eventId: 1, gaplessUrl: "https://s.example.com/1.flac"),
+        ])
+        await api.setGaplessResponses([response, response])
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, songFileCache: cache, logger: silentLogger(), bitrateProvider: { 4 }
+        )
+        try await coordinator.play(channelId: 0)
+        let clearsBefore = await cache.clearCalls
+        try await coordinator.stop()
+        try await Task.sleep(nanoseconds: 100_000_000)
+        let clearsAfter = await cache.clearCalls
+        XCTAssertGreaterThanOrEqual(clearsAfter, clearsBefore + 1)
+    }
+
+    func testShutdownClearsSongFileCache() async throws {
+        let api = MockRpApiClient()
+        let engine = MockPlayerEngine()
+        let cache = MockSongFileCache()
+        let response = makeGaplessResponse(songs: [
+            makeGaplessSong(eventId: 1, gaplessUrl: "https://s.example.com/1.flac"),
+        ])
+        await api.setGaplessResponses([response, response])
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, songFileCache: cache, logger: silentLogger(), bitrateProvider: { 4 }
+        )
+        try await coordinator.play(channelId: 0)
+        let clearsBefore = await cache.clearCalls
+        await coordinator.shutdown()
+        let clearsAfter = await cache.clearCalls
+        XCTAssertGreaterThanOrEqual(clearsAfter, clearsBefore + 1)
+    }
+
+    func testHandlePlaybackErrorClearsSongFileCache() async throws {
+        let api = MockRpApiClient()
+        let engine = MockPlayerEngine()
+        let cache = MockSongFileCache()
+        let response = makeGaplessResponse(songs: [
+            makeGaplessSong(eventId: 1, gaplessUrl: "https://s.example.com/1.flac"),
+        ])
+        await api.setGaplessResponses([response, response])
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, songFileCache: cache, logger: silentLogger(), bitrateProvider: { 4 }
+        )
+        try await coordinator.play(channelId: 0)
+        let clearsBefore = await cache.clearCalls
+
+        await engine.fire(.fileEnded(reason: .error(code: -14)))
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        let clearsAfter = await cache.clearCalls
+        XCTAssertGreaterThanOrEqual(clearsAfter, clearsBefore + 1)
+    }
 }

@@ -278,6 +278,11 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     public func stop() async throws {
         logger.debug("stop()")
         try? await engine.clearPlaylist()
+        // Detached so engine.stop isn't blocked on the cache actor.
+        downloaderTask?.cancel()
+        downloaderTask = nil
+        let cacheRef = songFileCache
+        Task { await cacheRef.clear() }
         // Clear coordinator state BEFORE awaiting engine.stop. If we cleared
         // afterwards, a queued positionUpdate event processed during the
         // engine.stop suspension would see the still-active queue and could
@@ -383,6 +388,10 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         refetchTask?.cancel()
         refetchTask = nil
         try? await engine.clearPlaylist()
+        downloaderTask?.cancel()
+        downloaderTask = nil
+        let cacheRef = songFileCache
+        Task { await cacheRef.clear() }
         try await stop()
         try await play(channelId: channelId)
     }
@@ -438,6 +447,9 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         cancelStallWatchdog()
         refetchTask?.cancel()
         refetchTask = nil
+        downloaderTask?.cancel()
+        downloaderTask = nil
+        await songFileCache.clear()
         eventTask?.cancel()
         await eventTask?.value
         eventTask = nil
@@ -545,6 +557,10 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     private func handlePlaybackError(code: Int) async {
         logger.error("engine fileEnded with error code \(code)")
         try? await engine.clearPlaylist()
+        downloaderTask?.cancel()
+        downloaderTask = nil
+        let cacheRef = songFileCache
+        Task { await cacheRef.clear() }
         cancelStallWatchdog()
         refetchTask?.cancel()
         refetchTask = nil
