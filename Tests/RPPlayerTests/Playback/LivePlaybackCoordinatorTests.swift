@@ -1007,4 +1007,65 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         }.first
         XCTAssertEqual(firstPlayUrl, URL(string: "https://s.example.com/42.flac"))
     }
+
+    func testPlayKicksSequentialDownloadOfRemainingQueue() async throws {
+        let api = MockRpApiClient()
+        let engine = MockPlayerEngine()
+        let cache = MockSongFileCache()
+        let response = makeGaplessResponse(songs: [
+            makeGaplessSong(eventId: 1, gaplessUrl: "https://s.example.com/1.flac"),
+            makeGaplessSong(eventId: 2, gaplessUrl: "https://s.example.com/2.flac"),
+            makeGaplessSong(eventId: 3, gaplessUrl: "https://s.example.com/3.flac"),
+            makeGaplessSong(eventId: 4, gaplessUrl: "https://s.example.com/4.flac"),
+        ])
+        await api.setGaplessResponses([response])
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, songFileCache: cache, logger: silentLogger(), bitrateProvider: { 4 }
+        )
+
+        try await coordinator.play(channelId: 0)
+
+        // Let the background downloader walk through queue[1..]
+        try await Task.sleep(nanoseconds: 200_000_000)
+
+        let calls = await cache.localFileCalls
+        XCTAssertTrue(calls.contains(1), "queue[0] resolved synchronously by play()")
+        XCTAssertTrue(calls.contains(2), "queue[1] resolved by play()'s explicit queueNext call")
+        XCTAssertTrue(calls.contains(3), "queue[2] resolved by kickSequentialDownload")
+        XCTAssertTrue(calls.contains(4), "queue[3] resolved by kickSequentialDownload")
+    }
+
+    func testQueueAdvanceEvictsDroppedSongAfterTelemetry() async throws {
+        let api = MockRpApiClient()
+        let engine = MockPlayerEngine()
+        let cache = MockSongFileCache()
+
+        let response = makeGaplessResponse(songs: [
+            makeGaplessSong(eventId: 10, gaplessUrl: "https://s.example.com/0.flac"),
+            makeGaplessSong(eventId: 20, gaplessUrl: "https://s.example.com/1.flac"),
+        ])
+        await api.setGaplessResponses([response])
+
+        let coord = LivePlaybackCoordinator(
+            api: api, engine: engine, songFileCache: cache, logger: silentLogger(), bitrateProvider: { 4 }
+        )
+        try await coord.play(channelId: 0)
+        await engine.fire(.fileStarted)
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        // Boundary advance: mpv path = song[1]. Both telemetry (update_history for
+        // eventId 10) and cache eviction (event 10) should occur. The coordinator's
+        // syncQueueHeadFromMpv body spawns telemetry first, then the eviction Task —
+        // by the time both side effects are observable, we expect at least:
+        //   - api.updateHistoryCalls contains a "10" entry
+        //   - cache.evictCalls contains 10
+        await engine.setSimulatedCurrentPath(URL(string: "https://s.example.com/1.flac"))
+        await engine.fire(.fileStarted)
+        try await Task.sleep(nanoseconds: 200_000_000)
+
+        let evicted = await cache.evictCalls
+        let history = await api.updateHistoryCalls
+        XCTAssertTrue(evicted.contains(10), "expected cache.evict for the just-finished song; got=\(evicted)")
+        XCTAssertTrue(history.contains(where: { $0.event == "10" }), "expected updateHistory for the just-finished song; got=\(history.map { $0.event })")
+    }
 }
