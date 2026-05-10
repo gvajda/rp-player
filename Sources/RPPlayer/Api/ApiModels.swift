@@ -246,3 +246,111 @@ public struct Auth: Codable, Sendable, Equatable {
     public let privmsgNew: Bool?
     public let status: String?
 }
+
+public struct GaplessSong: Decodable, Sendable, Equatable {
+    public let songId: String
+    public let artist: String
+    public let title: String
+    public let album: String?
+    public let year: String?
+    public let duration: Int
+    public let cue: Int
+    public let coverArt: String?
+    public let coverLarge: String?
+    public let coverMedium: String?
+    public let coverSmall: String?
+    public let eventId: Int
+    public let gaplessUrl: String
+    public let slideshow: [String]
+    public let type: String
+    public let schedTimeMillis: Int64
+    public let userRating: Int
+    public let rating: Double
+    public let ratingsNum: Int
+    public let episodeId: Int
+    public let sliceNum: Int
+    public let isRateable: Bool
+    public let isPlayableAfterSkip: Bool
+    public let isPlayableOnStart: Bool
+    public let updateHistory: Bool
+    public let skipAllowedMillis: Int64
+
+    // camelCase raw values: convertFromSnakeCase applies to CodingKey raw strings in a custom init(from:).
+    private enum CodingKeys: String, CodingKey {
+        case songId, artist, title, album, year, duration, cue
+        case coverArt, coverLarge, coverMedium, coverSmall
+        case eventId, gaplessUrl, slideshow, type
+        case schedTimeMillis, userRating, rating, ratingsNum
+        case episodeId, sliceNum, isRateable, isPlayableAfterSkip, isPlayableOnStart
+        case updateHistory, skipAllowedMillis
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        // song_id may be Int or String per legacy AllowReadingFromString contract.
+        if let i = try? c.decode(Int.self, forKey: .songId) {
+            songId = String(i)
+        } else {
+            songId = try c.decode(String.self, forKey: .songId)
+        }
+        artist = try c.decode(String.self, forKey: .artist)
+        title = try c.decode(String.self, forKey: .title)
+        album = try c.decodeIfPresent(String.self, forKey: .album).flatMap { $0.isEmpty ? nil : $0 }
+        year = try c.decodeIfPresent(String.self, forKey: .year)
+        duration = try c.decode(Int.self, forKey: .duration)
+        cue = try c.decodeIfPresent(Int.self, forKey: .cue) ?? 0
+        coverArt = try c.decodeIfPresent(String.self, forKey: .coverArt)
+        coverLarge = try c.decodeIfPresent(String.self, forKey: .coverLarge)
+        coverMedium = try c.decodeIfPresent(String.self, forKey: .coverMedium)
+        coverSmall = try c.decodeIfPresent(String.self, forKey: .coverSmall)
+        eventId = try c.decode(Int.self, forKey: .eventId)
+        gaplessUrl = try c.decode(String.self, forKey: .gaplessUrl)
+        slideshow = try c.decodeIfPresent([String].self, forKey: .slideshow) ?? []
+        type = try c.decode(String.self, forKey: .type)
+        schedTimeMillis = try c.decodeIfPresent(Int64.self, forKey: .schedTimeMillis) ?? 0
+        userRating = try c.decodeIfPresent(Int.self, forKey: .userRating) ?? 0
+        rating = try c.decodeIfPresent(Double.self, forKey: .rating) ?? 0
+        ratingsNum = try c.decodeIfPresent(Int.self, forKey: .ratingsNum) ?? 0
+        episodeId = try c.decodeIfPresent(Int.self, forKey: .episodeId) ?? 0
+        sliceNum = try c.decodeIfPresent(Int.self, forKey: .sliceNum) ?? 0
+        isRateable = try c.decodeIfPresent(Bool.self, forKey: .isRateable) ?? false
+        isPlayableAfterSkip = try c.decodeIfPresent(Bool.self, forKey: .isPlayableAfterSkip) ?? true
+        isPlayableOnStart = try c.decodeIfPresent(Bool.self, forKey: .isPlayableOnStart) ?? true
+        updateHistory = try c.decodeIfPresent(Bool.self, forKey: .updateHistory) ?? false
+        skipAllowedMillis = try c.decodeIfPresent(Int64.self, forKey: .skipAllowedMillis) ?? 0
+    }
+}
+
+public struct GaplessResponse: Decodable, Sendable, Equatable {
+    public let channel: Channel
+    public let bitrateTitle: String?
+    public let ext: String?
+    public let imageBase: String
+    public let currentEventId: Int
+    public let maxGaplessEventId: Int
+    public let slideshowPath: String
+    public let timeoutMillis: Int
+    public let songs: [GaplessSong]
+
+    // camelCase raw values match convertFromSnakeCase output; `extension` is reserved so `ext` gets an explicit raw value.
+    private enum CodingKeys: String, CodingKey {
+        case channel
+        case bitrateTitle
+        case ext = "extension"
+        case imageBase
+        case currentEventId, maxGaplessEventId, slideshowPath, timeoutMillis, songs
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        channel = try c.decode(Channel.self, forKey: .channel)
+        bitrateTitle = try c.decodeIfPresent(String.self, forKey: .bitrateTitle)
+        ext = try c.decodeIfPresent(String.self, forKey: .ext)
+        imageBase = try c.decode(String.self, forKey: .imageBase)
+        currentEventId = try c.decode(Int.self, forKey: .currentEventId)
+        maxGaplessEventId = try c.decode(Int.self, forKey: .maxGaplessEventId)
+        slideshowPath = try c.decode(String.self, forKey: .slideshowPath)
+        timeoutMillis = try c.decodeIfPresent(Int.self, forKey: .timeoutMillis) ?? 0
+        songs = try c.decode([GaplessSong].self, forKey: .songs)
+    }
+}
