@@ -188,6 +188,8 @@ public actor MpvPlayerEngine: PlayerEngine {
 
     public func play(url: URL, startSeconds: Double?) async throws {
         try requireHandle()
+        // mpv `pause` property is global — persists across loadfile. After a stop+play cycle while previously paused, the new file loads but doesn't auto-play. Reset before loadfile so play() always means "start playing".
+        try? setBoolProperty("pause", false)
         if let start = startSeconds, start > 0 {
             logger?.debug("engine.play url=\(url.absoluteString) start=\(start)s")
             try runCommand(["loadfile", url.absoluteString, "replace", "start=\(start)"])

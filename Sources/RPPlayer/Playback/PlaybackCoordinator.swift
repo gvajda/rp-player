@@ -148,13 +148,9 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         refetchTask = nil
 
         let head = queue[0]
-        // RP backend occasionally returns cue >= duration (server cursor past song end). Clamp to 0 so mpv plays the song from start instead of failing with -16.
-        let safeCueMs = (head.cue >= head.duration) ? 0 : head.cue
-        if safeCueMs != head.cue {
-            logger.warn("play: queue[0] cue=\(head.cue)ms >= duration=\(head.duration)ms; clamping to 0")
-        }
-        let startSeconds: Double? = safeCueMs > 0 ? Double(safeCueMs) / 1000.0 : nil
-        currentPositionSeconds = startSeconds ?? 0
+        // Always start songs from the beginning; ignore server-provided cue. Better UX (full song) than mid-song tune-in; user can skip if not wanted.
+        let startSeconds: Double? = nil
+        currentPositionSeconds = 0
 
         guard let url = URL(string: head.gaplessUrl) else {
             throw PlaybackCoordinatorError.engineError(message: "invalid gapless url: \(head.gaplessUrl)")
@@ -337,17 +333,13 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         queue = response.songs
         currentResponse = response
         let head = queue[0]
-        let safeCueMs = (head.cue >= head.duration) ? 0 : head.cue
-        if safeCueMs != head.cue {
-            logger.warn("skip: queue[0] cue=\(head.cue)ms >= duration=\(head.duration)ms; clamping to 0")
-        }
-        let startPos: Double = safeCueMs > 0 ? Double(safeCueMs) / 1000.0 : 0
-        currentPositionSeconds = startPos
+        // Always start from the beginning; ignore cue.
+        currentPositionSeconds = 0
         guard let url = URL(string: head.gaplessUrl) else {
             errorsContinuation?.yield("Cannot skip — invalid url.")
             return
         }
-        let startSeconds: Double? = startPos > 0 ? startPos : nil
+        let startSeconds: Double? = nil
         lastStartedEventId = nil
         do {
             try await engine.play(url: url, startSeconds: startSeconds)
