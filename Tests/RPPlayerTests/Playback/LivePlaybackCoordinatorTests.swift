@@ -354,6 +354,66 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
                       "expected queueNext for first new song. calls=\(engineCalls)")
     }
 
+    /// 11b. applyBitrateChange refetches, keeps head URL, swaps queued next.
+    func testApplyBitrateChangeSwapsQueuedNextUrl() async throws {
+        let api = MockRpApiClient()
+        let initial = makeGaplessResponse(songs: [
+            makeGaplessSong(songId: "s1", eventId: 100, gaplessUrl: "https://example.com/s1_aac.flac"),
+            makeGaplessSong(songId: "s2", eventId: 101, gaplessUrl: "https://example.com/s2_aac.flac"),
+            makeGaplessSong(songId: "s3", eventId: 102, gaplessUrl: "https://example.com/s3_aac.flac"),
+        ], bitrateTitle: "320k aac")
+        // After bitrate change: server returns same cursor but FLAC URLs + flac title.
+        let refetched = makeGaplessResponse(songs: [
+            makeGaplessSong(songId: "s1", eventId: 100, gaplessUrl: "https://example.com/s1.flac"),
+            makeGaplessSong(songId: "s2", eventId: 101, gaplessUrl: "https://example.com/s2.flac"),
+            makeGaplessSong(songId: "s3", eventId: 102, gaplessUrl: "https://example.com/s3.flac"),
+        ], bitrateTitle: "flac")
+        await api.setGaplessResponses([initial, refetched, refetched])
+        let engine = MockPlayerEngine()
+        final class IntBox: @unchecked Sendable { var value: Int; init(_ v: Int) { value = v } }
+        let bitrateBox = IntBox(3)
+        let coord = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(),
+            bitrateProvider: { bitrateBox.value }
+        )
+        try await coord.play(channelId: 0)
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        bitrateBox.value = 4
+        await coord.applyBitrateChange()
+
+        let engineCalls = await engine.recordedCalls()
+        // The currently-playing URL must NOT be re-played — engine.play stays at AAC.
+        let playCount = engineCalls.filter { if case .play = $0 { return true } else { return false } }.count
+        XCTAssertEqual(playCount, 1, "applyBitrateChange must not restart current song. calls=\(engineCalls)")
+
+        // engine.clearPlaylist + queueNext for new bitrate s2 URL.
+        XCTAssertTrue(engineCalls.contains(.clearPlaylist),
+                      "expected clearPlaylist. calls=\(engineCalls)")
+        XCTAssertTrue(engineCalls.contains(.queueNext(url: URL(string: "https://example.com/s2.flac")!, startSeconds: nil)),
+                      "expected queueNext for new-bitrate s2. calls=\(engineCalls)")
+
+        // bitrateLabel surfaced via nowPlaying must be the new value.
+        let np = await coord.nowPlaying
+        XCTAssertEqual(np?.bitrateLabel, "flac")
+        XCTAssertEqual(np?.song.songId, "s1", "head must stay on s1")
+    }
+
+    /// 11c. applyBitrateChange no-ops when nothing is playing.
+    func testApplyBitrateChangeNoOpWhenIdle() async throws {
+        let api = MockRpApiClient()
+        let engine = MockPlayerEngine()
+        let coord = LivePlaybackCoordinator(
+            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
+        )
+        await coord.applyBitrateChange()
+
+        let apiCalls = await api.calls
+        XCTAssertTrue(apiCalls.isEmpty, "must not hit api when idle. calls=\(apiCalls)")
+        let engineCalls = await engine.recordedCalls()
+        XCTAssertTrue(engineCalls.isEmpty, "must not touch engine when idle. calls=\(engineCalls)")
+    }
+
     /// 12. kickRefetch result is discarded if channel changed mid-fetch.
     /// Setup: gapless responds based on channel, with a 200ms delay on each call.
     /// While the post-play kickRefetch on chan 0 is in flight, changeChannel(1)

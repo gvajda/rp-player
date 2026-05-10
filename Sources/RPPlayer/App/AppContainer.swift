@@ -242,6 +242,7 @@ extension AppContainer {
                 var lastEffectiveRG = startupProfile.applyReplayGainEnabled && !startupProfile.forceMaxVolumeEnabled
                 var lastDeviceUID = initial.outputDeviceUID
                 var lastHog = startupProfile.hogModeEnabled
+                var lastBitrate = initial.bitrate
                 for await settings in stream {
                     // Device switch: load the saved profile for the new device (or safe
                     // defaults) and atomically overwrite the top-level fields before any
@@ -269,7 +270,17 @@ extension AppContainer {
                         // pins the volume on the new device.
                         lastForceMax = !profile.forceMaxVolumeEnabled
                         lastDeviceUID = newUID
+                        lastBitrate = profile.bitrate
                         continue
+                    }
+                    // Bare bitrate change (no device switch): swap the queued-next
+                    // entry to the new bitrate immediately instead of waiting for
+                    // the 20-song queue to drain.
+                    if settings.bitrate != lastBitrate {
+                        lastBitrate = settings.bitrate
+                        if await coordinator.nowPlaying != nil {
+                            await coordinator.applyBitrateChange()
+                        }
                     }
                     // Hog acquire reflects current playback state: when release-on-pause
                     // is on AND we're paused/stopped, don't grab the device just because

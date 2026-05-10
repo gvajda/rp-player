@@ -9,6 +9,7 @@ actor MockPlaybackCoordinator: PlaybackCoordinator {
         case stop
         case skipForward
         case changeChannel(to: Int)
+        case applyBitrateChange
         case shutdown
     }
 
@@ -119,6 +120,7 @@ actor MockPlaybackCoordinator: PlaybackCoordinator {
         changeChannelHolds.removeAll()
         pending.forEach { $0.resume() }
     }
+    func applyBitrateChange() async { calls.append(.applyBitrateChange) }
     func shutdown() async {
         calls.append(.shutdown)
         for c in continuations.values { c.finish() }

@@ -20,6 +20,7 @@ public protocol PlaybackCoordinator: Sendable {
     func stop() async throws
     func skipForward() async throws
     func changeChannel(to channelId: Int) async throws
+    func applyBitrateChange() async
     func shutdown() async
 }
 
@@ -364,6 +365,51 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         try? await engine.clearPlaylist()
         try await stop()
         try await play(channelId: channelId)
+    }
+
+    /// Reload the queue from `api/gapless` at the current bitrate, keeping the
+    /// in-flight song untouched and swapping the queued-next entry to the new
+    /// bitrate URL so the change takes effect on the next song boundary
+    /// instead of waiting for the 20-song queue to drain.
+    public func applyBitrateChange() async {
+        guard let channelId = currentChannelId, let head = queue.first else {
+            logger.debug("applyBitrateChange: nothing playing, skip")
+            return
+        }
+        let bitrate = await bitrateProvider()
+        logger.debug("applyBitrateChange channel=\(channelId) bitrate=\(bitrate) headEvent=\(head.eventId)")
+        refetchTask?.cancel()
+        refetchTask = nil
+        let response: GaplessResponse
+        do {
+            response = try await api.gapless(channel: channelId, bitrate: bitrate, numSongs: 20)
+        } catch {
+            logger.warn("applyBitrateChange failed: \(error)")
+            return
+        }
+        guard self.currentChannelId == channelId,
+              self.queue.first?.eventId == head.eventId else {
+            logger.debug("applyBitrateChange: channel/head moved during fetch, discard")
+            return
+        }
+        // Expect cursor to land on the still-playing song; warn if not (the
+        // tail will still be valid, just the in-flight song's URL is the old
+        // bitrate — which is fine, we don't restart it).
+        if response.songs.first?.eventId != head.eventId {
+            let serverHead = response.songs.first?.eventId.description ?? "nil"
+            logger.warn("applyBitrateChange: server cursor at eventId=\(serverHead), expected \(head.eventId)")
+        }
+        let newSongs = response.songs.filter { $0.eventId > head.eventId }
+        self.queue = [head] + newSongs
+        self.currentResponse = response
+        emitNowPlaying(forSongAt: 0)
+        try? await engine.clearPlaylist()
+        if self.queue.count >= 2, let nextUrl = URL(string: self.queue[1].gaplessUrl) {
+            try? await engine.queueNext(url: nextUrl, startSeconds: nil)
+        }
+        if self.queue.count < 3 {
+            kickRefetch()
+        }
     }
 
     public func shutdown() async {
