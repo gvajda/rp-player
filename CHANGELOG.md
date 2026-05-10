@@ -6,28 +6,20 @@ Section labels: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`
 
 ## [Unreleased]
 
-### Added
-
-- `api/gapless` endpoint integration. Each song from the new endpoint is a self-contained file URL with its own `cue`, `duration`, and `event_id` — no more block-shared audio files with `elapsed`-offset arithmetic. Promo songs (`type=P`) are inline-mixed with `update_history=false`.
-- `GaplessSong` + `GaplessResponse` Decodable types in `ApiModels.swift`.
-- `RpApiClient.gapless(channel:bitrate:numSongs:)` method.
+## [v0.6.0] - 2026-05-11
 
 ### Changed
 
-- `LivePlaybackCoordinator` migrated from block-centric state (`currentBlock` + `orderedSongs[]` + `startsAt[]` + `currentSongIndex`) to queue-centric (`queue: [GaplessSong]`). Boundary advance via `MPV_EVENT_START_FILE` → `queue.removeFirst()` → emit NowPlaying → fire telemetry → queue next. Refetch (`kickRefetch`) triggered on bootstrap, channel change, long-idle resume, and when queue depth drops below 3.
-- `UpcomingProgramViewModel.load` now issues one `api/gapless` call per enabled channel (`numSongs = max(rowCount * 2, rowCount + 5)` to absorb promo filtering) instead of stitching consecutive blocks via `api/play`.
-- `NowPlaying` simplified: `songIndexInBlock` / `blockDurationSeconds` / `songStartSeconds` / `songEndSeconds` / `blockBitrate` replaced by `songDurationSeconds` + `bitrateLabel`. `song` type: `PlayListSong` → `GaplessSong`.
-- Position stream (`positionUpdates`) semantics: now per-song-relative (was: block-relative).
+- Migrated to Radio Paradise's new `api/gapless` endpoint. Each song now has its own self-contained file URL with its own duration and event id, so the coordinator carries a flat queue of song objects instead of stitching multi-song "blocks". Album art, song info and the URL travel as one unit — what's playing is identical to what's displayed by construction.
+- Songs always start from the beginning. The server's tune-in offset (`cue`) is ignored on purpose — better to hear the full song; skip forward if you don't want it.
+- Skip-forward jumps straight to the prefetched next song (no fetch round-trip when the queue is deep). Skip telemetry fires immediately so the backend cursor stays in sync.
+- The Upcoming Program window now issues one API call per channel instead of stitching consecutive blocks.
 
-### Removed
+### Fixed
 
-- `RpApiClient.play(channel:bitrate:event:action:audioType:episodeId:sliceNum:)` (replaced by `gapless`).
-- `RpApiClient.getBlock(channel:bitrate:event:)` (last consumer was Upcoming Program; migrated).
-- `PlayAction` enum.
-- `GetBlock` struct + Decodable extension.
-- `BlockSongs` enum (`isStale` / `orderedSongs` / `startsAtSeconds` / `totalDurationSeconds` / `indexOfSong`).
-- Stale-block bootstrap recovery (PR 24) — gapless cursor + per-song self-contained URLs make the recovery redundant.
-- `prefetchedBlock` / `prefetchTask` / `queuedToEngine` / `absorbPrefetchResult` / `swapToPrefetchedBlockState` / `swapToPrefetchedBlockIfAvailable` / `maybeStartPrefetch` / `advancePastUnplayableBlock` (replaced by `kickRefetch` + `handleSongPlaybackError`).
+- Channel-change after a long pause used to silently hang: mpv's `pause` property is global and persisted across the channel switch, so the new song loaded but never started playing. The engine now resets `pause=false` on every `engine.play(url:)`.
+- After an unplayable song was dropped, the popover briefly displayed the wrong song (one ahead of audio). The coordinator now derives the currently-playing song from mpv's `path` property and dedupes redundant `MPV_EVENT_START_FILE` events, so the UI can never get out of sync with the audio.
+- A song with `cue >= duration` (server cursor past song end) used to fail with mpv error `-16` and trigger the unplayable-song recovery path. With cue ignored, the song always plays from the start.
 
 ## [v0.5.3] - 2026-05-09
 

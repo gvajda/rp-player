@@ -8,7 +8,7 @@ Optimized for macOS 14+
 
 ## Summary
 
-My goal was a tiny menu-bar [Radio Paradise](https://radioparadise.com/) player for macOS that actually plays the streams — bit-perfect to my DAC — and stays out of the way. The app drives the same `api/play` endpoint the official web player uses, so the channel order, song boundaries, and listener cursor match the web/mobile experience. Decoding goes through libmpv; output goes through CoreAudio in hog (exclusive) mode so other apps don't get to resample what reaches the DAC.
+My goal was a tiny menu-bar [Radio Paradise](https://radioparadise.com/) player for macOS that actually plays the streams — bit-perfect to my DAC — and stays out of the way. The app drives the same `api/gapless` endpoint the official web player uses, so the channel order, song selection, and listener cursor match the web/mobile experience. Decoding goes through libmpv; output goes through CoreAudio in hog (exclusive) mode so other apps don't get to resample what reaches the DAC.
 
 > [!IMPORTANT]
 > **Disclaimer:** This is not an official Radio Paradise product. The Radio Paradise name and logo are owned by Radio Paradise. All displayed metadata and audio streams come from the public Radio Paradise REST API.
@@ -65,7 +65,7 @@ The app installs a status item in the menu bar (no Dock icon, no main window). C
 
 - **Every bitrate the API offers**
   - 32k / 64k / 128k / 320k AAC, 128k / 320k MP3, FLAC.
-  - Selectable from Settings; takes effect on the next channel switch or block boundary.
+  - Selectable from Settings; takes effect on the next channel switch or song boundary.
 
 - **Song rating**
   - Click ☆ to rate songs, or see your rating (★ N) displayed in the title row. Disabled when signed out. Ratings POST to `api/rate` and update the local `userRating` immediately on success.
@@ -73,9 +73,10 @@ The app installs a status item in the menu bar (no Dock icon, no main window). C
   - Sign in via Settings → Sign in. The login window is a `WKWebView` pointed at the official login page; the auth cookies stay in the macOS Keychain.
 
 - **Behaviour matches the official player**
-  - Bootstrap and advance both go through `api/play` with the personalised per-listener cursor, so the same blocks/songs play in the same order as the web player.
+  - Bootstrap goes through `api/gapless` with the personalised per-listener cursor, so the same songs play in the same order as the web player.
   - Cross-session resume: the backend remembers where you left off per channel. Restarting the app picks up where you stopped.
   - Telemetry endpoints (`update_history`, `update_pause`) keep the cursor accurate across pauses, skips, and song boundaries.
+  - Songs always start from the beginning. The server's tune-in offset (`cue`) is ignored on purpose — better to hear the full song; skip forward if you don't want it.
 
 - **⭐ Extra: Upcoming Program window**
   - Side-by-side columns, one per channel, each showing the next N songs (configurable in Settings).
@@ -84,7 +85,7 @@ The app installs a status item in the menu bar (no Dock icon, no main window). C
   - The currently playing song row gets an accent-colour border + glow if it's still in the loaded slice; if the data is stale the column highlight stays but the row glow doesn't appear.
   - **Channel headers are clickable** — switching from this window changes the channel in the popover and on the engine. Songs are not interactable; pause/skip stay in the popover.
   - Refresh button in the toolbar; "last updated" relative timestamp; channel filter for hiding channels you never browse (chan 42 + 99 are always excluded).
-  - Uses `api/play` (not `api/get_block`) so the upcoming list reflects the same personalised cursor as actual playback.
+  - Uses `api/gapless` so the upcoming list reflects the same personalised cursor as actual playback (one call per channel, no stitching).
 
 <p align="center"><img src=".screenshots/upcoming-program.png" alt="Upcoming Program window with current channel highlighted."/></p>
 
@@ -116,7 +117,7 @@ The app installs a status item in the menu bar (no Dock icon, no main window). C
 - **Mini player popover**
   - Album art at the top of the panel, edge-to-edge.
   - Title / artist / album, current rating (★ N), live elapsed/remaining and a progress bar that updates per second.
-  - Playback control: play–pause + skip-forward (skip respects the per-block song list and falls through to the prefetched next block).
+  - Playback control: play–pause + skip-forward (skip jumps straight to the prefetched next song; if the queue ran thin it refetches first).
   - Channel picker centred under the controls; bitrate label to the right (verbatim from the API: "FLAC", "320k AAC", etc.).
   - Hamburger menu with: Settings, Open Song in Browser, Upcoming Program, Floating Window, About, Quit.
 
@@ -128,7 +129,7 @@ The app installs a status item in the menu bar (no Dock icon, no main window). C
 
 - **Album art + ambient background**
   - Album art is fetched from `img.radioparadise.com`, validated as a real image, and cached on disk (LRU, ~10 MB cap).
-  - The next song's art is **prefetched** as soon as it's known (within-block from the song list, across blocks from the prefetched next block), so the cover swap at song boundaries is instant — no blank tile.
+  - The next song's art is **prefetched** as soon as the song queue is known (every `api/gapless` response carries the next ~20 songs), so the cover swap at song boundaries is instant — no blank tile.
   - Optional **ambient background**: samples a representative colour from the bottom edge of the cover and fades the popover background between that colour and the system window colour. Toggle in Settings.
 
 - **Appearance Setting**
@@ -158,16 +159,16 @@ The app installs a status item in the menu bar (no Dock icon, no main window). C
 - **Audio pipeline**
   - **Decoder:** libmpv 0.36.0, vendored under `Vendor/libmpv/` (universal binaries via `media-kit/libmpv-darwin-build`).
   - **Output:** mpv's plain `coreaudio` AO. The app does not use `coreaudio_exclusive` — it opens hog mode itself via `AudioObjectSetPropertyData` on `kAudioDevicePropertyHogMode` *before* mpv opens the device, then hands the device back on shutdown. This avoids the format-negotiation failures observed on USB DACs (e.g. Qudelix-5K) when mpv tries to own exclusive mode itself.
-  - **Block-cued seek:** `loadfile <url> replace start=<seconds>` for the initial cue, instead of a post-`fileLoaded` seek, so the UI doesn't briefly show the cue position while the HTTP buffer is still catching up.
+  - **Per-song self-contained URLs:** every song from `api/gapless` is its own audio file with its own duration and event id, so the coordinator carries a flat queue of song objects instead of stitching multi-song "blocks" together. Album art, song info and the URL travel as one unit, which makes "what's playing" identical to "what's displayed" by construction.
 
 - **Resilience**
-  - Gapless block transitions. The app queues the next block onto mpv's playlist as soon as the prefetch lands, so mpv pre-opens the URL on a background thread while the current block is still playing. At end-of-file mpv switches without rebuilding the audio device — no audible gap. If the prefetch ever misses the deadline (slow network, queue failure), playback falls back to the old replace path so listening continues either way.
-  - mpv occasionally fails to decode a block (e.g. some short promo `.m4a` files return `MPV_ERROR_NOTHING_TO_PLAY`). Instead of stalling the channel, the app advances past the bad block via `api/play` and tries the next one, up to a small retry budget. The cursor moves forward, the listener doesn't get stuck.
+  - Gapless song transitions. The app queues the next song onto mpv's playlist as soon as the queue head moves, so mpv pre-opens the URL on a background thread while the current song is still playing. At end-of-file mpv switches without rebuilding the audio device — no audible gap. The coordinator confirms each transition by reading mpv's `path` property, so a redundant or out-of-order `MPV_EVENT_START_FILE` can't push the UI ahead of the audio.
+  - mpv occasionally fails to decode a single song (e.g. some short promo `.m4a` files return `MPV_ERROR_LOADING_FAILED`). Instead of stalling the channel, the app drops just the bad song from the queue, hands mpv the next one, and resyncs — up to three consecutive failures before giving up. The cursor moves forward, the listener doesn't get stuck.
   - Reliable handoff when another app is already using the speaker. If a YouTube tab (or anything else) is feeding the audio device when you press play, the app claims hog mode *before* mpv opens the device, so playback starts cleanly the first time instead of going silent until you toggle pause.
   - Live sync when a device disappears. Unplug your USB DAC mid-listening and the app notices, drops hog mode and force-max for hearing safety, and clears the device selection so the Settings panel reflects reality. Plug the DAC back in and pick it again — your saved per-device profile (hog / force-max / ReplayGain / bitrate) is restored automatically.
-  - Stale-bootstrap recovery: when the listener has been idle long enough that the server's per-`(player_id, chan)` cursor has lagged real-time, `api/play?action=start` can return a block whose audio file already finished broadcasting (encoded as `cue=0` with all song offsets non-positive and at least one strictly negative). Naively playing that file would resurrect already-aired content while the UI latched onto a song that never matched the audio. The app detects this signature and follows up with a single `api/play?action=play` advance to fetch the live block; one retry max so the user is never caught in a loop.
-  - Long-idle resume refetch: when resuming after a pause of 59 minutes or more, the app refetches the block via the bootstrap path instead of asking mpv to resume the existing stream. The threshold sits just under typical 1-hour CDN/server TCP idle eviction, so the listener never hears mpv hit "stream ends prematurely" on a connection the CDN already closed. Composes with stale-bootstrap recovery — if the refetched block is also stale, the same single advance retry kicks in.
-  - Long-idle resume stall watchdog (v0.5.3): even after the long-idle refetch hands mpv a fresh URL, the new HTTP connection itself can stall mid-stream — the demuxer reports `fileLoaded` but no audio bytes flow (observed in the wild after a 4h+ pause: a half-open socket on the CDN edge let mpv read headers but never the audio). After the refetch, the app arms a 10-second watchdog on the first position update; if no audio arrives in time, it stops and re-issues `engine.play` once for a fresh TCP connection. A second silent 10-second window surfaces *Playback stalled. Try Pause/Play to recover.* in the popover instead of leaving the listener staring at a frozen progress bar.
+  - Channel-change after a long pause never silently hangs. mpv's `pause` property is global and persists across `loadfile`, so the natural pause → channel-change → play sequence used to load the new song without auto-playing it. The engine now resets `pause=false` on every `engine.play(url:)`, so a fresh `loadfile` always means "start playing" regardless of prior state.
+  - Long-idle resume refetch: when resuming after a pause of 59 minutes or more, the app refetches the song queue via `api/gapless` instead of asking mpv to resume the existing stream. The threshold sits just under typical 1-hour CDN/server TCP idle eviction, so the listener never hears mpv hit "stream ends prematurely" on a connection the CDN already closed.
+  - Long-idle resume stall watchdog: even after the long-idle refetch hands mpv a fresh URL, the new HTTP connection itself can stall mid-stream — the demuxer reports `fileLoaded` but no audio bytes flow (observed in the wild after a 4h+ pause: a half-open socket on the CDN edge let mpv read headers but never the audio). After the refetch, the app arms a 10-second watchdog on the first position update; if no audio arrives in time, it stops and re-issues `engine.play` once for a fresh TCP connection. A second silent 10-second window surfaces *Playback stalled. Try Pause/Play to recover.* in the popover instead of leaving the listener staring at a frozen progress bar.
 
 ### Optimized performance
 
