@@ -6,6 +6,29 @@ Section labels: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`
 
 ## [Unreleased]
 
+### Added
+
+- `api/gapless` endpoint integration. Each song from the new endpoint is a self-contained file URL with its own `cue`, `duration`, and `event_id` — no more block-shared audio files with `elapsed`-offset arithmetic. Promo songs (`type=P`) are inline-mixed with `update_history=false`.
+- `GaplessSong` + `GaplessResponse` Decodable types in `ApiModels.swift`.
+- `RpApiClient.gapless(channel:bitrate:numSongs:)` method.
+
+### Changed
+
+- `LivePlaybackCoordinator` migrated from block-centric state (`currentBlock` + `orderedSongs[]` + `startsAt[]` + `currentSongIndex`) to queue-centric (`queue: [GaplessSong]`). Boundary advance via `MPV_EVENT_START_FILE` → `queue.removeFirst()` → emit NowPlaying → fire telemetry → queue next. Refetch (`kickRefetch`) triggered on bootstrap, channel change, long-idle resume, and when queue depth drops below 3.
+- `UpcomingProgramViewModel.load` now issues one `api/gapless` call per enabled channel (`numSongs = max(rowCount * 2, rowCount + 5)` to absorb promo filtering) instead of stitching consecutive blocks via `api/play`.
+- `NowPlaying` simplified: `songIndexInBlock` / `blockDurationSeconds` / `songStartSeconds` / `songEndSeconds` / `blockBitrate` replaced by `songDurationSeconds` + `bitrateLabel`. `song` type: `PlayListSong` → `GaplessSong`.
+- Position stream (`positionUpdates`) semantics: now per-song-relative (was: block-relative).
+
+### Removed
+
+- `RpApiClient.play(channel:bitrate:event:action:audioType:episodeId:sliceNum:)` (replaced by `gapless`).
+- `RpApiClient.getBlock(channel:bitrate:event:)` (last consumer was Upcoming Program; migrated).
+- `PlayAction` enum.
+- `GetBlock` struct + Decodable extension.
+- `BlockSongs` enum (`isStale` / `orderedSongs` / `startsAtSeconds` / `totalDurationSeconds` / `indexOfSong`).
+- Stale-block bootstrap recovery (PR 24) — gapless cursor + per-song self-contained URLs make the recovery redundant.
+- `prefetchedBlock` / `prefetchTask` / `queuedToEngine` / `absorbPrefetchResult` / `swapToPrefetchedBlockState` / `swapToPrefetchedBlockIfAvailable` / `maybeStartPrefetch` / `advancePastUnplayableBlock` (replaced by `kickRefetch` + `handleSongPlaybackError`).
+
 ## [v0.5.3] - 2026-05-09
 
 ### Fixed
