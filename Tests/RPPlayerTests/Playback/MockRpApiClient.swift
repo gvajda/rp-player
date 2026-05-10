@@ -27,6 +27,7 @@ actor MockRpApiClient: RpApiClient {
         case listChannels
         case play(channel: Int, bitrate: Int, event: Int, action: PlayAction, audioType: String?, episodeId: Int?, sliceNum: String?)
         case getBlock(channel: Int, bitrate: Int, event: Int)
+        case gapless(channel: Int, bitrate: Int, numSongs: Int)
         case info(songId: Int)
         case rate(songId: Int, rating: Int)
         case authState
@@ -101,6 +102,7 @@ actor MockRpApiClient: RpApiClient {
     }
 
     func gapless(channel: Int, bitrate: Int, numSongs: Int) async throws -> GaplessResponse {
+        calls.append(.gapless(channel: channel, bitrate: bitrate, numSongs: numSongs))
         if let r = gaplessResponse { return r }
         throw RpApiError.network(URLError(.unknown))
     }

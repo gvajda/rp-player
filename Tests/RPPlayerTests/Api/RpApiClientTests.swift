@@ -269,7 +269,7 @@ final class RpApiClientTests: XCTestCase {
         XCTAssertEqual(response.bitrateTitle, "flac")
     }
 
-    func testGaplessAttachesCookiesAndOmitsPlayerIdWhenAbsent() async throws {
+    func testGaplessOmitsPlayerIdWhenAbsent() async throws {
         var components = URLComponents(url: baseURL.appendingPathComponent("api/gapless"), resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "bitrate", value: "4"),
@@ -278,17 +278,8 @@ final class RpApiClientTests: XCTestCase {
         ]
         StubURLProtocol.register(url: components.url!, body: try loadFixture("gapless_main"))
 
-        let client = LiveRpApiClient(
-            baseURL: baseURL,
-            session: StubURLProtocol.makeSession(),
-            cookieProvider: FixedCookieProvider(cookie: "C_username=foo; C_passwd=bar"),
-            playerId: nil,
-            logger: AppLogger(category: "test")
-        )
+        let client = makeClient(playerId: nil)
         _ = try await client.gapless(channel: 99, bitrate: 4, numSongs: 10)
-        // Decoder success implies the URL matched (StubURLProtocol returns badURL otherwise).
-        // Cookie is attached at the request layer; the assertion here is implicit:
-        // this test would fail with badURL if the URL builder added a stray player_id when none was provided.
     }
 
     func testNon200StatusThrowsInvalidResponse() async throws {
@@ -309,7 +300,3 @@ final class RpApiClientTests: XCTestCase {
     }
 }
 
-private struct FixedCookieProvider: CookieProvider {
-    let cookie: String?
-    func currentCookie() async -> String? { cookie }
-}
