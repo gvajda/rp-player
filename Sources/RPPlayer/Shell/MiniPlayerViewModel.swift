@@ -148,7 +148,9 @@ final class MiniPlayerViewModel: ObservableObject {
                 guard let self else { return }
                 guard let np = self.nowPlaying else { continue }
                 let duration = np.songDurationSeconds
-                let elapsed = max(0, pos)
+                // PlayListSong.elapsed (ms) = song's absolute file offset for legacy block emissions; nil/0 once the coordinator goes per-song in Task 4.
+                let songStart = Double(np.song.elapsed ?? 0) / 1000.0
+                let elapsed = max(0, pos - songStart)
                 self.songElapsedSeconds = min(elapsed, duration)
                 self.songDurationSeconds = duration
             }

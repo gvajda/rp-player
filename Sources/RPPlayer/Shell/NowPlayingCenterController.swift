@@ -159,8 +159,10 @@ final class NowPlayingCenterController {
         let now = Date()
         if let last = lastPositionUpdateAt, now.timeIntervalSince(last) < 1.0 { return }
         lastPositionUpdateAt = now
-        guard await coordinator.nowPlaying != nil else { return }
-        let elapsed = max(0, blockPosition)
+        guard let np = await coordinator.nowPlaying else { return }
+        // PlayListSong.elapsed (ms) = song's absolute file offset for legacy block emissions; nil/0 once the coordinator goes per-song in Task 4.
+        let songStart = Double(np.song.elapsed ?? 0) / 1000.0
+        let elapsed = max(0, blockPosition - songStart)
         lastPosition = elapsed
         patchInfo([MPNowPlayingInfoPropertyElapsedPlaybackTime: elapsed])
     }
