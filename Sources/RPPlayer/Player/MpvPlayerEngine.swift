@@ -189,8 +189,10 @@ public actor MpvPlayerEngine: PlayerEngine {
     public func play(url: URL, startSeconds: Double?) async throws {
         try requireHandle()
         if let start = startSeconds, start > 0 {
+            logger?.debug("engine.play url=\(url.absoluteString) start=\(start)s")
             try runCommand(["loadfile", url.absoluteString, "replace", "start=\(start)"])
         } else {
+            logger?.debug("engine.play url=\(url.absoluteString)")
             try runCommand(["loadfile", url.absoluteString])
         }
     }
@@ -218,19 +220,23 @@ public actor MpvPlayerEngine: PlayerEngine {
     public func queueNext(url: URL, startSeconds: Double?) async throws {
         try requireHandle()
         if let start = startSeconds, start > 0 {
+            logger?.debug("engine.queueNext url=\(url.absoluteString) start=\(start)s")
             try runCommand(["loadfile", url.absoluteString, "append-play", "start=\(start)"])
         } else {
+            logger?.debug("engine.queueNext url=\(url.absoluteString)")
             try runCommand(["loadfile", url.absoluteString, "append-play"])
         }
     }
 
     public func advanceToQueued() async throws {
         try requireHandle()
+        logger?.debug("engine.advanceToQueued (playlist-next force)")
         try runCommand(["playlist-next", "force"])
     }
 
     public func clearPlaylist() async throws {
         try requireHandle()
+        logger?.debug("engine.clearPlaylist")
         try runCommand(["playlist-clear"])
     }
 
