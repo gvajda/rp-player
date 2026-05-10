@@ -65,7 +65,11 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
             api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
         )
         try await coord.play(channelId: 0)
+        // First fileStarted: initial engine.play just completed loading queue[0] = s1. Flag flips; no advance.
+        await engine.fire(.fileStarted)
+        try await Task.sleep(nanoseconds: 50_000_000)
         await engine.fire(.positionUpdate(seconds: 60.0))
+        // Second fileStarted: mpv auto-advanced from s1 → s2.
         await engine.fire(.fileStarted)
         try await Task.sleep(nanoseconds: 100_000_000)
 
@@ -104,11 +108,15 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         // Initial play kicks an immediate refetch (queue.count<3). Wait for it.
         try await Task.sleep(nanoseconds: 150_000_000)
 
-        // queue is now 4 songs; advance to s2 (which leaves queue at 3 — no refetch).
+        // First fileStarted: initial engine.play just completed loading queue[0] = s1. Flag flips; no advance.
+        await engine.fire(.fileStarted)
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        // Second fileStarted: queue is 4 songs; advance to s2 leaves queue at 3 — no refetch.
         await engine.fire(.fileStarted)
         try await Task.sleep(nanoseconds: 100_000_000)
 
-        // Now advance to s3 (queue → 2, kickRefetch fires).
+        // Third fileStarted: advance to s3 (queue → 2, kickRefetch fires).
         await engine.fire(.fileStarted)
         try await Task.sleep(nanoseconds: 150_000_000)
 

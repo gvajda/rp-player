@@ -37,6 +37,9 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     private var currentChannelId: Int?
     private var queue: [GaplessSong] = []
     private var currentResponse: GaplessResponse?
+    // mpv fires MPV_EVENT_START_FILE for both initial load (engine.play(replace)) AND auto-advance from queued playlist.
+    // false = engine.play just issued, queue[0] not yet playing; first .fileStarted flips to true. true = a subsequent .fileStarted means an advance.
+    private var queueHeadIsPlaying: Bool = false
     private var currentPositionSeconds: Double = 0
     private var current: NowPlaying?
     private var continuations: [UUID: AsyncStream<NowPlaying>.Continuation] = [:]
@@ -160,6 +163,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         // but silent — the user sees the progress bar advance but hears nothing
         // until pause+play forces an AO recreate.
         await prePlayHook()
+        queueHeadIsPlaying = false
         do {
             try await engine.play(url: url, startSeconds: startSeconds)
         } catch {
@@ -215,6 +219,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             try? await engine.clearPlaylist()
             queue = []
             currentResponse = nil
+            queueHeadIsPlaying = false
             pausedAt = nil
             pausePositionMs = 0
             try await play(channelId: channelId)
@@ -268,6 +273,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         refetchTask = nil
         queue = []
         currentResponse = nil
+        queueHeadIsPlaying = false
         currentChannelId = nil
         currentPositionSeconds = 0
         pausedAt = nil
@@ -333,6 +339,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             return
         }
         let startSeconds: Double? = startPos > 0 ? startPos : nil
+        queueHeadIsPlaying = false
         do {
             try await engine.play(url: url, startSeconds: startSeconds)
         } catch {
@@ -406,6 +413,12 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
 
         case .fileStarted:
             guard !queue.isEmpty else { return }
+            // mpv fires START_FILE for both initial engine.play and auto-advance from playlist; only advance shifts queue.
+            if !queueHeadIsPlaying {
+                queueHeadIsPlaying = true
+                logger.debug("fileStarted (initial): queue[0] event=\(queue[0].eventId) now playing")
+                return
+            }
             // queue[0] just ended (mpv auto-advanced to the queued entry).
             // Fire telemetry for the song that just finished.
             let finished = queue[0]
@@ -460,6 +473,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
                     let head = queue[0]
                     if let url = URL(string: head.gaplessUrl) {
                         do {
+                            queueHeadIsPlaying = false
                             try await engine.play(url: url, startSeconds: nil)
                             currentPositionSeconds = 0
                             emitNowPlaying(forSongAt: 0)
@@ -516,6 +530,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         currentChannelId = nil
         queue = []
         currentResponse = nil
+        queueHeadIsPlaying = false
         currentPositionSeconds = 0
         pausedAt = nil
         pausePositionMs = 0
@@ -574,6 +589,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             return
         }
         do {
+            queueHeadIsPlaying = false
             try await engine.play(url: url, startSeconds: nil)
         } catch {
             await handlePlaybackError(code: code)
@@ -678,6 +694,10 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         self.refetchTask = nil
     }
 
+    private func markQueueHeadPending() {
+        queueHeadIsPlaying = false
+    }
+
     private func cancelStallWatchdog() {
         stallWatchdog?.cancel()
         stallWatchdog = nil
@@ -697,6 +717,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             await self.logStallWatchdogTimeout(attempt: 1)
             do {
                 try await self.engine.stop()
+                await self.markQueueHeadPending()
                 try await self.engine.play(url: url, startSeconds: retryStart)
             } catch {
                 await self.surfaceStallError()
@@ -743,6 +764,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         currentChannelId = nil
         queue = []
         currentResponse = nil
+        queueHeadIsPlaying = false
         currentPositionSeconds = 0
         pausedAt = nil
         pausePositionMs = 0
