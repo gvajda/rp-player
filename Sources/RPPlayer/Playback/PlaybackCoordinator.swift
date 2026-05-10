@@ -348,7 +348,9 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         let head = queue[0]
         // Always start from the beginning; ignore cue.
         currentPositionSeconds = 0
-        guard let url = URL(string: head.gaplessUrl) else {
+        let resolvedHeadUrl = await songFileCache.localFile(for: head)
+            ?? URL(string: head.gaplessUrl)
+        guard let url = resolvedHeadUrl else {
             errorsContinuation?.yield("Cannot skip — invalid url.")
             return
         }
@@ -360,9 +362,15 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             errorsContinuation?.yield("Cannot skip — engine play failed.")
             return
         }
-        if queue.count >= 2, let nextUrl = URL(string: queue[1].gaplessUrl) {
-            try? await engine.queueNext(url: nextUrl, startSeconds: nil)
+        if queue.count >= 2 {
+            let next = queue[1]
+            let nextUrl = await songFileCache.localFile(for: next)
+                ?? URL(string: next.gaplessUrl)
+            if let nextUrl {
+                try? await engine.queueNext(url: nextUrl, startSeconds: nil)
+            }
         }
+        kickSequentialDownload()
         emitNowPlaying(forSongAt: 0)
         // Telemetry driven from syncQueueHeadFromMpv when mpv fires .fileStarted.
         if queue.count < 3 {
@@ -791,6 +799,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         if hadShortQueue, self.queue.count >= 2, let nextUrl = URL(string: self.queue[1].gaplessUrl) {
             try? await self.engine.queueNext(url: nextUrl, startSeconds: nil)
         }
+        kickSequentialDownload()
         self.refetchTask = nil
     }
 

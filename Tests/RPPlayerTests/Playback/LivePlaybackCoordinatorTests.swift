@@ -864,4 +864,41 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         XCTAssertTrue(cacheCalls.contains(30),
                       "queueNext path must resolve song 30 via cache; calls=\(cacheCalls)")
     }
+
+    /// PR 32 Task 10: skipForward's sync-refetch fallback must resolve the new
+    /// head's URL through SongFileCache before calling engine.play.
+    func testSkipForwardSyncRefetchPlaysViaCachedFile() async throws {
+        let api = MockRpApiClient()
+        let engine = MockPlayerEngine()
+        let cache = MockSongFileCache()
+        let local = URL(string: "file:///tmp/refetched.flac")!
+        await cache.setMode(.downloaded(local))
+
+        let initial = makeGaplessResponse(songs: [
+            makeGaplessSong(eventId: 100, gaplessUrl: "https://s.example.com/100.flac"),
+        ])
+        // Post-play kickRefetch will see the same head (no new songs) so queue stays at 1.
+        let sameHead = makeGaplessResponse(songs: [
+            makeGaplessSong(eventId: 100, gaplessUrl: "https://s.example.com/100.flac"),
+        ])
+        let after = makeGaplessResponse(songs: [
+            makeGaplessSong(eventId: 200, gaplessUrl: "https://s.example.com/200.flac"),
+        ])
+        await api.setGaplessResponses([initial, sameHead, after])
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, songFileCache: cache, logger: silentLogger(), bitrateProvider: { 4 }
+        )
+        try await coordinator.play(channelId: 0)
+        // Drain the post-play kickRefetch (returns sameHead → no append).
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        try await coordinator.skipForward() // queue is 1-deep → sync refetch path
+
+        let recorded = await engine.recordedCalls()
+        let lastPlayUrl: URL? = recorded.reversed().lazy.compactMap { call -> URL? in
+            if case .play(let url, _) = call { return url } else { return nil }
+        }.first
+        XCTAssertEqual(lastPlayUrl, local,
+                       "skipForward sync-refetch must engine.play the cache-resolved local URL. recorded=\(recorded)")
+    }
 }
