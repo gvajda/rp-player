@@ -75,8 +75,12 @@ public actor LiveSongFileCache: SongFileCache {
             logger.error("SongFileCache: invalid gapless URL: \(song.gaplessUrl)")
             return nil
         }
+        if Task.isCancelled { return nil }
         do {
             let (data, response) = try await session.data(from: url)
+            // Skip disk write if cancelled mid-flight — avoids orphan files when the coordinator
+            // tears down its downloaderTask between download start and completion.
+            if Task.isCancelled { return nil }
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                 logger.error("SongFileCache fetch failed: HTTP \((response as? HTTPURLResponse)?.statusCode ?? -1) for \(url.absoluteString)")
                 return nil

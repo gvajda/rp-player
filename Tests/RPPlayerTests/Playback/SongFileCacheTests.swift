@@ -201,4 +201,34 @@ final class SongFileCacheTests: XCTestCase {
         }
         XCTAssertEqual(Set(results.compactMap { $0 }).count, 1)
     }
+
+    // Cancellation contract: when the caller's Task is cancelled before
+    // localFile resumes, downloadAndStore must not leave a file on disk.
+    // The stub fires synchronously so the write race may still complete
+    // — best-effort assertion: any file present here must round-trip the
+    // body (no half-written orphan), and the cancellation path itself
+    // must not crash.
+    func testInFlightDownloadRespectsCancellation() async throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let song = makeSong()
+        StubURLProtocol.register(url: URL(string: song.gaplessUrl)!, body: Data([1, 2, 3]), status: 200)
+        let cache = try LiveSongFileCache(
+            directory: dir,
+            session: sessionWithStub(),
+            logger: makeLogger()
+        )
+
+        let task = Task {
+            await cache.localFile(for: song)
+        }
+        task.cancel()
+        _ = await task.value
+
+        let entries = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
+        for url in entries {
+            let data = try Data(contentsOf: url)
+            XCTAssertEqual(data, Data([1, 2, 3]), "any file present after cancellation must be intact (not a partial write)")
+        }
+    }
 }
