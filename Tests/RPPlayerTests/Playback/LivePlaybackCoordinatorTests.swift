@@ -984,4 +984,27 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         let clearsAfter = await cache.clearCalls
         XCTAssertGreaterThanOrEqual(clearsAfter, clearsBefore + 1)
     }
+
+    func testPlayFallsBackToRemoteUrlWhenCacheFails() async throws {
+        let api = MockRpApiClient()
+        let engine = MockPlayerEngine()
+        let cache = MockSongFileCache()
+        await cache.setFailing([42])
+
+        let response = makeGaplessResponse(songs: [
+            makeGaplessSong(eventId: 42, gaplessUrl: "https://s.example.com/42.flac"),
+        ])
+        await api.setGaplessResponses([response, response, response])  // play + post-play kickRefetch
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, songFileCache: cache, logger: silentLogger(), bitrateProvider: { 4 }
+        )
+
+        try await coordinator.play(channelId: 0)
+
+        let recorded = await engine.recordedCalls()
+        let firstPlayUrl: URL? = recorded.lazy.compactMap {
+            if case .play(let url, _) = $0 { return url } else { return nil }
+        }.first
+        XCTAssertEqual(firstPlayUrl, URL(string: "https://s.example.com/42.flac"))
+    }
 }
