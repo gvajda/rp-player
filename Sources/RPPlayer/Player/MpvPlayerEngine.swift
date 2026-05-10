@@ -240,6 +240,14 @@ public actor MpvPlayerEngine: PlayerEngine {
         try runCommand(["playlist-clear"])
     }
 
+    public func currentPath() async -> String? {
+        guard let h = handle else { return nil }
+        guard let raw = mpv_get_property_string(h, "path") else { return nil }
+        defer { mpv_free(raw) }
+        let value = String(cString: raw)
+        return value.isEmpty ? nil : value
+    }
+
     public func setForceMaxVolume(_ enabled: Bool) async throws {
         try requireHandle()
         try setStringProperty("volume", "100")

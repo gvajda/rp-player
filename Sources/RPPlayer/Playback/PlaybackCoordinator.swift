@@ -37,9 +37,9 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     private var currentChannelId: Int?
     private var queue: [GaplessSong] = []
     private var currentResponse: GaplessResponse?
-    // mpv fires MPV_EVENT_START_FILE for both initial load (engine.play(replace)) AND auto-advance from queued playlist.
-    // false = engine.play just issued, queue[0] not yet playing; first .fileStarted flips to true. true = a subsequent .fileStarted means an advance.
-    private var queueHeadIsPlaying: Bool = false
+    // mpv may fire MPV_EVENT_START_FILE multiple times around state transitions (initial load + auto-advance + replace).
+    // We trust mpv's `path` property as ground truth and dedupe START_FILE events by the song's eventId.
+    private var lastStartedEventId: Int?
     private var currentPositionSeconds: Double = 0
     private var current: NowPlaying?
     private var continuations: [UUID: AsyncStream<NowPlaying>.Continuation] = [:]
@@ -148,7 +148,12 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         refetchTask = nil
 
         let head = queue[0]
-        let startSeconds: Double? = head.cue > 0 ? Double(head.cue) / 1000.0 : nil
+        // RP backend occasionally returns cue >= duration (server cursor past song end). Clamp to 0 so mpv plays the song from start instead of failing with -16.
+        let safeCueMs = (head.cue >= head.duration) ? 0 : head.cue
+        if safeCueMs != head.cue {
+            logger.warn("play: queue[0] cue=\(head.cue)ms >= duration=\(head.duration)ms; clamping to 0")
+        }
+        let startSeconds: Double? = safeCueMs > 0 ? Double(safeCueMs) / 1000.0 : nil
         currentPositionSeconds = startSeconds ?? 0
 
         guard let url = URL(string: head.gaplessUrl) else {
@@ -163,7 +168,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         // but silent — the user sees the progress bar advance but hears nothing
         // until pause+play forces an AO recreate.
         await prePlayHook()
-        queueHeadIsPlaying = false
+        lastStartedEventId = nil
         do {
             try await engine.play(url: url, startSeconds: startSeconds)
         } catch {
@@ -176,7 +181,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
 
         emitNowPlaying(forSongAt: 0)
         emitState(.playing)
-        fireSongStartTelemetry(song: queue[0], channelId: channelId)
+        // Telemetry + queueNext for queue[1] are driven from syncQueueHeadFromMpv when mpv fires .fileStarted.
         if queue.count < 3 {
             kickRefetch()
         }
@@ -219,7 +224,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             try? await engine.clearPlaylist()
             queue = []
             currentResponse = nil
-            queueHeadIsPlaying = false
+            lastStartedEventId = nil
             pausedAt = nil
             pausePositionMs = 0
             try await play(channelId: channelId)
@@ -273,7 +278,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         refetchTask = nil
         queue = []
         currentResponse = nil
-        queueHeadIsPlaying = false
+        lastStartedEventId = nil
         currentChannelId = nil
         currentPositionSeconds = 0
         pausedAt = nil
@@ -332,14 +337,18 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         queue = response.songs
         currentResponse = response
         let head = queue[0]
-        let startPos: Double = head.cue > 0 ? Double(head.cue) / 1000.0 : 0
+        let safeCueMs = (head.cue >= head.duration) ? 0 : head.cue
+        if safeCueMs != head.cue {
+            logger.warn("skip: queue[0] cue=\(head.cue)ms >= duration=\(head.duration)ms; clamping to 0")
+        }
+        let startPos: Double = safeCueMs > 0 ? Double(safeCueMs) / 1000.0 : 0
         currentPositionSeconds = startPos
         guard let url = URL(string: head.gaplessUrl) else {
             errorsContinuation?.yield("Cannot skip — invalid url.")
             return
         }
         let startSeconds: Double? = startPos > 0 ? startPos : nil
-        queueHeadIsPlaying = false
+        lastStartedEventId = nil
         do {
             try await engine.play(url: url, startSeconds: startSeconds)
         } catch {
@@ -350,7 +359,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             try? await engine.queueNext(url: nextUrl, startSeconds: nil)
         }
         emitNowPlaying(forSongAt: 0)
-        fireSongStartTelemetry(song: queue[0], channelId: channelId)
+        // Telemetry driven from syncQueueHeadFromMpv when mpv fires .fileStarted.
         if queue.count < 3 {
             kickRefetch()
         }
@@ -412,51 +421,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             consecutivePlaybackFailures = 0
 
         case .fileStarted:
-            guard !queue.isEmpty else { return }
-            // mpv fires START_FILE for both initial engine.play and auto-advance from playlist; only advance shifts queue.
-            if !queueHeadIsPlaying {
-                queueHeadIsPlaying = true
-                logger.info("song.started (initial) \(describeSong(queue[0]))")
-                return
-            }
-            // queue[0] just ended (mpv auto-advanced to the queued entry).
-            // Fire telemetry for the song that just finished.
-            let finished = queue[0]
-            let finishedPlaytime = max(1, Int(currentPositionSeconds.rounded()))
-            if finished.updateHistory, let channelId = currentChannelId {
-                let api = self.api
-                let songId = finished.songId
-                let event = String(finished.eventId)
-                let audioType = finished.type
-                let sliceNum = String(finished.sliceNum)
-                let duration = finished.duration
-                Task.detached {
-                    try? await api.updateHistory(
-                        songId: songId, chan: channelId, event: event, audioType: audioType,
-                        sliceNum: sliceNum, playPositionMillis: duration,
-                        playtimeSecs: finishedPlaytime, pauseFlag: false
-                    )
-                }
-            }
-            // Advance queue.
-            queue.removeFirst()
-            currentPositionSeconds = 0
-            guard !queue.isEmpty else {
-                logger.warn("fileStarted but queue is empty post-removeFirst — refetching")
-                kickRefetch()
-                return
-            }
-            logger.info("song.started (advance) \(describeSong(queue[0]))")
-            emitNowPlaying(forSongAt: 0)
-            if let channelId = currentChannelId {
-                fireSongStartTelemetry(song: queue[0], channelId: channelId)
-            }
-            if queue.count >= 2, let nextUrl = URL(string: queue[1].gaplessUrl) {
-                try? await engine.queueNext(url: nextUrl, startSeconds: nil)
-            }
-            if queue.count < 3 {
-                kickRefetch()
-            }
+            await syncQueueHeadFromMpv()
 
         case .positionUpdate(let seconds):
             currentPositionSeconds = seconds
@@ -473,13 +438,11 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
                     let head = queue[0]
                     if let url = URL(string: head.gaplessUrl) {
                         do {
-                            queueHeadIsPlaying = false
+                            lastStartedEventId = nil
                             try await engine.play(url: url, startSeconds: nil)
                             currentPositionSeconds = 0
                             emitNowPlaying(forSongAt: 0)
-                            if let channelId = currentChannelId {
-                                fireSongStartTelemetry(song: head, channelId: channelId)
-                            }
+                            // Telemetry driven from syncQueueHeadFromMpv when mpv fires .fileStarted.
                             if queue.count >= 2, let nextUrl = URL(string: queue[1].gaplessUrl) {
                                 try? await engine.queueNext(url: nextUrl, startSeconds: nil)
                             }
@@ -530,7 +493,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         currentChannelId = nil
         queue = []
         currentResponse = nil
-        queueHeadIsPlaying = false
+        lastStartedEventId = nil
         currentPositionSeconds = 0
         pausedAt = nil
         pausePositionMs = 0
@@ -589,7 +552,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             return
         }
         do {
-            queueHeadIsPlaying = false
+            lastStartedEventId = nil
             try await engine.play(url: url, startSeconds: nil)
         } catch {
             await handlePlaybackError(code: code)
@@ -597,8 +560,65 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         }
         currentPositionSeconds = 0
         emitNowPlaying(forSongAt: 0)
-        fireSongStartTelemetry(song: head, channelId: channelId)
+        // Telemetry driven from syncQueueHeadFromMpv when mpv fires .fileStarted.
         if queue.count >= 2, let nextUrl = URL(string: queue[1].gaplessUrl) {
+            try? await engine.queueNext(url: nextUrl, startSeconds: nil)
+        }
+        if queue.count < 3 {
+            kickRefetch()
+        }
+    }
+
+    private func syncQueueHeadFromMpv() async {
+        guard !queue.isEmpty else { return }
+        let path = await engine.currentPath()
+        // Locate mpv's actual playing URL in the queue. If unknown, fall back to queue[0] (fast path / test fallback).
+        let idx: Int
+        if let path, let found = queue.firstIndex(where: { $0.gaplessUrl == path }) {
+            idx = found
+        } else {
+            if let path { logger.warn("syncQueueHead: mpv path \(path) not found in queue; falling back to queue[0]") }
+            idx = 0
+        }
+        let head = queue[idx]
+        // Dedupe: if this song's eventId matches the last one we observed starting, the START_FILE event is redundant.
+        if let last = lastStartedEventId, last == head.eventId {
+            return
+        }
+        let isAdvance = lastStartedEventId != nil
+        // Drop everything before idx — those songs were skipped past or finished naturally.
+        if idx > 0 {
+            let dropped = Array(queue.prefix(idx))
+            queue.removeFirst(idx)
+            for finished in dropped where finished.updateHistory {
+                if let channelId = currentChannelId {
+                    let api = self.api
+                    let songId = finished.songId
+                    let event = String(finished.eventId)
+                    let audioType = finished.type
+                    let sliceNum = String(finished.sliceNum)
+                    let durationMs = finished.duration
+                    let playtime = max(1, Int(currentPositionSeconds.rounded()))
+                    Task.detached {
+                        try? await api.updateHistory(
+                            songId: songId, chan: channelId, event: event, audioType: audioType,
+                            sliceNum: sliceNum, playPositionMillis: durationMs,
+                            playtimeSecs: playtime, pauseFlag: false
+                        )
+                    }
+                }
+            }
+        }
+        lastStartedEventId = queue[0].eventId
+        currentPositionSeconds = 0
+        let kind = isAdvance ? "advance" : "initial"
+        logger.info("song.started (\(kind)) \(describeSong(queue[0]))")
+        emitNowPlaying(forSongAt: 0)
+        if let channelId = currentChannelId {
+            fireSongStartTelemetry(song: queue[0], channelId: channelId)
+        }
+        // Only re-issue queueNext on advance — initial sync is preceded by play()/handleSongPlaybackError/etc which already queued queue[1].
+        if isAdvance, queue.count >= 2, let nextUrl = URL(string: queue[1].gaplessUrl) {
             try? await engine.queueNext(url: nextUrl, startSeconds: nil)
         }
         if queue.count < 3 {
@@ -699,7 +719,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     }
 
     private func markQueueHeadPending() {
-        queueHeadIsPlaying = false
+        lastStartedEventId = nil
     }
 
     private func cancelStallWatchdog() {
@@ -768,7 +788,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         currentChannelId = nil
         queue = []
         currentResponse = nil
-        queueHeadIsPlaying = false
+        lastStartedEventId = nil
         currentPositionSeconds = 0
         pausedAt = nil
         pausePositionMs = 0

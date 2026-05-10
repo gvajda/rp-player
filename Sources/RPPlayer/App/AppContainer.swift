@@ -589,5 +589,6 @@ private struct NoopPlayerEngine: PlayerEngine {
     func queueNext(url: URL, startSeconds: Double?) async throws { throw error }
     func advanceToQueued() async throws { throw error }
     func clearPlaylist() async throws { throw error }
+    func currentPath() async -> String? { nil }
     func shutdown() async {}
 }

@@ -15,6 +15,8 @@ public protocol PlayerEngine: Sendable {
     func queueNext(url: URL, startSeconds: Double?) async throws
     func advanceToQueued() async throws
     func clearPlaylist() async throws
+    /// URL string of the currently-loaded file (mpv `path` property), or nil if no file is loaded.
+    func currentPath() async -> String?
     func shutdown() async
     func muteImmediately()
 }

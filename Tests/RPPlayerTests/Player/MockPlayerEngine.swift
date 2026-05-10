@@ -21,8 +21,12 @@ actor MockPlayerEngine: PlayerEngine {
     private var calls: [Call] = []
     private var continuations: [UUID: AsyncStream<PlayerEvent>.Continuation] = [:]
     private var nextError: Error?
+    private var simulatedCurrentPath: String?
 
     func recordedCalls() -> [Call] { calls }
+
+    /// Set the URL string that `currentPath()` will return. Tests fire `.fileStarted` after setting this so the coordinator's resync logic finds the right queue index.
+    func setSimulatedCurrentPath(_ url: URL?) { simulatedCurrentPath = url?.absoluteString }
 
     func setNextError(_ error: Error) { nextError = error }
 
@@ -52,6 +56,7 @@ actor MockPlayerEngine: PlayerEngine {
 
     func play(url: URL, startSeconds: Double?) async throws {
         try recordOrThrow(.play(url: url, startSeconds: startSeconds))
+        simulatedCurrentPath = url.absoluteString
     }
     func pause() async throws           { try recordOrThrow(.pause) }
     func resume() async throws          { try recordOrThrow(.resume) }
@@ -77,6 +82,9 @@ actor MockPlayerEngine: PlayerEngine {
     }
     func clearPlaylist() async throws {
         try recordOrThrow(.clearPlaylist)
+    }
+    func currentPath() async -> String? {
+        simulatedCurrentPath
     }
     func shutdown() async {
         calls.append(.shutdown)

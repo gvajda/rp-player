@@ -65,11 +65,12 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
             api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
         )
         try await coord.play(channelId: 0)
-        // First fileStarted: initial engine.play just completed loading queue[0] = s1. Flag flips; no advance.
+        // First fileStarted: mpv path = s1 (set by engine.play). Sets lastStartedEventId; no advance.
         await engine.fire(.fileStarted)
         try await Task.sleep(nanoseconds: 50_000_000)
         await engine.fire(.positionUpdate(seconds: 60.0))
-        // Second fileStarted: mpv auto-advanced from s1 → s2.
+        // Simulate mpv auto-advance: path now points at queue[1] = s2.
+        await engine.setSimulatedCurrentPath(URL(string: "https://example.com/s2.flac"))
         await engine.fire(.fileStarted)
         try await Task.sleep(nanoseconds: 100_000_000)
 
@@ -108,15 +109,17 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         // Initial play kicks an immediate refetch (queue.count<3). Wait for it.
         try await Task.sleep(nanoseconds: 150_000_000)
 
-        // First fileStarted: initial engine.play just completed loading queue[0] = s1. Flag flips; no advance.
+        // First fileStarted: mpv path = s1 (initial). lastStartedEventId set, no advance.
         await engine.fire(.fileStarted)
         try await Task.sleep(nanoseconds: 50_000_000)
 
-        // Second fileStarted: queue is 4 songs; advance to s2 leaves queue at 3 — no refetch.
+        // Advance to s2: queue 4 → 3, kickRefetch fires (queue.count<3 false → no refetch yet).
+        await engine.setSimulatedCurrentPath(URL(string: "https://example.com/s2.flac"))
         await engine.fire(.fileStarted)
         try await Task.sleep(nanoseconds: 100_000_000)
 
-        // Third fileStarted: advance to s3 (queue → 2, kickRefetch fires).
+        // Advance to s3: queue 3 → 2, kickRefetch fires.
+        await engine.setSimulatedCurrentPath(URL(string: "https://example.com/s3.flac"))
         await engine.fire(.fileStarted)
         try await Task.sleep(nanoseconds: 150_000_000)
 
