@@ -45,9 +45,8 @@ struct UpcomingSongCardView: View {
                     .lineLimit(1)
                     .foregroundStyle(.primary)
                 Spacer(minLength: 0)
-                if let rating = row.song.userRating,
-                   let value = Int(rating), value > 0 {
-                    Text("★ \(value)")
+                if row.song.userRating > 0 {
+                    Text("★ \(row.song.userRating)")
                         .font(.system(size: 10))
                         .foregroundStyle(.primary)
                 }

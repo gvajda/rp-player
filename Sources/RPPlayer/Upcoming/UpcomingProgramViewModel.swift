@@ -9,7 +9,7 @@ struct UpcomingColumn: Identifiable, Sendable {
 
 struct UpcomingSongRow: Identifiable, Sendable {
     let id: String
-    let song: PlayListSong
+    let song: GaplessSong
     let art: NSImage?
     let ambientColor: Color
 }
@@ -131,45 +131,17 @@ final class UpcomingProgramViewModel: ObservableObject {
 
         skeletonColumnCount = enabledChannels.count
 
-        // Fetch blocks concurrently, accumulating across multiple blocks until rowCount is met.
-        // Uses api/play (the same endpoint the live coordinator uses) so the
-        // upcoming list matches what will actually play. First call per channel
-        // bootstraps with event=0 / action=start; subsequent calls advance with
-        // action=play + the last song's audio_type and slice_num.
+        // Single api/gapless call per channel. Filter promos inline.
         let api = self.api
-        var rowResults: [(Int, Channel, [PlayListSong])] = []
-        await withTaskGroup(of: (Int, Channel, [PlayListSong]).self) { group in
+        let fetchCount = max(rowCount * 2, rowCount + 5)  // overshoot to absorb promo filtering
+        var rowResults: [(Int, Channel, [GaplessSong])] = []
+        await withTaskGroup(of: (Int, Channel, [GaplessSong]).self) { group in
             for (i, channel) in enabledChannels.enumerated() {
                 guard let chanId = Int(channel.chan) else { continue }
                 group.addTask {
-                    var songs: [PlayListSong] = []
-                    var event = 0
-                    var action: PlayAction = .start
-                    var audioType: String? = nil
-                    var sliceNum: String? = nil
-                    var episodeId: Int? = nil
-                    while songs.count < rowCount {
-                        guard let block = try? await api.play(
-                            channel: chanId, bitrate: bitrate, event: event,
-                            action: action, audioType: audioType,
-                            episodeId: episodeId, sliceNum: sliceNum
-                        ) else { break }
-                        let blockSongs = BlockSongs.orderedSongs(from: block)
-                        let visible = blockSongs
-                            .filter { $0.type != "P" && $0.songId != "0" }
-                        songs.append(contentsOf: visible)
-                        guard let endEventStr = block.endEvent,
-                              let nextEvent = Int(endEventStr),
-                              nextEvent != event,
-                              songs.count < rowCount,
-                              let lastSong = blockSongs.last else { break }
-                        event = nextEvent
-                        action = .play
-                        audioType = lastSong.type ?? "M"
-                        sliceNum = lastSong.sliceNum
-                        episodeId = 0
-                    }
-                    return (i, channel, Array(songs.prefix(rowCount)))
+                    let response = try? await api.gapless(channel: chanId, bitrate: bitrate, numSongs: fetchCount)
+                    let visible = (response?.songs ?? []).filter { $0.type != "P" && $0.songId != "0" }
+                    return (i, channel, Array(visible.prefix(rowCount)))
                 }
             }
             for await result in group {
@@ -185,7 +157,7 @@ final class UpcomingProgramViewModel: ObservableObject {
         struct ColStub {
             let channel: Channel
             let chanId: Int
-            let songs: [PlayListSong]
+            let songs: [GaplessSong]
         }
 
         let stubs: [ColStub] = rowResults.compactMap { _, channel, songs in
@@ -200,7 +172,8 @@ final class UpcomingProgramViewModel: ObservableObject {
         await withTaskGroup(of: (String, NSImage?, Color).self) { group in
             for (ci, stub) in stubs.enumerated() {
                 for (ri, song) in stub.songs.enumerated() {
-                    guard let cover = song.cover, !cover.isEmpty else { continue }
+                    let cover = song.coverLarge ?? song.coverMedium
+                    guard let cover, !cover.isEmpty else { continue }
                     let key = "\(ci)-\(ri)"
                     group.addTask {
                         let image = await albumArtCache.image(for: cover)
