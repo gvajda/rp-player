@@ -2,13 +2,13 @@ import Foundation
 
 public struct NowPlaying: Sendable, Equatable {
     public let channelId: Int
-    public let song: PlayListSong
+    public let song: GaplessSong
     public let songDurationSeconds: Double
     public var bitrateLabel: String?
 
     public init(
         channelId: Int,
-        song: PlayListSong,
+        song: GaplessSong,
         songDurationSeconds: Double,
         bitrateLabel: String? = nil
     ) {

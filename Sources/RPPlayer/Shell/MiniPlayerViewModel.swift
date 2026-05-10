@@ -117,7 +117,7 @@ final class MiniPlayerViewModel: ObservableObject {
                 let coverChanged = await MainActor.run { () -> Bool in
                     self.nowPlaying = np
                     self.isSignedIn = self.auth.isLoggedIn
-                    self.currentRating = Self.parseRating(from: np.song.userRating)
+                    self.currentRating = np.song.userRating > 0 ? np.song.userRating : nil
                     self.currentBitrateLabel = BlockBitrateLabel.display(np.bitrateLabel)
                     let newDuration = np.songDurationSeconds
                     if np.song.songId != self.lastNotifiedSongId {
@@ -128,7 +128,7 @@ final class MiniPlayerViewModel: ObservableObject {
                     if np.song.songId == "0" {
                         self.ambientTopColor = nil
                     }
-                    let newCover = np.song.cover
+                    let newCover = np.song.coverLarge ?? np.song.coverMedium
                     if newCover != self.lastLoadedCoverPath {
                         self.lastLoadedCoverPath = newCover
                         self.currentArt = nil
@@ -148,9 +148,7 @@ final class MiniPlayerViewModel: ObservableObject {
                 guard let self else { return }
                 guard let np = self.nowPlaying else { continue }
                 let duration = np.songDurationSeconds
-                // PlayListSong.elapsed (ms) = song's absolute file offset for legacy block emissions; nil/0 once the coordinator goes per-song in Task 4.
-                let songStart = Double(np.song.elapsed ?? 0) / 1000.0
-                let elapsed = max(0, pos - songStart)
+                let elapsed = max(0, pos)
                 self.songElapsedSeconds = min(elapsed, duration)
                 self.songDurationSeconds = duration
             }
@@ -344,13 +342,8 @@ final class MiniPlayerViewModel: ObservableObject {
         isSignedIn = auth.isLoggedIn
     }
 
-    private static func parseRating(from raw: String?) -> Int? {
-        guard let raw, let value = Int(raw) else { return nil }
-        return (1...10).contains(value) ? value : nil
-    }
-
     private func loadArt(for np: NowPlaying) async {
-        guard let cover = np.song.cover else {
+        guard let cover = np.song.coverLarge ?? np.song.coverMedium else {
             await MainActor.run { self.currentArt = nil }
             return
         }

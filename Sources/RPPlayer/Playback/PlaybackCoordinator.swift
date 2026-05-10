@@ -595,37 +595,13 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         let song = queue[index]
         let np = NowPlaying(
             channelId: channelId,
-            song: playListSong(from: song),
+            song: song,
             songDurationSeconds: Double(song.duration) / 1000.0,
             bitrateLabel: currentResponse?.bitrateTitle
         )
         current = np
         for c in continuations.values { c.yield(np) }
         prefetchUpcomingSongArt()
-    }
-
-    // Shim: NowPlaying.song is still PlayListSong at this task. Task 5 swaps
-    // the field type to GaplessSong and drops this converter.
-    private func playListSong(from g: GaplessSong) -> PlayListSong {
-        PlayListSong(
-            songId: g.songId,
-            artist: g.artist,
-            title: g.title,
-            album: g.album,
-            duration: g.duration,
-            event: String(g.eventId),
-            schedTime: nil,
-            chan: nil,
-            year: g.year,
-            asin: nil,
-            rating: g.rating > 0 ? String(g.rating) : nil,
-            userRating: g.userRating > 0 ? String(g.userRating) : nil,
-            cover: g.coverLarge ?? g.coverMedium,
-            elapsed: nil,
-            slideshow: nil,
-            type: g.type,
-            sliceNum: String(g.sliceNum)
-        )
     }
 
     // Warm the album-art cache for the song that will play next so the popover

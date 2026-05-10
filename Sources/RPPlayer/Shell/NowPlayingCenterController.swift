@@ -120,7 +120,7 @@ final class NowPlayingCenterController {
         // Artwork load is async + fallible; merge it into the existing info
         // dictionary on success rather than overwriting in case the song
         // changes again during the await.
-        guard let cover = song.cover, !cover.isEmpty, cover != lastCoverPath else { return }
+        guard let cover = song.coverLarge ?? song.coverMedium, !cover.isEmpty, cover != lastCoverPath else { return }
         lastCoverPath = cover
         guard let image = await albumArtCache.image(for: cover) else { return }
         let size = image.size
@@ -159,10 +159,8 @@ final class NowPlayingCenterController {
         let now = Date()
         if let last = lastPositionUpdateAt, now.timeIntervalSince(last) < 1.0 { return }
         lastPositionUpdateAt = now
-        guard let np = await coordinator.nowPlaying else { return }
-        // PlayListSong.elapsed (ms) = song's absolute file offset for legacy block emissions; nil/0 once the coordinator goes per-song in Task 4.
-        let songStart = Double(np.song.elapsed ?? 0) / 1000.0
-        let elapsed = max(0, blockPosition - songStart)
+        guard await coordinator.nowPlaying != nil else { return }
+        let elapsed = max(0, blockPosition)
         lastPosition = elapsed
         patchInfo([MPNowPlayingInfoPropertyElapsedPlaybackTime: elapsed])
     }

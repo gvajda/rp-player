@@ -53,7 +53,7 @@ public final class NotificationCoordinator {
     }
 
     private func handle(_ np: NowPlaying) async {
-        await registry.record(np.song)
+        await registry.record(PlayListSong(from: np.song))
         guard await notificationsEnabled() else { return }
         let title = "\(np.song.artist) — \(np.song.title)"
         let subtitlePrefix = np.song.album ?? ""
@@ -68,7 +68,7 @@ public final class NotificationCoordinator {
         }
 
         var attachmentURL: URL?
-        if let cover = np.song.cover {
+        if let cover = np.song.coverLarge ?? np.song.coverMedium {
             _ = await cache.image(for: cover)
             attachmentURL = await cachedFileURL(cover)
         }

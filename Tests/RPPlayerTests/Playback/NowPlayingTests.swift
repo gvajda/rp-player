@@ -2,17 +2,8 @@ import XCTest
 @testable import RPPlayer
 
 final class NowPlayingTests: XCTestCase {
-    private func makeSong(id: String = "1", duration: Int = 180000) -> PlayListSong {
-        PlayListSong(
-            songId: id, artist: "A", title: "T", album: "Al", duration: duration,
-            event: nil, schedTime: nil, chan: nil, year: nil, asin: nil,
-            rating: nil, userRating: nil, cover: nil, elapsed: nil, slideshow: nil,
-            type: nil, sliceNum: nil
-        )
-    }
-
     func testEqualityRequiresAllFieldsMatch() {
-        let song = makeSong()
+        let song = makeGaplessSong(songId: "1", duration: 180_000)
         let np1 = NowPlaying(channelId: 0, song: song, songDurationSeconds: 180)
         let np2 = NowPlaying(channelId: 0, song: song, songDurationSeconds: 180)
         XCTAssertEqual(np1, np2)

@@ -61,6 +61,28 @@ public struct PlayListSong: Codable, Sendable, Equatable {
 }
 
 public extension PlayListSong {
+    init(from song: GaplessSong) {
+        self.init(
+            songId: song.songId,
+            artist: song.artist,
+            title: song.title,
+            album: song.album,
+            duration: song.duration,
+            event: String(song.eventId),
+            schedTime: nil,
+            chan: nil,
+            year: song.year,
+            asin: nil,
+            rating: song.rating > 0 ? String(song.rating) : nil,
+            userRating: song.userRating > 0 ? String(song.userRating) : nil,
+            cover: song.coverLarge ?? song.coverMedium,
+            elapsed: nil,
+            slideshow: nil,
+            type: song.type,
+            sliceNum: String(song.sliceNum)
+        )
+    }
+
     init(from info: SongInfo) {
         self.init(
             songId: String(info.songId),

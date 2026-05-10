@@ -293,12 +293,7 @@ final class UpcomingProgramViewModelTests: XCTestCase {
 private func makeNowPlaying(channelId: Int, songId: String) -> NowPlaying {
     NowPlaying(
         channelId: channelId,
-        song: PlayListSong(
-            songId: songId, artist: "A", title: "T", album: "Al",
-            duration: 180_000, event: nil, schedTime: nil, chan: nil,
-            year: nil, asin: nil, rating: nil, userRating: nil,
-            cover: nil, elapsed: 0, slideshow: nil, type: "M", sliceNum: nil
-        ),
+        song: makeGaplessSong(songId: songId),
         songDurationSeconds: 180
     )
 }

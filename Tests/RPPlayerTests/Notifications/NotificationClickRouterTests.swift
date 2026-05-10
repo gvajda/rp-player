@@ -4,18 +4,9 @@ import UserNotifications
 
 @MainActor
 final class NotificationClickRouterTests: XCTestCase {
-    private func makeSong(id: String) -> PlayListSong {
-        PlayListSong(
-            songId: id, artist: "A", title: "T", album: nil, duration: 0,
-            event: nil, schedTime: nil, chan: nil, year: nil, asin: nil,
-            rating: nil, userRating: nil, cover: nil, elapsed: nil, slideshow: nil,
-            type: nil, sliceNum: nil
-        )
-    }
-
     private func makeNowPlaying(songId: String) -> NowPlaying {
         NowPlaying(
-            channelId: 0, song: makeSong(id: songId), songDurationSeconds: 0
+            channelId: 0, song: makeGaplessSong(songId: songId, duration: 0), songDurationSeconds: 0
         )
     }
 
@@ -42,7 +33,7 @@ final class NotificationClickRouterTests: XCTestCase {
         let coordinator = MockPlaybackCoordinator()
         await coordinator.setNowPlaying(makeNowPlaying(songId: "55"))
         let registry = SongRegistry()
-        await registry.record(makeSong(id: "99"))
+        await registry.record(PlayListSong(from: makeGaplessSong(songId: "99", duration: 0)))
         var mainCalled = 0
         var pastSongs: [PlayListSong] = []
         let router = NotificationClickRouter(

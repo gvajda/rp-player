@@ -13,15 +13,13 @@ extension NowPlaying {
     ) -> NowPlaying {
         NowPlaying(
             channelId: 0,
-            song: PlayListSong(
+            song: makeGaplessSong(
                 songId: songId,
                 artist: artist,
                 title: title,
                 album: album,
-                duration: 180_000,
-                event: nil, schedTime: nil, chan: nil, year: nil, asin: nil,
-                rating: nil, userRating: userRating, cover: cover, elapsed: nil, slideshow: nil,
-                type: nil, sliceNum: nil
+                userRating: userRating.flatMap(Int.init) ?? 0,
+                coverLarge: cover
             ),
             songDurationSeconds: songDurationSeconds
         )
