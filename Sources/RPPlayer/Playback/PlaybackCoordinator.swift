@@ -807,11 +807,10 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         downloaderTask?.cancel()
         let snapshot = queue
         let cache = songFileCache
-        downloaderTask = Task { [weak self] in
+        downloaderTask = Task {
             for song in snapshot.dropFirst() {
                 if Task.isCancelled { return }
                 _ = await cache.localFile(for: song)
-                _ = self
             }
         }
     }
