@@ -433,12 +433,25 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         self.currentResponse = response
         emitNowPlaying(forSongAt: 0)
         try? await engine.clearPlaylist()
-        if self.queue.count >= 2, let nextUrl = URL(string: self.queue[1].gaplessUrl) {
-            try? await engine.queueNext(url: nextUrl, startSeconds: nil)
+        // Bitrate change minted new gaplessUrls; the on-disk cache holds the
+        // old bitrate's files. Cancel any in-flight downloader walk and wipe
+        // the cache so the new bitrate's URLs aren't shadowed by stale hashes.
+        downloaderTask?.cancel()
+        downloaderTask = nil
+        let cacheRef = songFileCache
+        Task { await cacheRef.clear() }
+        if self.queue.count >= 2 {
+            let next = self.queue[1]
+            let nextUrl = await songFileCache.localFile(for: next)
+                ?? URL(string: next.gaplessUrl)
+            if let nextUrl {
+                try? await engine.queueNext(url: nextUrl, startSeconds: nil)
+            }
         }
         if self.queue.count < 3 {
             kickRefetch()
         }
+        kickSequentialDownload()
     }
 
     public func shutdown() async {
