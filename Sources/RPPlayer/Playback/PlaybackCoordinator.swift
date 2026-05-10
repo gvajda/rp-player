@@ -576,16 +576,11 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     private func emitNowPlaying(forSongIndex idx: Int) {
         guard let channelId = currentChannelId, idx < orderedSongs.count else { return }
         let song = orderedSongs[idx]
-        let songStart = startsAt[idx]
-        let songEnd = songStart + Double(song.duration) / 1000.0
         let np = NowPlaying(
             channelId: channelId,
             song: song,
-            songIndexInBlock: idx,
-            blockDurationSeconds: BlockSongs.totalDurationSeconds(songs: orderedSongs),
-            songStartSeconds: songStart,
-            songEndSeconds: songEnd,
-            blockBitrate: currentBlock?.bitrate
+            songDurationSeconds: Double(song.duration) / 1000.0,
+            bitrateLabel: currentBlock?.bitrate
         )
         current = np
         for c in continuations.values { c.yield(np) }

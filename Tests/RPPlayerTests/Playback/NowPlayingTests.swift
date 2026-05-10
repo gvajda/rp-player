@@ -13,14 +13,11 @@ final class NowPlayingTests: XCTestCase {
 
     func testEqualityRequiresAllFieldsMatch() {
         let song = makeSong()
-        let np1 = NowPlaying(channelId: 0, song: song, songIndexInBlock: 1,
-                             blockDurationSeconds: 600, songStartSeconds: 60, songEndSeconds: 240)
-        let np2 = NowPlaying(channelId: 0, song: song, songIndexInBlock: 1,
-                             blockDurationSeconds: 600, songStartSeconds: 60, songEndSeconds: 240)
+        let np1 = NowPlaying(channelId: 0, song: song, songDurationSeconds: 180)
+        let np2 = NowPlaying(channelId: 0, song: song, songDurationSeconds: 180)
         XCTAssertEqual(np1, np2)
 
-        let differentChannel = NowPlaying(channelId: 1, song: song, songIndexInBlock: 1,
-                                           blockDurationSeconds: 600, songStartSeconds: 60, songEndSeconds: 240)
+        let differentChannel = NowPlaying(channelId: 1, song: song, songDurationSeconds: 180)
         XCTAssertNotEqual(np1, differentChannel)
     }
 

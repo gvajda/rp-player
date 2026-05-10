@@ -9,8 +9,7 @@ extension NowPlaying {
         cover: String? = nil,
         userRating: String? = nil,
         songId: String = "1",
-        songStartSeconds: Double = 0,
-        songEndSeconds: Double = 180
+        songDurationSeconds: Double = 180
     ) -> NowPlaying {
         NowPlaying(
             channelId: 0,
@@ -24,10 +23,7 @@ extension NowPlaying {
                 rating: nil, userRating: userRating, cover: cover, elapsed: nil, slideshow: nil,
                 type: nil, sliceNum: nil
             ),
-            songIndexInBlock: 0,
-            blockDurationSeconds: 720,
-            songStartSeconds: songStartSeconds,
-            songEndSeconds: songEndSeconds
+            songDurationSeconds: songDurationSeconds
         )
     }
 }

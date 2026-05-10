@@ -299,11 +299,7 @@ private func makeNowPlaying(channelId: Int, songId: String) -> NowPlaying {
             year: nil, asin: nil, rating: nil, userRating: nil,
             cover: nil, elapsed: 0, slideshow: nil, type: "M", sliceNum: nil
         ),
-        songIndexInBlock: 0,
-        blockDurationSeconds: 180,
-        songStartSeconds: 0,
-        songEndSeconds: 180,
-        blockBitrate: nil
+        songDurationSeconds: 180
     )
 }
 

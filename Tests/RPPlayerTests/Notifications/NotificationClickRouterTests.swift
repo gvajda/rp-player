@@ -15,8 +15,7 @@ final class NotificationClickRouterTests: XCTestCase {
 
     private func makeNowPlaying(songId: String) -> NowPlaying {
         NowPlaying(
-            channelId: 0, song: makeSong(id: songId), songIndexInBlock: 0,
-            blockDurationSeconds: 0, songStartSeconds: 0, songEndSeconds: 0
+            channelId: 0, song: makeSong(id: songId), songDurationSeconds: 0
         )
     }
 

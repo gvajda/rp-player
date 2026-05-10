@@ -98,7 +98,7 @@ final class NowPlayingCenterController {
 
     private func handleNowPlaying(_ np: NowPlaying) async {
         let song = np.song
-        lastSongDuration = max(0, np.songEndSeconds - np.songStartSeconds)
+        lastSongDuration = np.songDurationSeconds
         lastPosition = 0
 
         var info: [String: Any] = [
@@ -159,8 +159,8 @@ final class NowPlayingCenterController {
         let now = Date()
         if let last = lastPositionUpdateAt, now.timeIntervalSince(last) < 1.0 { return }
         lastPositionUpdateAt = now
-        guard let np = await coordinator.nowPlaying else { return }
-        let elapsed = max(0, blockPosition - np.songStartSeconds)
+        guard await coordinator.nowPlaying != nil else { return }
+        let elapsed = max(0, blockPosition)
         lastPosition = elapsed
         patchInfo([MPNowPlayingInfoPropertyElapsedPlaybackTime: elapsed])
     }

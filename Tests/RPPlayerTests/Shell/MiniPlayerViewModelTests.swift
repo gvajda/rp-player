@@ -304,7 +304,7 @@ final class MiniPlayerViewModelTests: XCTestCase {
         auth.loggedIn = false
         await sut.start()
         var np = NowPlaying.fixture(songId: "1")
-        np.blockBitrate = "32k aac"
+        np.bitrateLabel = "32k aac"
         await coordinator.setNowPlaying(np)
         try await Task.sleep(nanoseconds: 50_000_000)
         XCTAssertEqual(sut.currentBitrateLabel, "32K AAC")
@@ -325,13 +325,13 @@ final class MiniPlayerViewModelTests: XCTestCase {
         await sut.start()
 
         var np = NowPlaying.fixture(cover: "covers/l/stable.jpg", songId: "1")
-        np.blockBitrate = "flac"
+        np.bitrateLabel = "flac"
         await coordinator.setNowPlaying(np)
         try await Task.sleep(nanoseconds: 80_000_000)
         let firstArt = sut.currentArt
         XCTAssertNotNil(firstArt, "art should load on first emission")
 
-        np.blockBitrate = "320"
+        np.bitrateLabel = "320"
         await coordinator.setNowPlaying(np)
         try await Task.sleep(nanoseconds: 80_000_000)
 
@@ -370,12 +370,12 @@ final class MiniPlayerViewModelTests: XCTestCase {
     }
 
     func testPositionUpdateDerivesElapsedAndDuration() async throws {
-        let np = NowPlaying.fixture(songStartSeconds: 100, songEndSeconds: 280)
+        let np = NowPlaying.fixture()
         await coordinator.setNowPlaying(np)
         await sut.start()
         try await Task.sleep(nanoseconds: 50_000_000)
 
-        await coordinator.firePosition(145)
+        await coordinator.firePosition(45)
         try await Task.sleep(nanoseconds: 50_000_000)
 
         XCTAssertEqual(sut.songElapsedSeconds, 45, accuracy: 0.001)
@@ -383,15 +383,15 @@ final class MiniPlayerViewModelTests: XCTestCase {
     }
 
     func testSongChangeResetsElapsed() async throws {
-        let np1 = NowPlaying.fixture(songId: "1", songStartSeconds: 100, songEndSeconds: 280)
+        let np1 = NowPlaying.fixture(songId: "1")
         await coordinator.setNowPlaying(np1)
         await sut.start()
         try await Task.sleep(nanoseconds: 50_000_000)
-        await coordinator.firePosition(200)
+        await coordinator.firePosition(100)
         try await Task.sleep(nanoseconds: 50_000_000)
         XCTAssertGreaterThan(sut.songElapsedSeconds, 0)
 
-        let np2 = NowPlaying.fixture(songId: "2", songStartSeconds: 280, songEndSeconds: 520)
+        let np2 = NowPlaying.fixture(songId: "2", songDurationSeconds: 240)
         await coordinator.setNowPlaying(np2)
         try await Task.sleep(nanoseconds: 50_000_000)
 
@@ -400,12 +400,12 @@ final class MiniPlayerViewModelTests: XCTestCase {
     }
 
     func testElapsedClampedToDuration() async throws {
-        let np = NowPlaying.fixture(songStartSeconds: 100, songEndSeconds: 280)
+        let np = NowPlaying.fixture()
         await coordinator.setNowPlaying(np)
         await sut.start()
         try await Task.sleep(nanoseconds: 50_000_000)
 
-        await coordinator.firePosition(310)
+        await coordinator.firePosition(210)
         try await Task.sleep(nanoseconds: 50_000_000)
 
         XCTAssertEqual(sut.songElapsedSeconds, 180, accuracy: 0.001)
@@ -471,12 +471,12 @@ final class MiniPlayerViewModelTests: XCTestCase {
     }
 
     func testRemainingSecondsForTooltipReflectsPosition() async throws {
-        let np = NowPlaying.fixture(songStartSeconds: 100, songEndSeconds: 280)
+        let np = NowPlaying.fixture()
         await coordinator.setNowPlaying(np)
         await sut.start()
         try await Task.sleep(nanoseconds: 50_000_000)
 
-        await coordinator.firePosition(220)
+        await coordinator.firePosition(120)
         try await Task.sleep(nanoseconds: 50_000_000)
 
         // duration 180, elapsed 120 → remaining 60
@@ -521,7 +521,7 @@ final class MiniPlayerViewModelTests: XCTestCase {
     }
 
     func testRemainingSecondsForTooltipClampedAtZero() async throws {
-        let np = NowPlaying.fixture(songStartSeconds: 100, songEndSeconds: 280)
+        let np = NowPlaying.fixture()
         await coordinator.setNowPlaying(np)
         await sut.start()
         try await Task.sleep(nanoseconds: 50_000_000)

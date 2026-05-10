@@ -80,7 +80,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         )
         try await coordinator.play(channelId: 0)
         let np = await coordinator.nowPlaying
-        XCTAssertEqual(np?.blockBitrate, "flac")
+        XCTAssertEqual(np?.bitrateLabel, "flac")
     }
 
     func testPlayThrowsWhenBlockHasNoSongs() async throws {
@@ -210,13 +210,13 @@ extension LivePlaybackCoordinatorTests {
         )
 
         let stream = await coordinator.nowPlayingUpdates
-        let collector = Task { () -> [Int] in
-            var seenIndexes: [Int] = []
+        let collector = Task { () -> [String] in
+            var seenIds: [String] = []
             for await np in stream {
-                seenIndexes.append(np.songIndexInBlock)
-                if seenIndexes.count == 3 { return seenIndexes }
+                seenIds.append(np.song.songId)
+                if seenIds.count == 3 { return seenIds }
             }
-            return seenIndexes
+            return seenIds
         }
 
         try await coordinator.play(channelId: 0)
@@ -224,7 +224,7 @@ extension LivePlaybackCoordinatorTests {
         await engine.fire(.positionUpdate(seconds: 75.0))   // now song 1
         await engine.fire(.positionUpdate(seconds: 200.0))  // now song 2
         let result = await collector.value
-        XCTAssertEqual(result, [0, 1, 2])
+        XCTAssertEqual(result, ["s1", "s2", "s3"])
     }
 
     func testPositionUpdatesWithinSameSongDoNotReEmit() async throws {
@@ -288,12 +288,12 @@ extension LivePlaybackCoordinatorTests {
         )
 
         let stream = await coordinator.nowPlayingUpdates
-        let collector = Task { () -> [Int] in
-            var indexes: [Int] = []
+        let collector = Task { () -> [String] in
+            var ids: [String] = []
             for await np in stream {
-                indexes.append(np.songIndexInBlock)
+                ids.append(np.song.songId)
             }
-            return indexes
+            return ids
         }
 
         try await coordinator.play(channelId: 0)             // emits song 0
@@ -306,7 +306,7 @@ extension LivePlaybackCoordinatorTests {
         try await Task.sleep(nanoseconds: 100_000_000)
         await coordinator.shutdown()
         let result = await collector.value
-        XCTAssertEqual(result, [0, 1])
+        XCTAssertEqual(result, ["s1", "s2"])
     }
 
     // post-Task-3 this exercises the gapless advance-to-queued path; cancel-and-fetch path covered by testSkipForwardPastLastSongCancelsPrefetchAndIssuesAdvanceCall

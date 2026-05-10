@@ -43,7 +43,7 @@ final class MiniPlayerViewModel: ObservableObject {
     private var paletteTask: Task<Void, Never>?
     private var inFlightChannelId: Int?
     private var lastLoadedCoverPath: String?
-    private var lastSongStartSeconds: Double?
+    private var lastNotifiedSongId: String = ""
     private var hasStarted = false
 
     var remainingSecondsForTooltip: Int? {
@@ -118,15 +118,13 @@ final class MiniPlayerViewModel: ObservableObject {
                     self.nowPlaying = np
                     self.isSignedIn = self.auth.isLoggedIn
                     self.currentRating = Self.parseRating(from: np.song.userRating)
-                    self.currentBitrateLabel = BlockBitrateLabel.display(np.blockBitrate)
-                    let newDuration = max(0, np.songEndSeconds - np.songStartSeconds)
-                    if np.songStartSeconds != self.lastSongStartSeconds {
-                        self.lastSongStartSeconds = np.songStartSeconds
+                    self.currentBitrateLabel = BlockBitrateLabel.display(np.bitrateLabel)
+                    let newDuration = np.songDurationSeconds
+                    if np.song.songId != self.lastNotifiedSongId {
+                        self.lastNotifiedSongId = np.song.songId
                         self.songElapsedSeconds = 0
-                        self.songDurationSeconds = newDuration
-                    } else {
-                        self.songDurationSeconds = newDuration
                     }
+                    self.songDurationSeconds = newDuration
                     if np.song.songId == "0" {
                         self.ambientTopColor = nil
                     }
@@ -149,8 +147,8 @@ final class MiniPlayerViewModel: ObservableObject {
             for await pos in positionStream {
                 guard let self else { return }
                 guard let np = self.nowPlaying else { continue }
-                let duration = max(0, np.songEndSeconds - np.songStartSeconds)
-                let elapsed = max(0, pos - np.songStartSeconds)
+                let duration = np.songDurationSeconds
+                let elapsed = max(0, pos)
                 self.songElapsedSeconds = min(elapsed, duration)
                 self.songDurationSeconds = duration
             }

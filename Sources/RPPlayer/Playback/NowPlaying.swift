@@ -3,31 +3,19 @@ import Foundation
 public struct NowPlaying: Sendable, Equatable {
     public let channelId: Int
     public let song: PlayListSong
-    public let songIndexInBlock: Int
-    public let blockDurationSeconds: Double
-    public let songStartSeconds: Double
-    public let songEndSeconds: Double
-    /// Raw `bitrate` field from the live API's `api/play` response (server-defined
-    /// label, e.g. "flac", "flacm", "320", "32k aac"). Reflects what the app
-    /// requested + the server served — single source of truth for the popover label.
-    public var blockBitrate: String?
+    public let songDurationSeconds: Double
+    public var bitrateLabel: String?
 
     public init(
         channelId: Int,
         song: PlayListSong,
-        songIndexInBlock: Int,
-        blockDurationSeconds: Double,
-        songStartSeconds: Double,
-        songEndSeconds: Double,
-        blockBitrate: String? = nil
+        songDurationSeconds: Double,
+        bitrateLabel: String? = nil
     ) {
         self.channelId = channelId
         self.song = song
-        self.songIndexInBlock = songIndexInBlock
-        self.blockDurationSeconds = blockDurationSeconds
-        self.songStartSeconds = songStartSeconds
-        self.songEndSeconds = songEndSeconds
-        self.blockBitrate = blockBitrate
+        self.songDurationSeconds = songDurationSeconds
+        self.bitrateLabel = bitrateLabel
     }
 }
 
