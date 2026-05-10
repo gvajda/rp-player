@@ -19,7 +19,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         await api.setGaplessResponse(response)
         let engine = MockPlayerEngine()
         let coord = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
+            api: api, engine: engine, songFileCache: MockSongFileCache(), logger: silentLogger(), bitrateProvider: { 4 }
         )
         try await coord.play(channelId: 0)
 
@@ -41,7 +41,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         await api.setGaplessResponse(response)
         let engine = MockPlayerEngine()
         let coord = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
+            api: api, engine: engine, songFileCache: MockSongFileCache(), logger: silentLogger(), bitrateProvider: { 4 }
         )
         try await coord.play(channelId: 0)
 
@@ -62,7 +62,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         await api.setGaplessResponse(response)
         let engine = MockPlayerEngine()
         let coord = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
+            api: api, engine: engine, songFileCache: MockSongFileCache(), logger: silentLogger(), bitrateProvider: { 4 }
         )
         try await coord.play(channelId: 0)
         // First fileStarted: mpv path = s1 (set by engine.play). Sets lastStartedEventId; no advance.
@@ -103,7 +103,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         await api.setGaplessResponses([initial, refetch, refetch])
         let engine = MockPlayerEngine()
         let coord = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
+            api: api, engine: engine, songFileCache: MockSongFileCache(), logger: silentLogger(), bitrateProvider: { 4 }
         )
         try await coord.play(channelId: 0)
         // Initial play kicks an immediate refetch (queue.count<3). Wait for it.
@@ -140,7 +140,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         await api.setGaplessResponse(response)
         let engine = MockPlayerEngine()
         let coord = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
+            api: api, engine: engine, songFileCache: MockSongFileCache(), logger: silentLogger(), bitrateProvider: { 4 }
         )
         try await coord.play(channelId: 0)
         try await coord.skipForward()
@@ -178,7 +178,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         await api.setGaplessResponses([initial, sameHead, nextFresh, nextFresh])
         let engine = MockPlayerEngine()
         let coord = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
+            api: api, engine: engine, songFileCache: MockSongFileCache(), logger: silentLogger(), bitrateProvider: { 4 }
         )
         try await coord.play(channelId: 0)
         // Drain the post-play kickRefetch (returns sameHead → no append).
@@ -207,7 +207,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         await api.setGaplessResponses([chan0, chan0, chan1, chan1])
         let engine = MockPlayerEngine()
         let coord = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
+            api: api, engine: engine, songFileCache: MockSongFileCache(), logger: silentLogger(), bitrateProvider: { 4 }
         )
         try await coord.play(channelId: 0)
         try await coord.changeChannel(to: 1)
@@ -245,7 +245,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         await api.setGaplessResponses([initial, initial, refetched, refetched])
         let engine = MockPlayerEngine()
         let coord = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(),
+            api: api, engine: engine, songFileCache: MockSongFileCache(), logger: silentLogger(),
             bitrateProvider: { 4 }, clock: { clockState.date }
         )
         try await coord.play(channelId: 0)
@@ -278,7 +278,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         await api.setGaplessResponse(response)
         let engine = MockPlayerEngine()
         let coord = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
+            api: api, engine: engine, songFileCache: MockSongFileCache(), logger: silentLogger(), bitrateProvider: { 4 }
         )
         try await coord.play(channelId: 0)
         try await Task.sleep(nanoseconds: 50_000_000)
@@ -307,7 +307,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         await api.setGaplessResponse(response)
         let engine = MockPlayerEngine()
         let coord = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
+            api: api, engine: engine, songFileCache: MockSongFileCache(), logger: silentLogger(), bitrateProvider: { 4 }
         )
         let errors = await coord.errors
         let errorTask = Task<String?, Never> {
@@ -342,7 +342,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         await api.setGaplessResponses([initial, refetch, refetch])
         let engine = MockPlayerEngine()
         let coord = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
+            api: api, engine: engine, songFileCache: MockSongFileCache(), logger: silentLogger(), bitrateProvider: { 4 }
         )
         try await coord.play(channelId: 0)
         // initial play kicks immediate refetch (queue.count<3); wait for it.
@@ -373,7 +373,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         final class IntBox: @unchecked Sendable { var value: Int; init(_ v: Int) { value = v } }
         let bitrateBox = IntBox(3)
         let coord = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(),
+            api: api, engine: engine, songFileCache: MockSongFileCache(), logger: silentLogger(),
             bitrateProvider: { bitrateBox.value }
         )
         try await coord.play(channelId: 0)
@@ -404,7 +404,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         let api = MockRpApiClient()
         let engine = MockPlayerEngine()
         let coord = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
+            api: api, engine: engine, songFileCache: MockSongFileCache(), logger: silentLogger(), bitrateProvider: { 4 }
         )
         await coord.applyBitrateChange()
 
@@ -431,7 +431,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         await api.setGaplessDelay(nanos: 200_000_000) // 200ms — every gapless call is slow
         let engine = MockPlayerEngine()
         let coord = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
+            api: api, engine: engine, songFileCache: MockSongFileCache(), logger: silentLogger(), bitrateProvider: { 4 }
         )
         try await coord.play(channelId: 0)
         // play(0) is done; post-play kickRefetch is in-flight. Switch channels.
@@ -463,7 +463,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         let engine = MockPlayerEngine()
         let sleeper = ControllableSleep()
         let coord = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(),
+            api: api, engine: engine, songFileCache: MockSongFileCache(), logger: silentLogger(),
             bitrateProvider: { 4 }, clock: { clockState.date }, sleep: sleeper.sleep
         )
         try await coord.play(channelId: 0)
@@ -488,7 +488,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         await api.setGaplessResponse(response)
         let engine = MockPlayerEngine()
         let coord = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
+            api: api, engine: engine, songFileCache: MockSongFileCache(), logger: silentLogger(), bitrateProvider: { 4 }
         )
         try await coord.play(channelId: 0)
         try await Task.sleep(nanoseconds: 50_000_000)
@@ -505,7 +505,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         await api.setGaplessResponse(empty)
         let engine = MockPlayerEngine()
         let coord = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
+            api: api, engine: engine, songFileCache: MockSongFileCache(), logger: silentLogger(), bitrateProvider: { 4 }
         )
         do {
             try await coord.play(channelId: 0)
@@ -521,7 +521,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         let api = MockRpApiClient()
         let engine = MockPlayerEngine()
         let coord = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
+            api: api, engine: engine, songFileCache: MockSongFileCache(), logger: silentLogger(), bitrateProvider: { 4 }
         )
         let np = await coord.nowPlaying
         XCTAssertNil(np)
@@ -535,7 +535,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         await api.setGaplessResponse(response)
         let engine = MockPlayerEngine()
         let coord = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
+            api: api, engine: engine, songFileCache: MockSongFileCache(), logger: silentLogger(), bitrateProvider: { 4 }
         )
         try await coord.play(channelId: 0)
         let np = await coord.nowPlaying
@@ -546,7 +546,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         let api = MockRpApiClient()
         let engine = MockPlayerEngine()
         let coord = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
+            api: api, engine: engine, songFileCache: MockSongFileCache(), logger: silentLogger(), bitrateProvider: { 4 }
         )
         do {
             try await coord.skipForward()
@@ -560,7 +560,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         let api = MockRpApiClient()
         let engine = MockPlayerEngine()
         let coord = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
+            api: api, engine: engine, songFileCache: MockSongFileCache(), logger: silentLogger(), bitrateProvider: { 4 }
         )
         do {
             try await coord.pause()
@@ -579,7 +579,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         await api.setGaplessResponse(response)
         let engine = MockPlayerEngine()
         let coord = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
+            api: api, engine: engine, songFileCache: MockSongFileCache(), logger: silentLogger(), bitrateProvider: { 4 }
         )
         try await coord.play(channelId: 0)
         try await coord.pause()
@@ -597,7 +597,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         await api.setGaplessResponse(response)
         let engine = MockPlayerEngine()
         let coord = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
+            api: api, engine: engine, songFileCache: MockSongFileCache(), logger: silentLogger(), bitrateProvider: { 4 }
         )
         try await coord.play(channelId: 0)
         try await coord.stop()
@@ -613,7 +613,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         await api.setGaplessResponse(response)
         let engine = MockPlayerEngine()
         let coord = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
+            api: api, engine: engine, songFileCache: MockSongFileCache(), logger: silentLogger(), bitrateProvider: { 4 }
         )
         let positions = await coord.positionUpdates
         let task = Task<[Double], Never> {
@@ -639,7 +639,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         await api.setGaplessResponse(response)
         let engine = MockPlayerEngine()
         let coord = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
+            api: api, engine: engine, songFileCache: MockSongFileCache(), logger: silentLogger(), bitrateProvider: { 4 }
         )
         let states = await coord.stateUpdates
         let task = Task<[PlaybackState], Never> {
@@ -691,7 +691,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         }
         let spy = PrefetchSpy()
         let coord = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(),
+            api: api, engine: engine, songFileCache: MockSongFileCache(), logger: silentLogger(),
             bitrateProvider: { 4 },
             prefetchArt: { path in Task { await spy.record(path) } }
         )
@@ -719,7 +719,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         }
         let spy = HookSpy()
         let coord = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 },
+            api: api, engine: engine, songFileCache: MockSongFileCache(), logger: silentLogger(), bitrateProvider: { 4 },
             prePlayHook: { await spy.recordHook() }
         )
         try await coord.play(channelId: 0)
@@ -735,7 +735,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         await api.setGaplessResponse(response)
         let engine = MockPlayerEngine()
         let coord = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
+            api: api, engine: engine, songFileCache: MockSongFileCache(), logger: silentLogger(), bitrateProvider: { 4 }
         )
         try await coord.play(channelId: 99)
         let calls = await api.calls
@@ -753,7 +753,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         await api.setGaplessResponse(response)
         let engine = MockPlayerEngine()
         let coord = LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(), bitrateProvider: { 4 }
+            api: api, engine: engine, songFileCache: MockSongFileCache(), logger: silentLogger(), bitrateProvider: { 4 }
         )
         try await coord.play(channelId: 0)
         await engine.fire(.fileLoaded) // successful load

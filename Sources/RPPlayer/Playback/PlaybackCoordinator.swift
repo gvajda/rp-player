@@ -27,6 +27,7 @@ public protocol PlaybackCoordinator: Sendable {
 public actor LivePlaybackCoordinator: PlaybackCoordinator {
     private let api: any RpApiClient
     private let engine: any PlayerEngine
+    private let songFileCache: any SongFileCache
     private let logger: any Logging
     private let bitrateProvider: @Sendable () async -> Int
     private let clock: @Sendable () -> Date
@@ -66,6 +67,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     public init(
         api: any RpApiClient,
         engine: any PlayerEngine,
+        songFileCache: any SongFileCache,
         logger: any Logging,
         bitrateProvider: @escaping @Sendable () async -> Int,
         clock: @escaping @Sendable () -> Date = { Date() },
@@ -76,6 +78,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     ) {
         self.api = api
         self.engine = engine
+        self.songFileCache = songFileCache
         self.logger = logger
         self.bitrateProvider = bitrateProvider
         self.clock = clock

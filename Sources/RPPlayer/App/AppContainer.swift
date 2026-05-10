@@ -155,6 +155,17 @@ extension AppContainer {
             cache = NoopAlbumArtCache()
         }
 
+        let songFileCache: any SongFileCache
+        do {
+            songFileCache = try LiveSongFileCache(
+                directory: ConfigPaths.songFileCacheDirectory,
+                logger: logger
+            )
+        } catch {
+            logger.error("Failed to open song file cache: \(error.localizedDescription)")
+            songFileCache = NoopSongFileCache()
+        }
+
         let engine: any PlayerEngine
         do {
             // Force-max forces replaygain out of the signal path regardless of the
@@ -189,6 +200,7 @@ extension AppContainer {
         let coordinator = LivePlaybackCoordinator(
             api: api,
             engine: engine,
+            songFileCache: songFileCache,
             logger: logger,
             // Pull-based: every play/skip/prefetch reads the live bitrate from the
             // store. Avoids any push-binder race where a stale bitrate could be in
@@ -583,6 +595,14 @@ private final class NoopNotificationService: NotificationService {
 
 private struct NoopAlbumArtCache: AlbumArtCache {
     func image(for coverPath: String) async -> NSImage? { nil }
+}
+
+// Falls back to the remote URL so playback still works if the cache dir can't be created.
+private actor NoopSongFileCache: SongFileCache {
+    func localFile(for song: GaplessSong) async -> URL? { URL(string: song.gaplessUrl) }
+    nonisolated func cachedFile(for song: GaplessSong) -> URL? { nil }
+    func evict(_ song: GaplessSong) async {}
+    func clear() async {}
 }
 
 private struct NoopPlayerEngine: PlayerEngine {

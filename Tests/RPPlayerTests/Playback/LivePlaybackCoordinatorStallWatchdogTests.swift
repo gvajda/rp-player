@@ -140,7 +140,7 @@ final class LivePlaybackCoordinatorStallWatchdogTests: XCTestCase {
         sleeper: ControllableSleep
     ) -> LivePlaybackCoordinator {
         LivePlaybackCoordinator(
-            api: api, engine: engine, logger: silentLogger(),
+            api: api, engine: engine, songFileCache: MockSongFileCache(), logger: silentLogger(),
             bitrateProvider: { 4 }, clock: { clock.date }, sleep: sleeper.sleep
         )
     }
