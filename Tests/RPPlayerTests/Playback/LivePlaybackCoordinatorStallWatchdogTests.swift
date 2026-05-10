@@ -63,27 +63,65 @@ final class LivePlaybackCoordinatorStallWatchdogTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func makeSong(id: String, duration: Int, elapsed: Int) -> PlayListSong {
-        PlayListSong(
-            songId: id, artist: "Artist-\(id)", title: "Title-\(id)", album: "Al", duration: duration,
-            event: nil, schedTime: nil, chan: nil, year: nil, asin: nil,
-            rating: nil, userRating: nil, cover: nil, elapsed: elapsed, slideshow: nil,
-            type: nil, sliceNum: nil
-        )
+    private func makeGaplessSong(
+        songId: String,
+        eventId: Int,
+        gaplessUrl: String,
+        duration: Int = 60_000
+    ) -> GaplessSong {
+        let json: [String: Any] = [
+            "song_id": songId, "artist": "Artist-\(songId)", "title": "Title-\(songId)",
+            "album": "Al", "duration": duration, "cue": 0, "event_id": eventId,
+            "gapless_url": gaplessUrl, "type": "M",
+            "update_history": true, "is_rateable": true,
+            "is_playable_after_skip": true, "is_playable_on_start": true,
+            "slice_num": 0, "rating": 0, "user_rating": 0, "ratings_num": 0,
+            "episode_id": 0, "sched_time_millis": 0, "skip_allowed_millis": 0,
+            "slideshow": []
+        ]
+        let data = try! JSONSerialization.data(withJSONObject: json)
+        return try! JSONDecoder.rpDecoder.decode(GaplessSong.self, from: data)
     }
 
-    private func makeBlock(url: String, expiration: Int, songs: [(String, Int)]) -> GetBlock {
-        var dict: [String: PlayListSong] = [:]
-        var elapsed = 0
-        for (idx, pair) in songs.enumerated() {
-            dict[String(idx)] = makeSong(id: pair.0, duration: pair.1, elapsed: elapsed)
-            elapsed += pair.1
+    private func makeResponse(url: String, songs: [(String, Int)], firstEventId: Int = 100) -> GaplessResponse {
+        let songsJSON: [[String: Any]] = songs.enumerated().map { i, pair in
+            [
+                "song_id": pair.0,
+                "artist": "Artist-\(pair.0)",
+                "title": "Title-\(pair.0)",
+                "album": "Al",
+                "duration": pair.1,
+                "cue": 0,
+                "event_id": firstEventId + i,
+                "gapless_url": "\(url)#\(i)",
+                "type": "M",
+                "update_history": true,
+                "is_rateable": true,
+                "is_playable_after_skip": true,
+                "is_playable_on_start": true,
+                "slice_num": 0,
+                "rating": 0,
+                "user_rating": 0,
+                "ratings_num": 0,
+                "episode_id": 0,
+                "sched_time_millis": 0,
+                "skip_allowed_millis": 0,
+                "slideshow": []
+            ]
         }
-        return GetBlock(
-            url: url, chan: "0", bitrate: nil, cue: 0, expiration: expiration,
-            length: nil, imageBase: "img/", song: dict,
-            channel: nil, event: nil, endEvent: nil, type: nil, ext: nil
-        )
+        let json: [String: Any] = [
+            "channel": ["chan": "0", "title": "Test", "stream_name": "test", "isER": false],
+            "bitrate_title": "flac",
+            "extension": "flac",
+            "image_base": "//img.test/",
+            "current_event_id": firstEventId,
+            "max_gapless_event_id": firstEventId + 50,
+            "slideshow_path": "slideshow/720/",
+            "timeout_millis": 2_700_000,
+            "songs": songsJSON
+        ]
+        let data = try! JSONSerialization.data(withJSONObject: json)
+        return try! JSONDecoder.rpDecoder.decode(GaplessResponse.self, from: data)
     }
 
     private func silentLogger() -> AppLogger {
@@ -113,9 +151,10 @@ final class LivePlaybackCoordinatorStallWatchdogTests: XCTestCase {
         let clock = MutableClock()
         let api = MockRpApiClient()
         // 2-song blocks: coordinator only prefetches when on the last song, avoiding an extra API call.
-        let firstBlock = makeBlock(url: "https://example.com/before.flac", expiration: 99_999_999_999, songs: [("s1", 60_000), ("s1b", 60_000)])
-        let refetched = makeBlock(url: "https://example.com/after.flac", expiration: 99_999_999_999, songs: [("s2", 60_000), ("s2b", 60_000)])
-        await api.setBlockResponses([firstBlock, refetched])
+        let firstBlock = makeResponse(url: "https://example.com/before.flac", songs: [("s1", 60_000), ("s1b", 60_000)], firstEventId: 100)
+        let refetched = makeResponse(url: "https://example.com/after.flac", songs: [("s2", 60_000), ("s2b", 60_000)], firstEventId: 200)
+        // Initial play + 1 immediate refetch (queue.count<3), then long-idle refetch + its post-play refetch.
+        await api.setGaplessResponses([firstBlock, firstBlock, refetched, refetched])
         let engine = MockPlayerEngine()
         let sleeper = ControllableSleep()
         let coord = makeCoord(api: api, engine: engine, clock: clock, sleeper: sleeper)
@@ -148,9 +187,10 @@ final class LivePlaybackCoordinatorStallWatchdogTests: XCTestCase {
     func testLongIdleResumeWatchdogRetriesAfterTimeout() async throws {
         let clock = MutableClock()
         let api = MockRpApiClient()
-        let firstBlock = makeBlock(url: "https://example.com/before.flac", expiration: 99_999_999_999, songs: [("s1", 60_000), ("s1b", 60_000)])
-        let refetched = makeBlock(url: "https://example.com/after.flac", expiration: 99_999_999_999, songs: [("s2", 60_000), ("s2b", 60_000)])
-        await api.setBlockResponses([firstBlock, refetched])
+        let firstBlock = makeResponse(url: "https://example.com/before.flac", songs: [("s1", 60_000), ("s1b", 60_000)], firstEventId: 100)
+        let refetched = makeResponse(url: "https://example.com/after.flac", songs: [("s2", 60_000), ("s2b", 60_000)], firstEventId: 200)
+        // Initial play + 1 immediate refetch (queue.count<3), then long-idle refetch + its post-play refetch.
+        await api.setGaplessResponses([firstBlock, firstBlock, refetched, refetched])
         let engine = MockPlayerEngine()
         let sleeper = ControllableSleep()
         let coord = makeCoord(api: api, engine: engine, clock: clock, sleeper: sleeper)
@@ -192,9 +232,10 @@ final class LivePlaybackCoordinatorStallWatchdogTests: XCTestCase {
     func testLongIdleResumeWatchdogSurfacesErrorAfterDoubleTimeout() async throws {
         let clock = MutableClock()
         let api = MockRpApiClient()
-        let firstBlock = makeBlock(url: "https://example.com/before.flac", expiration: 99_999_999_999, songs: [("s1", 60_000), ("s1b", 60_000)])
-        let refetched = makeBlock(url: "https://example.com/after.flac", expiration: 99_999_999_999, songs: [("s2", 60_000), ("s2b", 60_000)])
-        await api.setBlockResponses([firstBlock, refetched])
+        let firstBlock = makeResponse(url: "https://example.com/before.flac", songs: [("s1", 60_000), ("s1b", 60_000)], firstEventId: 100)
+        let refetched = makeResponse(url: "https://example.com/after.flac", songs: [("s2", 60_000), ("s2b", 60_000)], firstEventId: 200)
+        // Initial play + 1 immediate refetch (queue.count<3), then long-idle refetch + its post-play refetch.
+        await api.setGaplessResponses([firstBlock, firstBlock, refetched, refetched])
         let engine = MockPlayerEngine()
         let sleeper = ControllableSleep()
         let coord = makeCoord(api: api, engine: engine, clock: clock, sleeper: sleeper)
@@ -226,9 +267,10 @@ final class LivePlaybackCoordinatorStallWatchdogTests: XCTestCase {
     func testStallWatchdogCancelledByStop() async throws {
         let clock = MutableClock()
         let api = MockRpApiClient()
-        let firstBlock = makeBlock(url: "https://example.com/before.flac", expiration: 99_999_999_999, songs: [("s1", 60_000), ("s1b", 60_000)])
-        let refetched = makeBlock(url: "https://example.com/after.flac", expiration: 99_999_999_999, songs: [("s2", 60_000), ("s2b", 60_000)])
-        await api.setBlockResponses([firstBlock, refetched])
+        let firstBlock = makeResponse(url: "https://example.com/before.flac", songs: [("s1", 60_000), ("s1b", 60_000)], firstEventId: 100)
+        let refetched = makeResponse(url: "https://example.com/after.flac", songs: [("s2", 60_000), ("s2b", 60_000)], firstEventId: 200)
+        // Initial play + 1 immediate refetch (queue.count<3), then long-idle refetch + its post-play refetch.
+        await api.setGaplessResponses([firstBlock, firstBlock, refetched, refetched])
         let engine = MockPlayerEngine()
         let sleeper = ControllableSleep()
         let coord = makeCoord(api: api, engine: engine, clock: clock, sleeper: sleeper)
@@ -257,9 +299,10 @@ final class LivePlaybackCoordinatorStallWatchdogTests: XCTestCase {
     func testStallWatchdogCancelledByPause() async throws {
         let clock = MutableClock()
         let api = MockRpApiClient()
-        let firstBlock = makeBlock(url: "https://example.com/before.flac", expiration: 99_999_999_999, songs: [("s1", 60_000), ("s1b", 60_000)])
-        let refetched = makeBlock(url: "https://example.com/after.flac", expiration: 99_999_999_999, songs: [("s2", 60_000), ("s2b", 60_000)])
-        await api.setBlockResponses([firstBlock, refetched])
+        let firstBlock = makeResponse(url: "https://example.com/before.flac", songs: [("s1", 60_000), ("s1b", 60_000)], firstEventId: 100)
+        let refetched = makeResponse(url: "https://example.com/after.flac", songs: [("s2", 60_000), ("s2b", 60_000)], firstEventId: 200)
+        // Initial play + 1 immediate refetch (queue.count<3), then long-idle refetch + its post-play refetch.
+        await api.setGaplessResponses([firstBlock, firstBlock, refetched, refetched])
         let engine = MockPlayerEngine()
         let sleeper = ControllableSleep()
         let coord = makeCoord(api: api, engine: engine, clock: clock, sleeper: sleeper)
@@ -287,8 +330,8 @@ final class LivePlaybackCoordinatorStallWatchdogTests: XCTestCase {
     func testStallWatchdogNotArmedOnFreshBlockResume() async throws {
         let clock = MutableClock()
         let api = MockRpApiClient()
-        let block = makeBlock(url: "https://example.com/block.flac", expiration: 99_999_999_999, songs: [("s1", 60_000)])
-        await api.setBlockResponses([block])
+        let block = makeResponse(url: "https://example.com/block.flac", songs: [("s1", 60_000)], firstEventId: 100)
+        await api.setGaplessResponses([block, block])
         let engine = MockPlayerEngine()
         let sleeper = ControllableSleep()
         let coord = makeCoord(api: api, engine: engine, clock: clock, sleeper: sleeper)

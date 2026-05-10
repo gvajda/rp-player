@@ -35,10 +35,8 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     private var pausePositionMs: Int = 0
 
     private var currentChannelId: Int?
-    private var currentBlock: GetBlock?
-    private var orderedSongs: [PlayListSong] = []
-    private var startsAt: [Double] = []
-    private var currentSongIndex: Int = 0
+    private var queue: [GaplessSong] = []
+    private var currentResponse: GaplessResponse?
     private var currentPositionSeconds: Double = 0
     private var current: NowPlaying?
     private var continuations: [UUID: AsyncStream<NowPlaying>.Continuation] = [:]
@@ -46,10 +44,8 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     private var stateContinuations: [UUID: AsyncStream<PlaybackState>.Continuation] = [:]
     private var currentState: PlaybackState = .stopped
     private var eventTask: Task<Void, Never>?
-    private var prefetchedBlock: GetBlock?
-    private var prefetchTask: Task<Void, Never>?
+    private var refetchTask: Task<Void, Never>?
     private var stallWatchdog: Task<Void, Never>?
-    private var queuedToEngine: Bool = false
     private var isShutdown = false
     private var errorsContinuation: AsyncStream<String>.Continuation?
     private var consecutivePlaybackFailures = 0
@@ -139,44 +135,26 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         await ensureEventSubscription()
         let bitrate = await bitrateProvider()
         logger.debug("play resolved bitrate=\(bitrate)")
-        var block = try await api.play(
-            channel: channelId, bitrate: bitrate, event: 0, action: .start,
-            audioType: nil, episodeId: nil, sliceNum: nil
-        )
-        var songs = BlockSongs.orderedSongs(from: block)
-        guard !songs.isEmpty else { throw PlaybackCoordinatorError.blockHasNoSongs }
+        let response = try await api.gapless(channel: channelId, bitrate: bitrate, numSongs: 20)
+        guard !response.songs.isEmpty else { throw PlaybackCoordinatorError.blockHasNoSongs }
 
-        if BlockSongs.isStale(songs: songs, cue: block.cue) {
-            let lastSong = songs.last
-            let lastEvent: Int = Int(lastSong?.event ?? "") ?? Int(block.endEvent ?? "") ?? 0
-            let audioType = lastSong?.type ?? "M"
-            let sliceNum = lastSong?.sliceNum
-            logger.info("bootstrap returned stale block (cue=\(block.cue), totalMs=\((songs.last?.elapsed ?? 0) + (songs.last?.duration ?? 0))); advancing via action=play event=\(lastEvent) audioType=\(audioType) sliceNum=\(sliceNum ?? "null")")
-            block = try await api.play(
-                channel: channelId, bitrate: bitrate, event: lastEvent, action: .play,
-                audioType: audioType, episodeId: 0, sliceNum: sliceNum
-            )
-            songs = BlockSongs.orderedSongs(from: block)
-            guard !songs.isEmpty else { throw PlaybackCoordinatorError.blockHasNoSongs }
-        }
-
-        let starts = BlockSongs.startsAtSeconds(songs: songs)
-        logger.debug("play block (expiration=\(block.expiration)):\n\(describeBlock(url: block.url, songs: songs, starts: starts))")
-
-        let startPos = block.cue > 0 ? Double(block.cue) / 1000.0 : 0
+        queue = response.songs
+        currentResponse = response
         currentChannelId = channelId
-        currentBlock = block
-        orderedSongs = songs
-        startsAt = starts
-        currentSongIndex = 0
-        currentPositionSeconds = startPos
-        queuedToEngine = false
+        refetchTask?.cancel()
+        refetchTask = nil
 
-        let startSeconds: Double? = startPos > 0 ? startPos : nil
-        guard let url = URL(string: block.url) else {
-            throw PlaybackCoordinatorError.engineError(message: "invalid block url: \(block.url)")
+        let head = queue[0]
+        let startSeconds: Double? = head.cue > 0 ? Double(head.cue) / 1000.0 : nil
+        currentPositionSeconds = startSeconds ?? 0
+
+        guard let url = URL(string: head.gaplessUrl) else {
+            throw PlaybackCoordinatorError.engineError(message: "invalid gapless url: \(head.gaplessUrl)")
         }
+
+        logger.debug("play queue:\n\(describeQueue(songs: queue))")
         logger.debug("play engine.play url=\(url.absoluteString) startSeconds=\(startSeconds.map { "\($0)s" } ?? "nil (beginning)")")
+
         // Acquire hog (when enabled) BEFORE mpv opens its CoreAudio AO. Otherwise
         // mpv's shared-mode AO can race with hog acquisition and end up registered
         // but silent — the user sees the progress bar advance but hears nothing
@@ -187,31 +165,36 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         } catch {
             throw PlaybackCoordinatorError.engineError(message: String(describing: error))
         }
-        emitNowPlaying(forSongIndex: 0)
+
+        if queue.count >= 2, let nextUrl = URL(string: queue[1].gaplessUrl) {
+            try? await engine.queueNext(url: nextUrl, startSeconds: nil)
+        }
+
+        emitNowPlaying(forSongAt: 0)
         emitState(.playing)
-        fireSongStartTelemetry(song: orderedSongs[0], channelId: channelId)
+        fireSongStartTelemetry(song: queue[0], channelId: channelId)
+        if queue.count < 3 {
+            kickRefetch()
+        }
     }
 
     public func pause() async throws {
         logger.debug("pause()")
         cancelStallWatchdog()
-        guard currentBlock != nil else { throw PlaybackCoordinatorError.notPlaying }
+        guard !queue.isEmpty else { throw PlaybackCoordinatorError.notPlaying }
         do { try await engine.pause() } catch { throw PlaybackCoordinatorError.engineError(message: String(describing: error)) }
         emitState(.paused)
         pausedAt = clock()
-        if currentSongIndex < startsAt.count {
-            pausePositionMs = max(1, Int((currentPositionSeconds - startsAt[currentSongIndex]) * 1000))
-        }
-        guard currentSongIndex < orderedSongs.count,
-              let channelId = currentChannelId else { return }
-        let song = orderedSongs[currentSongIndex]
-        guard song.type != "P" else { return }
+        pausePositionMs = max(1, Int(currentPositionSeconds * 1000))
+        guard let channelId = currentChannelId else { return }
+        let song = queue[0]
+        guard song.updateHistory else { return }
         let ppm = pausePositionMs
         let ts = Int(clock().timeIntervalSince1970)
         let songId = song.songId
-        let event = song.event ?? ""
-        let audioType = song.type ?? "M"
-        let sliceNum = song.sliceNum
+        let event = String(song.eventId)
+        let audioType = song.type
+        let sliceNum = String(song.sliceNum)
         let api = self.api
         Task.detached {
             try? await api.updatePause(
@@ -223,33 +206,32 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
 
     public func resume() async throws {
         logger.debug("resume()")
-        guard let block = currentBlock else { throw PlaybackCoordinatorError.notPlaying }
+        guard !queue.isEmpty, let channelId = currentChannelId else { throw PlaybackCoordinatorError.notPlaying }
         let now = clock()
         let pausedFor: TimeInterval? = pausedAt.map { now.timeIntervalSince($0) }
         let longIdle = (pausedFor ?? 0) >= Self.longIdleResumeThresholdSeconds
-        let blockExpired = block.expiration > 0 && now.timeIntervalSince1970 > Double(block.expiration)
-        if (longIdle || blockExpired), let channelId = currentChannelId {
-            if longIdle {
-                logger.info("resume: long idle (\(Int(pausedFor ?? 0))s >= \(Int(Self.longIdleResumeThresholdSeconds))s), refetching block")
-            } else {
-                logger.info("resume: block expired (now=\(Int(now.timeIntervalSince1970)) > expiration=\(block.expiration)), refetching")
-            }
+        if longIdle {
+            logger.info("resume: long idle (\(Int(pausedFor ?? 0))s >= \(Int(Self.longIdleResumeThresholdSeconds))s), refetching gapless")
             try? await engine.clearPlaylist()
-            queuedToEngine = false
+            queue = []
+            currentResponse = nil
             pausedAt = nil
             pausePositionMs = 0
             try await play(channelId: channelId)
             armLongIdleStallWatchdog()
             return
         }
-        logger.debug("resume: block fresh, engine.resume()")
+        logger.debug("resume: short idle, engine.resume()")
         await prePlayHook()
         do { try await engine.resume() } catch { throw PlaybackCoordinatorError.engineError(message: String(describing: error)) }
         emitState(.playing)
-        guard pausedAt != nil, let channelId = currentChannelId,
-              currentSongIndex < orderedSongs.count else { return }
-        let song = orderedSongs[currentSongIndex]
-        guard song.type != "P" else {
+        guard pausedAt != nil, currentSongInQueueAvailable() else {
+            pausedAt = nil
+            pausePositionMs = 0
+            return
+        }
+        let song = queue[0]
+        guard song.updateHistory else {
             pausedAt = nil
             pausePositionMs = 0
             return
@@ -257,9 +239,9 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         let ppm = pausePositionMs
         let ts = Int(clock().timeIntervalSince1970)
         let songId = song.songId
-        let event = song.event ?? ""
-        let audioType = song.type ?? "M"
-        let sliceNum = song.sliceNum
+        let event = String(song.eventId)
+        let audioType = song.type
+        let sliceNum = String(song.sliceNum)
         let api = self.api
         pausedAt = nil
         pausePositionMs = 0
@@ -272,22 +254,21 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         }
     }
 
+    private func currentSongInQueueAvailable() -> Bool { !queue.isEmpty }
+
     public func stop() async throws {
         logger.debug("stop()")
         try? await engine.clearPlaylist()
         // Clear coordinator state BEFORE awaiting engine.stop. If we cleared
         // afterwards, a queued positionUpdate event processed during the
-        // engine.stop suspension would see the still-active orderedSongs and
-        // could spawn a fresh prefetch task that survives the cleanup.
+        // engine.stop suspension would see the still-active queue and could
+        // spawn a fresh refetch task that survives the cleanup.
         cancelStallWatchdog()
-        prefetchTask?.cancel()
-        prefetchTask = nil
-        prefetchedBlock = nil
-        queuedToEngine = false
-        currentBlock = nil
-        orderedSongs = []
-        startsAt = []
-        currentSongIndex = 0
+        refetchTask?.cancel()
+        refetchTask = nil
+        queue = []
+        currentResponse = nil
+        currentChannelId = nil
         currentPositionSeconds = 0
         pausedAt = nil
         pausePositionMs = 0
@@ -297,88 +278,82 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     }
 
     public func skipForward() async throws {
-        logger.debug("skipForward at songIndex=\(currentSongIndex), pos=\(currentPositionSeconds)")
-        guard currentBlock != nil, !orderedSongs.isEmpty,
-              let channelId = currentChannelId else {
+        logger.debug("skipForward at queueCount=\(queue.count), pos=\(currentPositionSeconds)")
+        cancelStallWatchdog()
+        guard !queue.isEmpty, let channelId = currentChannelId else {
             throw PlaybackCoordinatorError.notPlaying
         }
-        let nextIndex = currentSongIndex + 1
-        if nextIndex < orderedSongs.count {
-            // Seek slightly past the boundary so positionUpdate trips into the new song.
-            let target = startsAt[nextIndex] + 0.05
-            let nextSong = orderedSongs[nextIndex]
-            logger.debug("skipForward in-block: url=\(currentBlock?.url ?? "?") seek to \(target)s → song [\(nextIndex)] '\(nextSong.artist) – \(nextSong.title)'")
+        let skipped = queue[0]
+        let playtime = max(1, Int(currentPositionSeconds.rounded()))
+        if skipped.updateHistory {
+            let api = self.api
+            let songId = skipped.songId
+            let event = String(skipped.eventId)
+            let audioType = skipped.type
+            let sliceNum = String(skipped.sliceNum)
+            Task.detached {
+                try? await api.updateHistory(
+                    songId: songId, chan: channelId, event: event, audioType: audioType,
+                    sliceNum: sliceNum, playPositionMillis: playtime * 1000,
+                    playtimeSecs: playtime, pauseFlag: false
+                )
+            }
+        }
+        if queue.count >= 2 {
+            logger.debug("skipForward: advancing to queued entry on engine")
             do {
-                try await engine.seek(to: target)
+                try await engine.advanceToQueued()
             } catch {
                 throw PlaybackCoordinatorError.engineError(message: String(describing: error))
             }
-            currentSongIndex = nextIndex
-            currentPositionSeconds = target
-            emitNowPlaying(forSongIndex: nextIndex)
-            fireSongStartTelemetry(song: nextSong, channelId: channelId, ppm: 1)
-        } else {
-            let lastSong = orderedSongs.last
-            let lastEvent: Int = Int(lastSong?.event ?? "") ?? Int(currentBlock?.endEvent ?? "") ?? 0
-            if queuedToEngine, prefetchedBlock != nil {
-                logger.debug("skipForward past-last: advancing via engine.advanceToQueued (queued block ready)")
-                do {
-                    try await engine.advanceToQueued()
-                } catch {
-                    throw PlaybackCoordinatorError.engineError(message: String(describing: error))
-                }
-                return
-            }
-            if prefetchedBlock != nil {
-                logger.debug("skipForward past-last: adopting prefetched block")
-                await swapToPrefetchedBlockIfAvailable()
-                return
-            }
-            if prefetchTask != nil {
-                logger.debug("skipForward past-last: cancelling in-flight prefetch")
-                prefetchTask?.cancel()
-                prefetchTask = nil
-            }
-            let bitrate = await bitrateProvider()
-            let audioType = lastSong?.type ?? "M"
-            let sliceNum = lastSong?.sliceNum
-            logger.debug("skipForward past last song, fetching next block channel=\(channelId) bitrate=\(bitrate) event=\(lastEvent) audioType=\(audioType) sliceNum=\(sliceNum ?? "null")")
-            let block = try await api.play(
-                channel: channelId, bitrate: bitrate, event: lastEvent, action: .play,
-                audioType: audioType, episodeId: 0, sliceNum: sliceNum
-            )
-            let songs = BlockSongs.orderedSongs(from: block)
-            guard !songs.isEmpty else { throw PlaybackCoordinatorError.blockHasNoSongs }
-            let newStarts = BlockSongs.startsAtSeconds(songs: songs)
-            logger.debug("skipForward next block:\n\(describeBlock(url: block.url, songs: songs, starts: newStarts))")
-            currentBlock = block
-            orderedSongs = songs
-            startsAt = newStarts
-            currentSongIndex = 0
-            let startPos = block.cue > 0 ? Double(block.cue) / 1000.0 : 0
-            currentPositionSeconds = startPos
-            guard let url = URL(string: block.url) else {
-                throw PlaybackCoordinatorError.engineError(message: "invalid block url: \(block.url)")
-            }
-            let startSeconds: Double? = startPos > 0 ? startPos : nil
-            logger.debug("skipForward engine.play url=\(url.absoluteString) startSeconds=\(startSeconds.map { "\($0)s" } ?? "nil")")
-            do {
-                try await engine.play(url: url, startSeconds: startSeconds)
-            } catch {
-                throw PlaybackCoordinatorError.engineError(message: String(describing: error))
-            }
-            emitNowPlaying(forSongIndex: 0)
-            fireSongStartTelemetry(song: songs[0], channelId: channelId, ppm: 1)
+            // The .fileStarted handler runs queue.removeFirst() + state advance.
+            return
+        }
+        // Queue is shallow — synchronous refetch + restart.
+        let bitrate = await bitrateProvider()
+        let response: GaplessResponse
+        do {
+            response = try await api.gapless(channel: channelId, bitrate: bitrate, numSongs: 20)
+        } catch {
+            errorsContinuation?.yield("Cannot skip — try again.")
+            return
+        }
+        guard !response.songs.isEmpty else {
+            errorsContinuation?.yield("Cannot skip — no upcoming songs.")
+            return
+        }
+        // Drop the skipped song; jump to the new response's first song.
+        queue = response.songs
+        currentResponse = response
+        let head = queue[0]
+        let startPos: Double = head.cue > 0 ? Double(head.cue) / 1000.0 : 0
+        currentPositionSeconds = startPos
+        guard let url = URL(string: head.gaplessUrl) else {
+            errorsContinuation?.yield("Cannot skip — invalid url.")
+            return
+        }
+        let startSeconds: Double? = startPos > 0 ? startPos : nil
+        do {
+            try await engine.play(url: url, startSeconds: startSeconds)
+        } catch {
+            errorsContinuation?.yield("Cannot skip — engine play failed.")
+            return
+        }
+        if queue.count >= 2, let nextUrl = URL(string: queue[1].gaplessUrl) {
+            try? await engine.queueNext(url: nextUrl, startSeconds: nil)
+        }
+        emitNowPlaying(forSongAt: 0)
+        fireSongStartTelemetry(song: queue[0], channelId: channelId)
+        if queue.count < 3 {
+            kickRefetch()
         }
     }
 
     public func changeChannel(to channelId: Int) async throws {
         cancelStallWatchdog()
+        refetchTask?.cancel()
+        refetchTask = nil
         try? await engine.clearPlaylist()
-        prefetchTask?.cancel()
-        prefetchTask = nil
-        prefetchedBlock = nil
-        queuedToEngine = false
         try await stop()
         try await play(channelId: channelId)
     }
@@ -387,6 +362,8 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         guard !isShutdown else { return }
         isShutdown = true
         cancelStallWatchdog()
+        refetchTask?.cancel()
+        refetchTask = nil
         eventTask?.cancel()
         await eventTask?.value
         eventTask = nil
@@ -426,48 +403,105 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         case .fileLoaded:
             logger.debug("engine fileLoaded")
             consecutivePlaybackFailures = 0
+
         case .fileStarted:
-            if queuedToEngine {
-                logger.debug("gapless transition: file started, swapping coordinator state")
-                await swapToPrefetchedBlockState()
+            guard !queue.isEmpty else { return }
+            // queue[0] just ended (mpv auto-advanced to the queued entry).
+            // Fire telemetry for the song that just finished.
+            let finished = queue[0]
+            let finishedPlaytime = max(1, Int(currentPositionSeconds.rounded()))
+            if finished.updateHistory, let channelId = currentChannelId {
+                let api = self.api
+                let songId = finished.songId
+                let event = String(finished.eventId)
+                let audioType = finished.type
+                let sliceNum = String(finished.sliceNum)
+                let duration = finished.duration
+                Task.detached {
+                    try? await api.updateHistory(
+                        songId: songId, chan: channelId, event: event, audioType: audioType,
+                        sliceNum: sliceNum, playPositionMillis: duration,
+                        playtimeSecs: finishedPlaytime, pauseFlag: false
+                    )
+                }
             }
+            // Advance queue.
+            queue.removeFirst()
+            currentPositionSeconds = 0
+            guard !queue.isEmpty else {
+                logger.warn("fileStarted but queue is empty post-removeFirst — refetching")
+                kickRefetch()
+                return
+            }
+            logger.debug("gapless transition: advanced to queue[0] event=\(queue[0].eventId)")
+            emitNowPlaying(forSongAt: 0)
+            if let channelId = currentChannelId {
+                fireSongStartTelemetry(song: queue[0], channelId: channelId)
+            }
+            if queue.count >= 2, let nextUrl = URL(string: queue[1].gaplessUrl) {
+                try? await engine.queueNext(url: nextUrl, startSeconds: nil)
+            }
+            if queue.count < 3 {
+                kickRefetch()
+            }
+
         case .positionUpdate(let seconds):
             currentPositionSeconds = seconds
             for c in positionContinuations.values { c.yield(seconds) }
-            guard !startsAt.isEmpty else { return }
-            let newIndex = BlockSongs.indexOfSong(at: seconds, in: startsAt)
-            // Strictly forward: mpv processes seek async, so after skipForward
-            // optimistically advances currentSongIndex, stale pre-seek time-pos
-            // events can land with a position in the previous song's range.
-            // Treat any backward newIndex as stale to avoid re-emitting the
-            // old song's NowPlaying (which flashes the previous album art).
-            if newIndex > currentSongIndex {
-                logger.debug("song boundary crossed: \(currentSongIndex) -> \(newIndex) at pos=\(seconds)")
-                currentSongIndex = newIndex
-                emitNowPlaying(forSongIndex: newIndex)
-                if let channelId = currentChannelId {
-                    fireSongStartTelemetry(song: orderedSongs[newIndex], channelId: channelId)
-                }
-            }
-            maybeStartPrefetch()
+
         case .fileEnded(let reason):
             logger.debug("engine fileEnded: \(reason)")
-            if case .eof = reason {
-                if queuedToEngine {
-                    logger.debug("eof with queued block: mpv auto-advances; deferring state swap to fileStarted")
-                } else {
-                    await swapToPrefetchedBlockIfAvailable()
+            switch reason {
+            case .eof:
+                // mpv reached EOF without auto-advancing — refetch lagged. Recover.
+                logger.warn("fileEnded(.eof) without queued entry; recovering")
+                if queue.count >= 2 {
+                    queue.removeFirst()
+                    let head = queue[0]
+                    if let url = URL(string: head.gaplessUrl) {
+                        do {
+                            try await engine.play(url: url, startSeconds: nil)
+                            currentPositionSeconds = 0
+                            emitNowPlaying(forSongAt: 0)
+                            if let channelId = currentChannelId {
+                                fireSongStartTelemetry(song: head, channelId: channelId)
+                            }
+                            if queue.count >= 2, let nextUrl = URL(string: queue[1].gaplessUrl) {
+                                try? await engine.queueNext(url: nextUrl, startSeconds: nil)
+                            }
+                            if queue.count < 3 { kickRefetch() }
+                            return
+                        } catch {
+                            await handlePlaybackError(code: -99)
+                            return
+                        }
+                    }
+                    await handlePlaybackError(code: -99)
+                    return
                 }
-            }
-            if case .error(let code) = reason {
-                if Self.isUnplayableBlockCode(code) {
-                    await advancePastUnplayableBlock(failureCode: code)
+                // Queue depleted entirely. Refetch + retry.
+                guard let channelId = currentChannelId else {
+                    await handlePlaybackError(code: -99)
+                    return
+                }
+                do {
+                    try await play(channelId: channelId)
+                } catch {
+                    await handlePlaybackError(code: -99)
+                }
+            case .error(let code):
+                if isUnplayableSongCode(code) && queue.count >= 2 {
+                    await handleSongPlaybackError(code: code)
                 } else {
                     await handlePlaybackError(code: code)
                 }
+            case .stopped, .quit, .redirect, .unknown:
+                break
             }
+
         case .error(let message):
             logger.error("player engine reported error: \(message)")
+
         case .outputDeviceChanged, .shutdown:
             break
         }
@@ -477,15 +511,11 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         logger.error("engine fileEnded with error code \(code)")
         try? await engine.clearPlaylist()
         cancelStallWatchdog()
-        prefetchTask?.cancel()
-        prefetchTask = nil
-        prefetchedBlock = nil
-        queuedToEngine = false
+        refetchTask?.cancel()
+        refetchTask = nil
         currentChannelId = nil
-        currentBlock = nil
-        orderedSongs = []
-        startsAt = []
-        currentSongIndex = 0
+        queue = []
+        currentResponse = nil
         currentPositionSeconds = 0
         pausedAt = nil
         pausePositionMs = 0
@@ -504,131 +534,172 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         }
     }
 
-    // mpv error codes that mean "this specific file/block is unplayable" (bad
+    // mpv error codes that mean "this specific song is unplayable" (bad
     // container, format-detection failure, empty body, etc.) rather than a
-    // device/system problem. Observed in the wild: -16 NOTHING_TO_PLAY on a
-    // 5 s promo .m4a returned by api/play. Wiping all state on these errors
-    // strands the user on the same channel because the server cursor still
-    // points at the broken block on the next bootstrap.
-    private static func isUnplayableBlockCode(_ code: Int) -> Bool {
+    // device/system problem. With the gapless model each song is a discrete
+    // file; dropping a single broken song and continuing is safer than wiping
+    // all state.
+    private func isUnplayableSongCode(_ code: Int) -> Bool {
         return code == -13 // LOADING_FAILED
             || code == -16 // NOTHING_TO_PLAY
             || code == -17 // UNKNOWN_FORMAT
             || code == -18 // UNSUPPORTED
     }
 
-    private func advancePastUnplayableBlock(failureCode: Int) async {
+    private func handleSongPlaybackError(code: Int) async {
         consecutivePlaybackFailures += 1
         guard consecutivePlaybackFailures <= Self.maxConsecutivePlaybackFailures else {
-            logger.error("too many consecutive unplayable blocks (\(consecutivePlaybackFailures)); surfacing error \(failureCode)")
-            await handlePlaybackError(code: failureCode)
+            logger.error("too many consecutive unplayable songs (\(consecutivePlaybackFailures)); surfacing error \(code)")
+            await handlePlaybackError(code: code)
             return
         }
-        guard let channelId = currentChannelId, let block = currentBlock else {
-            await handlePlaybackError(code: failureCode)
+        guard !queue.isEmpty, let channelId = currentChannelId else {
+            await handlePlaybackError(code: code)
             return
         }
-
-        let lastSong = orderedSongs.last
-        let lastEvent: Int = Int(lastSong?.event ?? "") ?? Int(block.endEvent ?? "") ?? 0
-        let audioType = lastSong?.type ?? "M"
-        let sliceNum = lastSong?.sliceNum
-
-        try? await engine.clearPlaylist()
-        prefetchTask?.cancel()
-        prefetchTask = nil
-        prefetchedBlock = nil
-        queuedToEngine = false
-
-        logger.info("advancing past unplayable block (code \(failureCode)): channel=\(channelId) event=\(lastEvent) audioType=\(audioType) sliceNum=\(sliceNum ?? "null") attempt=\(consecutivePlaybackFailures)/\(Self.maxConsecutivePlaybackFailures)")
+        let dropped = queue.removeFirst()
+        logger.warn("dropping unplayable song event=\(dropped.eventId) url=\(dropped.gaplessUrl) code=\(code) attempt=\(consecutivePlaybackFailures)/\(Self.maxConsecutivePlaybackFailures)")
+        guard !queue.isEmpty else {
+            // Queue depleted — refetch fresh.
+            do {
+                try await play(channelId: channelId)
+            } catch {
+                await handlePlaybackError(code: code)
+            }
+            return
+        }
+        let head = queue[0]
+        guard let url = URL(string: head.gaplessUrl) else {
+            await handlePlaybackError(code: code)
+            return
+        }
         do {
-            let bitrate = await bitrateProvider()
-            let nextBlock = try await api.play(
-                channel: channelId, bitrate: bitrate, event: lastEvent, action: .play,
-                audioType: audioType, episodeId: 0, sliceNum: sliceNum
-            )
-            let songs = BlockSongs.orderedSongs(from: nextBlock)
-            guard !songs.isEmpty else {
-                await handlePlaybackError(code: failureCode)
-                return
-            }
-            let newStarts = BlockSongs.startsAtSeconds(songs: songs)
-            currentBlock = nextBlock
-            orderedSongs = songs
-            startsAt = newStarts
-            currentSongIndex = 0
-            let startPos = nextBlock.cue > 0 ? Double(nextBlock.cue) / 1000.0 : 0
-            currentPositionSeconds = startPos
-            guard let url = URL(string: nextBlock.url) else {
-                await handlePlaybackError(code: failureCode)
-                return
-            }
-            let startSeconds: Double? = startPos > 0 ? startPos : nil
-            try await engine.play(url: url, startSeconds: startSeconds)
-            emitNowPlaying(forSongIndex: 0)
-            fireSongStartTelemetry(song: songs[0], channelId: channelId, ppm: 1)
+            try await engine.play(url: url, startSeconds: nil)
         } catch {
-            logger.error("advance past unplayable block failed: \(error)")
-            await handlePlaybackError(code: failureCode)
+            await handlePlaybackError(code: code)
+            return
+        }
+        currentPositionSeconds = 0
+        emitNowPlaying(forSongAt: 0)
+        fireSongStartTelemetry(song: head, channelId: channelId)
+        if queue.count >= 2, let nextUrl = URL(string: queue[1].gaplessUrl) {
+            try? await engine.queueNext(url: nextUrl, startSeconds: nil)
+        }
+        if queue.count < 3 {
+            kickRefetch()
         }
     }
 
-    private func emitNowPlaying(forSongIndex idx: Int) {
-        guard let channelId = currentChannelId, idx < orderedSongs.count else { return }
-        let song = orderedSongs[idx]
+    private func emitNowPlaying(forSongAt index: Int) {
+        guard index >= 0, index < queue.count, let channelId = currentChannelId else { return }
+        let song = queue[index]
         let np = NowPlaying(
             channelId: channelId,
-            song: song,
+            song: playListSong(from: song),
             songDurationSeconds: Double(song.duration) / 1000.0,
-            bitrateLabel: currentBlock?.bitrate
+            bitrateLabel: currentResponse?.bitrateTitle
         )
         current = np
         for c in continuations.values { c.yield(np) }
         prefetchUpcomingSongArt()
-        maybeStartPrefetch()
+    }
+
+    // Shim: NowPlaying.song is still PlayListSong at this task. Task 5 swaps
+    // the field type to GaplessSong and drops this converter.
+    private func playListSong(from g: GaplessSong) -> PlayListSong {
+        PlayListSong(
+            songId: g.songId,
+            artist: g.artist,
+            title: g.title,
+            album: g.album,
+            duration: g.duration,
+            event: String(g.eventId),
+            schedTime: nil,
+            chan: nil,
+            year: g.year,
+            asin: nil,
+            rating: g.rating > 0 ? String(g.rating) : nil,
+            userRating: g.userRating > 0 ? String(g.userRating) : nil,
+            cover: g.coverLarge ?? g.coverMedium,
+            elapsed: nil,
+            slideshow: nil,
+            type: g.type,
+            sliceNum: String(g.sliceNum)
+        )
     }
 
     // Warm the album-art cache for the song that will play next so the popover
-    // doesn't show a blank tile during the cross-fade. Within a block we know
-    // the next song from orderedSongs; at the end of the block we use the
-    // already-prefetched next block if it has arrived.
+    // doesn't show a blank tile during the cross-fade.
     private func prefetchUpcomingSongArt() {
-        let nextIndex = currentSongIndex + 1
-        if nextIndex < orderedSongs.count {
-            if let cover = orderedSongs[nextIndex].cover, !cover.isEmpty {
-                prefetchArt(cover)
-            }
-        } else if let prefetched = prefetchedBlock,
-                  let cover = BlockSongs.orderedSongs(from: prefetched).first?.cover,
-                  !cover.isEmpty {
-            prefetchArt(cover)
-        }
+        guard queue.count >= 2 else { return }
+        let nextSong = queue[1]
+        let cover = nextSong.coverLarge ?? nextSong.coverMedium
+        guard let cover, !cover.isEmpty else { return }
+        prefetchArt(cover)
     }
 
-    private func fireSongStartTelemetry(song: PlayListSong, channelId: Int, ppm: Int? = nil) {
-        guard song.type != "P" else { return }
-        guard currentSongIndex < startsAt.count else { return }
-        let resolvedPpm = ppm ?? max(1, Int((currentPositionSeconds - startsAt[currentSongIndex]) * 1000))
-        let ts = Int(clock().timeIntervalSince1970)
-        let songId = song.songId
-        let event = song.event ?? ""
-        let audioType = song.type ?? "M"
-        let sliceNum = song.sliceNum
+    private func fireSongStartTelemetry(song: GaplessSong, channelId: Int) {
+        guard song.updateHistory else { return }
         let api = self.api
+        let songId = song.songId
+        let event = String(song.eventId)
+        let audioType = song.type
+        let sliceNum = String(song.sliceNum)
         Task.detached {
             try? await api.updateHistory(
                 songId: songId, chan: channelId, event: event, audioType: audioType,
-                sliceNum: sliceNum, playPositionMillis: resolvedPpm, playtimeSecs: ts,
+                sliceNum: sliceNum, playPositionMillis: 0, playtimeSecs: 0,
                 pauseFlag: false
             )
         }
     }
 
-    private func describeBlock(url: String, songs: [PlayListSong], starts: [Double]) -> String {
-        let lines = songs.enumerated().map { i, song in
-            String(format: "  [%d] %7.1fs  %@ – %@ (%.1fs)", i, starts[i], song.artist, song.title, Double(song.duration) / 1000.0)
+    private func describeQueue(songs: [GaplessSong]) -> String {
+        let preview = songs.prefix(5).enumerated().map { i, s in
+            "  [\(i)] event=\(s.eventId) cue=\(s.cue)ms duration=\(s.duration)ms type=\(s.type) \(s.artist) — \(s.title)"
+        }.joined(separator: "\n")
+        let more = songs.count > 5 ? "\n  … (+\(songs.count - 5) more)" : ""
+        return "queue (count=\(songs.count)):\n\(preview)\(more)"
+    }
+
+    private func kickRefetch() {
+        guard refetchTask == nil, let channelId = currentChannelId else { return }
+        let headEvent = queue.first?.eventId ?? 0
+        refetchTask = Task { [weak self] in
+            guard let self else { return }
+            await self.runRefetch(channelId: channelId, headEvent: headEvent)
         }
-        return "url=\(url)\n" + lines.joined(separator: "\n")
+    }
+
+    private func runRefetch(channelId: Int, headEvent: Int) async {
+        let bitrate = await bitrateProvider()
+        let response: GaplessResponse
+        do {
+            response = try await api.gapless(channel: channelId, bitrate: bitrate, numSongs: 20)
+        } catch {
+            logger.warn("kickRefetch failed: \(error)")
+            self.refetchTask = nil
+            return
+        }
+        // Race-guard: discard if channel changed or head moved during await.
+        guard self.currentChannelId == channelId,
+              self.queue.first?.eventId == headEvent else {
+            logger.debug("kickRefetch result discarded: channel/head moved during fetch")
+            self.refetchTask = nil
+            return
+        }
+        guard let firstHead = self.queue.first else {
+            self.refetchTask = nil
+            return
+        }
+        let newSongs = response.songs.filter { $0.eventId > firstHead.eventId }
+        let hadShortQueue = self.queue.count < 2
+        self.queue = [firstHead] + newSongs
+        self.currentResponse = response
+        if hadShortQueue, self.queue.count >= 2, let nextUrl = URL(string: self.queue[1].gaplessUrl) {
+            try? await self.engine.queueNext(url: nextUrl, startSeconds: nil)
+        }
+        self.refetchTask = nil
     }
 
     private func cancelStallWatchdog() {
@@ -638,21 +709,19 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
 
     private func armLongIdleStallWatchdog() {
         cancelStallWatchdog()
-        guard let block = currentBlock,
-              let blockUrl = URL(string: block.url) else { return }
+        guard let head = queue.first,
+              let url = URL(string: head.gaplessUrl) else { return }
         let snapshot = currentPositionSeconds
-        let retryStart: Double? = currentSongIndex < startsAt.count && startsAt[currentSongIndex] > 0
-            ? startsAt[currentSongIndex]
-            : nil
+        let retryStart: Double? = currentPositionSeconds > 0 ? currentPositionSeconds : nil
         let timeoutNanoseconds = UInt64(Self.stallWatchdogTimeoutSeconds * 1_000_000_000)
-        stallWatchdog = Task { [weak self, blockUrl, snapshot, retryStart, timeoutNanoseconds] in
+        stallWatchdog = Task { [weak self, url, snapshot, retryStart, timeoutNanoseconds] in
             guard let self else { return }
             if await self.waitForFirstPositionUpdate(snapshot: snapshot, timeoutNanoseconds: timeoutNanoseconds) { return }
             if Task.isCancelled { return }
             await self.logStallWatchdogTimeout(attempt: 1)
             do {
                 try await self.engine.stop()
-                try await self.engine.play(url: blockUrl, startSeconds: retryStart)
+                try await self.engine.play(url: url, startSeconds: retryStart)
             } catch {
                 await self.surfaceStallError()
                 return
@@ -693,15 +762,11 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         try? await engine.stop()
         try? await engine.clearPlaylist()
         cancelStallWatchdog()
-        prefetchTask?.cancel()
-        prefetchTask = nil
-        prefetchedBlock = nil
-        queuedToEngine = false
+        refetchTask?.cancel()
+        refetchTask = nil
         currentChannelId = nil
-        currentBlock = nil
-        orderedSongs = []
-        startsAt = []
-        currentSongIndex = 0
+        queue = []
+        currentResponse = nil
         currentPositionSeconds = 0
         pausedAt = nil
         pausePositionMs = 0
@@ -713,126 +778,6 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     private func unregister(id: UUID) { continuations.removeValue(forKey: id) }
     private func unregisterPosition(id: UUID) { positionContinuations.removeValue(forKey: id) }
     private func unregisterState(id: UUID) { stateContinuations.removeValue(forKey: id) }
-
-    private func maybeStartPrefetch() {
-        guard let channelId = currentChannelId,
-              !orderedSongs.isEmpty,
-              currentSongIndex == orderedSongs.count - 1,
-              prefetchedBlock == nil,
-              prefetchTask == nil else { return }
-
-        let lastSong = orderedSongs.last
-        let lastEvent: Int = Int(lastSong?.event ?? "") ?? Int(currentBlock?.endEvent ?? "") ?? 0
-        let audioType = lastSong?.type ?? "M"
-        let sliceNum = lastSong?.sliceNum
-        let api = self.api
-        let provider = self.bitrateProvider
-        prefetchTask = Task { [weak self, logger] in
-            let bitrate = await provider()
-            logger.debug("prefetch start, channel=\(channelId) bitrate=\(bitrate) event=\(lastEvent) audioType=\(audioType) sliceNum=\(sliceNum ?? "null")")
-            let result = try? await api.play(
-                channel: channelId, bitrate: bitrate, event: lastEvent, action: .play,
-                audioType: audioType, episodeId: 0, sliceNum: sliceNum
-            )
-            await self?.absorbPrefetchResult(result)
-        }
-    }
-
-    private func absorbPrefetchResult(_ block: GetBlock?) async {
-        // Cleanup (stop / changeChannel) during the fetch nils prefetchTask — discard the late result.
-        guard prefetchTask != nil else { return }
-        prefetchTask = nil
-        if let block = block, BlockSongs.orderedSongs(from: block).isEmpty == false {
-            guard currentBlock != nil else { return }
-            prefetchedBlock = block
-            logger.debug("prefetch absorbed: url=\(block.url)")
-            // Warm cache for first song of next block so popover doesn't blank at swap.
-            if let cover = BlockSongs.orderedSongs(from: block).first?.cover,
-               !cover.isEmpty {
-                prefetchArt(cover)
-            }
-            let startPos = block.cue > 0 ? Double(block.cue) / 1000.0 : 0
-            let startSeconds: Double? = startPos > 0 ? startPos : nil
-            guard let url = URL(string: block.url) else { return }
-            do {
-                try await engine.queueNext(url: url, startSeconds: startSeconds)
-                // Cleanup may have run during the queueNext await — orphan-cleanup playlist if so.
-                guard currentBlock != nil else {
-                    try? await engine.clearPlaylist()
-                    return
-                }
-                queuedToEngine = true
-                logger.debug("queued next block on engine: url=\(url.absoluteString) start=\(startSeconds.map { "\($0)s" } ?? "nil")")
-            } catch {
-                queuedToEngine = false
-                logger.error("engine.queueNext failed: \(error). EOF will use replace fallback.")
-            }
-        }
-    }
-
-    private func swapToPrefetchedBlockState() async {
-        guard let block = prefetchedBlock else {
-            currentBlock = nil
-            orderedSongs = []
-            startsAt = []
-            currentSongIndex = 0
-            currentPositionSeconds = 0
-            current = nil
-            return
-        }
-        prefetchedBlock = nil
-        queuedToEngine = false
-        let songs = BlockSongs.orderedSongs(from: block)
-        let swapStarts = BlockSongs.startsAtSeconds(songs: songs)
-        logger.info("swap to prefetched block:\n\(describeBlock(url: block.url, songs: songs, starts: swapStarts))")
-        currentBlock = block
-        orderedSongs = songs
-        startsAt = swapStarts
-        currentSongIndex = 0
-        let startPos = block.cue > 0 ? Double(block.cue) / 1000.0 : 0
-        currentPositionSeconds = startPos
-        emitNowPlaying(forSongIndex: 0)
-        if let channelId = currentChannelId {
-            fireSongStartTelemetry(song: orderedSongs[0], channelId: channelId)
-        }
-        cancelStallWatchdog()
-    }
-
-    private func swapToPrefetchedBlockIfAvailable() async {
-        let hadPrefetched = prefetchedBlock != nil
-        await swapToPrefetchedBlockState()
-        guard hadPrefetched, let block = currentBlock else { return }
-        guard let url = URL(string: block.url) else {
-            logger.error("prefetched block had invalid url: \(block.url)")
-            return
-        }
-        let startPos = block.cue > 0 ? Double(block.cue) / 1000.0 : 0
-        let startSeconds: Double? = startPos > 0 ? startPos : nil
-        logger.debug("swap engine.play url=\(url.absoluteString) startSeconds=\(startSeconds.map { "\($0)s" } ?? "nil")")
-        do {
-            try await engine.play(url: url, startSeconds: startSeconds)
-            cancelStallWatchdog()
-        } catch {
-            logger.error("failed to play prefetched block: \(error)")
-            // Don't strand the user with frozen progress on a corrupted state — wipe and surface.
-            try? await engine.clearPlaylist()
-            prefetchTask?.cancel()
-            prefetchTask = nil
-            prefetchedBlock = nil
-            queuedToEngine = false
-            currentChannelId = nil
-            currentBlock = nil
-            orderedSongs = []
-            startsAt = []
-            currentSongIndex = 0
-            currentPositionSeconds = 0
-            pausedAt = nil
-            pausePositionMs = 0
-            current = nil
-            emitState(.stopped)
-            errorsContinuation?.yield("Playback stopped: \(error.localizedDescription)")
-        }
-    }
 }
 
 extension PlaybackCoordinatorError: LocalizedError {

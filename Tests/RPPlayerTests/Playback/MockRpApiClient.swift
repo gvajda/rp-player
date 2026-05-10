@@ -42,6 +42,10 @@ actor MockRpApiClient: RpApiClient {
     var blockResponses: [GetBlock] = []
     var getBlockResponses: [GetBlock] = []
     var gaplessResponse: GaplessResponse?
+    var gaplessResponses: [GaplessResponse] = []
+    var gaplessByChannel: [Int: GaplessResponse] = [:]
+    var gaplessError: Error?
+    var gaplessDelayNanos: UInt64 = 0
     var getBlockError: Error?
     var listChannelsResponse: [Channel] = []
     var listChannelsError: Error?
@@ -103,9 +107,39 @@ actor MockRpApiClient: RpApiClient {
 
     func gapless(channel: Int, bitrate: Int, numSongs: Int) async throws -> GaplessResponse {
         calls.append(.gapless(channel: channel, bitrate: bitrate, numSongs: numSongs))
+        if gaplessDelayNanos > 0 {
+            try await Task.sleep(nanoseconds: gaplessDelayNanos)
+        }
+        if let error = gaplessError { throw error }
+        if let r = gaplessByChannel[channel] { return r }
+        if !gaplessResponses.isEmpty { return gaplessResponses.removeFirst() }
         if let r = gaplessResponse { return r }
         throw RpApiError.network(URLError(.unknown))
     }
+
+    func setGaplessByChannel(_ map: [Int: GaplessResponse]) {
+        self.gaplessByChannel = map
+        self.gaplessError = nil
+    }
+
+    func setGaplessResponse(_ response: GaplessResponse) {
+        self.gaplessResponse = response
+        self.gaplessError = nil
+    }
+
+    func setGaplessResponses(_ responses: [GaplessResponse]) {
+        self.gaplessResponses = responses
+        self.gaplessError = nil
+    }
+
+    func setGaplessError(_ error: Error) {
+        self.gaplessError = error
+    }
+
+    func setGaplessDelay(nanos: UInt64) {
+        self.gaplessDelayNanos = nanos
+    }
+
 
     func getBlock(channel: Int, bitrate: Int, event: Int) async throws -> GetBlock {
         calls.append(.getBlock(channel: channel, bitrate: bitrate, event: event))
