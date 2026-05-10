@@ -794,4 +794,74 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         }.first
         XCTAssertEqual(firstPlayUrl, local, "engine.play should be invoked with the cache-resolved local file URL")
     }
+
+    /// Boundary advance must evict the just-finished song's cached file (after telemetry).
+    func testQueueAdvanceEvictsDroppedSongFromCache() async throws {
+        let api = MockRpApiClient()
+        let engine = MockPlayerEngine()
+        let cache = MockSongFileCache()
+
+        let response = makeGaplessResponse(songs: [
+            makeGaplessSong(eventId: 10, gaplessUrl: "https://s.example.com/0.flac"),
+            makeGaplessSong(eventId: 20, gaplessUrl: "https://s.example.com/1.flac"),
+        ])
+        await api.setGaplessResponses([response])
+
+        let coord = LivePlaybackCoordinator(
+            api: api, engine: engine, songFileCache: cache, logger: silentLogger(), bitrateProvider: { 4 }
+        )
+        try await coord.play(channelId: 0)
+        // Initial fileStarted: mpv path = song[0]. lastStartedEventId is set; no advance, no eviction.
+        await engine.fire(.fileStarted)
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        // Boundary advance: mpv path = song[1].
+        await engine.setSimulatedCurrentPath(URL(string: "https://s.example.com/1.flac"))
+        await engine.fire(.fileStarted)
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        let evicted = await cache.evictCalls
+        XCTAssertTrue(evicted.contains(10), "expected song 10 (just-finished) to be evicted; got=\(evicted)")
+        XCTAssertFalse(evicted.contains(20), "expected song 20 (now-current) NOT to be evicted; got=\(evicted)")
+    }
+
+    /// Boundary advance must resolve queue[1]'s URL via the cache and call engine.queueNext exactly once.
+    func testQueueAdvanceQueuesNextSongFromCache() async throws {
+        let api = MockRpApiClient()
+        let engine = MockPlayerEngine()
+        let cache = MockSongFileCache()
+
+        let response = makeGaplessResponse(songs: [
+            makeGaplessSong(eventId: 10, gaplessUrl: "https://s.example.com/0.flac"),
+            makeGaplessSong(eventId: 20, gaplessUrl: "https://s.example.com/1.flac"),
+            makeGaplessSong(eventId: 30, gaplessUrl: "https://s.example.com/2.flac"),
+        ])
+        await api.setGaplessResponses([response])
+
+        let coord = LivePlaybackCoordinator(
+            api: api, engine: engine, songFileCache: cache, logger: silentLogger(), bitrateProvider: { 4 }
+        )
+        try await coord.play(channelId: 0)
+        // Initial fileStarted: mpv path = song[0]. lastStartedEventId is set; no advance, no extra queueNext.
+        await engine.fire(.fileStarted)
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        let queueNextsBefore = await engine.recordedCalls().filter {
+            if case .queueNext = $0 { return true } else { return false }
+        }.count
+
+        await engine.setSimulatedCurrentPath(URL(string: "https://s.example.com/1.flac"))
+        await engine.fire(.fileStarted)
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        let queueNextsAfter = await engine.recordedCalls().filter {
+            if case .queueNext = $0 { return true } else { return false }
+        }.count
+        XCTAssertEqual(queueNextsAfter, queueNextsBefore + 1,
+                       "advance must queue exactly one new song; before=\(queueNextsBefore) after=\(queueNextsAfter)")
+
+        let cacheCalls = await cache.localFileCalls
+        XCTAssertTrue(cacheCalls.contains(30),
+                      "queueNext path must resolve song 30 via cache; calls=\(cacheCalls)")
+    }
 }
