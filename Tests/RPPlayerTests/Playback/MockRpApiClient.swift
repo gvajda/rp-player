@@ -40,6 +40,7 @@ actor MockRpApiClient: RpApiClient {
     var playDelayNanos: UInt64 = 0
     var blockResponses: [GetBlock] = []
     var getBlockResponses: [GetBlock] = []
+    var gaplessResponse: GaplessResponse?
     var getBlockError: Error?
     var listChannelsResponse: [Channel] = []
     var listChannelsError: Error?
@@ -97,6 +98,11 @@ actor MockRpApiClient: RpApiClient {
         calls.append(.listChannels)
         if let error = listChannelsError { throw error }
         return listChannelsResponse
+    }
+
+    func gapless(channel: Int, bitrate: Int, numSongs: Int) async throws -> GaplessResponse {
+        if let r = gaplessResponse { return r }
+        throw RpApiError.network(URLError(.unknown))
     }
 
     func getBlock(channel: Int, bitrate: Int, event: Int) async throws -> GetBlock {

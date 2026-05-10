@@ -10,6 +10,7 @@ public protocol RpApiClient: Sendable {
     func play(channel: Int, bitrate: Int, event: Int, action: PlayAction,
               audioType: String?, episodeId: Int?, sliceNum: String?) async throws -> GetBlock
     func getBlock(channel: Int, bitrate: Int, event: Int) async throws -> GetBlock
+    func gapless(channel: Int, bitrate: Int, numSongs: Int) async throws -> GaplessResponse
     func info(songId: Int) async throws -> SongInfo
     func rate(songId: Int, rating: Int) async throws -> Rating
     func authState() async throws -> Auth
@@ -81,6 +82,18 @@ public struct LiveRpApiClient: RpApiClient {
             "info": "true",
         ]
         return try await get(path: "api/get_block", query: query)
+    }
+
+    public func gapless(channel: Int, bitrate: Int, numSongs: Int) async throws -> GaplessResponse {
+        var query: [String: String] = [
+            "chan": String(channel),
+            "bitrate": String(bitrate),
+            "numSongs": String(numSongs),
+        ]
+        if let playerId {
+            query["player_id"] = playerId
+        }
+        return try await get(path: "api/gapless", query: query)
     }
 
     public func info(songId: Int) async throws -> SongInfo {
