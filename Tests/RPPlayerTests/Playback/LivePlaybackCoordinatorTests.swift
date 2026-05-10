@@ -762,4 +762,36 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         let np = await coord.nowPlaying
         XCTAssertEqual(np?.song.songId, "s1")
     }
+
+    /// PR 32 Task 6: play(channelId:) must resolve the head URL through SongFileCache
+    /// before calling engine.play, so downloaded local files are used in preference
+    /// to the remote gapless URL.
+    func testPlayChannelIdResolvesUrlViaSongFileCacheBeforeEnginePlay() async throws {
+        let api = MockRpApiClient()
+        let engine = MockPlayerEngine()
+        let cache = MockSongFileCache()
+        let local = URL(string: "file:///tmp/song-1.flac")!
+        await cache.setMode(.downloaded(local))
+
+        let response = makeGaplessResponse(songs: [
+            makeGaplessSong(eventId: 1, gaplessUrl: "https://s.example.com/1.flac"),
+            makeGaplessSong(eventId: 2, gaplessUrl: "https://s.example.com/2.flac"),
+        ])
+        await api.setGaplessResponses([response])
+
+        let coord = LivePlaybackCoordinator(
+            api: api, engine: engine, songFileCache: cache, logger: silentLogger(), bitrateProvider: { 4 }
+        )
+
+        try await coord.play(channelId: 0)
+
+        let calls = await cache.localFileCalls
+        XCTAssertTrue(calls.contains(1), "expected localFile(for: song 1) to be called before engine.play; got=\(calls)")
+        let engineCalls = await engine.recordedCalls()
+        let firstPlayUrl: URL? = engineCalls.lazy.compactMap { call -> URL? in
+            if case .play(let url, _) = call { return url }
+            return nil
+        }.first
+        XCTAssertEqual(firstPlayUrl, local, "engine.play should be invoked with the cache-resolved local file URL")
+    }
 }
