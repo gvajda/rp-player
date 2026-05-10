@@ -16,6 +16,10 @@ public enum ConfigPaths {
         applicationSupportRoot.appendingPathComponent("AlbumArtCache", isDirectory: true)
     }
 
+    public static var songFileCacheDirectory: URL {
+        applicationSupportRoot.appendingPathComponent("SongFileCache", isDirectory: true)
+    }
+
     public static var logsDirectory: URL {
         applicationSupportRoot.appendingPathComponent("Logs", isDirectory: true)
     }
