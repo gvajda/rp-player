@@ -658,6 +658,13 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
                     }
                 }
             }
+            // Evict dropped songs' cached files AFTER spawning telemetry so the cursor-advanced ordering is preserved.
+            let cache = songFileCache
+            Task { [dropped] in
+                for song in dropped {
+                    await cache.evict(song)
+                }
+            }
         }
         lastStartedEventId = queue[0].eventId
         currentPositionSeconds = 0
@@ -668,9 +675,15 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             fireSongStartTelemetry(song: queue[0], channelId: channelId)
         }
         // Only re-issue queueNext on advance — initial sync is preceded by play()/handleSongPlaybackError/etc which already queued queue[1].
-        if isAdvance, queue.count >= 2, let nextUrl = URL(string: queue[1].gaplessUrl) {
-            try? await engine.queueNext(url: nextUrl, startSeconds: nil)
+        if isAdvance, queue.count >= 2 {
+            let next = queue[1]
+            let nextUrl = await songFileCache.localFile(for: next)
+                ?? URL(string: next.gaplessUrl)
+            if let nextUrl {
+                try? await engine.queueNext(url: nextUrl, startSeconds: nil)
+            }
         }
+        kickSequentialDownload()
         if queue.count < 3 {
             kickRefetch()
         }
