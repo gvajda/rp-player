@@ -30,7 +30,7 @@ public struct PlayListSong: Codable, Sendable, Equatable {
     public let slideshow: String?
     /// RP block type: "M" = music, "P" = promo. Null for favorites bootstrap.
     public let type: String?
-    /// Per-block slice index. String for music ("5"), JSON null for favorites; sent verbatim back as `slice_num` on the next `api/play`.
+    /// Per-block slice index. String for music ("5"), JSON null for favorites; sent verbatim back as `slice_num` on the next `api/gapless`.
     public let sliceNum: String?
 
     public init(
@@ -103,56 +103,6 @@ public extension PlayListSong {
             type: nil,
             sliceNum: nil
         )
-    }
-}
-
-public struct GetBlock: Encodable, Sendable, Equatable {
-    public let url: String
-    /// The live API returns `chan` as a String (e.g. "0"), not an integer.
-    /// Deviated from spec (Int) to match fixture shape.
-    public let chan: String
-    public let bitrate: String?
-    public let cue: Int
-    public let expiration: Int
-    public let length: String?
-    public let imageBase: String
-    public let song: [String: PlayListSong]
-    public let channel: Channel?
-    public let event: String?
-    /// The live API returns `end_event` as a String (e.g. "2868121"), not an integer.
-    /// Deviated from spec (Int?) to match fixture shape.
-    public let endEvent: String?
-    public let type: String?
-    public let ext: String?
-
-    enum CodingKeys: String, CodingKey {
-        case url, chan, bitrate, cue, expiration, length, imageBase, song, channel, event, endEvent, type, ext
-    }
-}
-
-extension GetBlock: Decodable {
-    public init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        url = try c.decode(String.self, forKey: .url)
-        chan = try c.decode(String.self, forKey: .chan)
-        bitrate = try c.decodeIfPresent(String.self, forKey: .bitrate)
-        // cue may be Int or String depending on server version.
-        if let i = try? c.decode(Int.self, forKey: .cue) {
-            cue = i
-        } else if let s = try? c.decode(String.self, forKey: .cue), let i = Int(s) {
-            cue = i
-        } else {
-            cue = 0
-        }
-        expiration = try c.decode(Int.self, forKey: .expiration)
-        length = try c.decodeIfPresent(String.self, forKey: .length)
-        imageBase = try c.decode(String.self, forKey: .imageBase)
-        song = try c.decode([String: PlayListSong].self, forKey: .song)
-        channel = try c.decodeIfPresent(Channel.self, forKey: .channel)
-        event = try c.decodeIfPresent(String.self, forKey: .event)
-        endEvent = try c.decodeIfPresent(String.self, forKey: .endEvent)
-        type = try c.decodeIfPresent(String.self, forKey: .type)
-        ext = try c.decodeIfPresent(String.self, forKey: .ext)
     }
 }
 

@@ -17,25 +17,6 @@ final class ApiModelsTests: XCTestCase {
         XCTAssertFalse(main.title.isEmpty)
     }
 
-    func testDecodesGetBlock() throws {
-        let data = try loadFixture("get_block")
-        let block = try decoder.decode(GetBlock.self, from: data)
-        XCTAssertFalse(block.url.isEmpty)
-        XCTAssertGreaterThan(block.song.count, 0, "get_block must contain at least one song")
-        XCTAssertGreaterThan(block.expiration, 0)
-    }
-
-    func testDecodesGetBlockPromoTypeWithMissingAlbum() throws {
-        let data = try loadFixture("get_block_promo")
-        let block = try decoder.decode(GetBlock.self, from: data)
-        XCTAssertEqual(block.type, "P")
-        XCTAssertEqual(block.song.count, 1)
-        let song = try XCTUnwrap(block.song["0"])
-        XCTAssertEqual(song.artist, "Commercial-free")
-        XCTAssertEqual(song.title, "Listener-supported")
-        XCTAssertNil(song.album)
-    }
-
     func testDecodesSongInfo() throws {
         let data = try loadFixture("info")
         let info = try decoder.decode(SongInfo.self, from: data)
@@ -56,15 +37,6 @@ final class ApiModelsTests: XCTestCase {
         XCTAssertEqual(rating.status, "success")
         XCTAssertEqual(rating.songId, 12345)
         XCTAssertEqual(rating.userRating, 7)
-    }
-
-    func testPlayListSongDecodesSliceNumAndType() throws {
-        let url = Bundle.module.url(forResource: "get_block", withExtension: "json", subdirectory: "Fixtures/Api")!
-        let data = try Data(contentsOf: url)
-        let block = try JSONDecoder.rpDecoder.decode(GetBlock.self, from: data)
-        let song0 = try XCTUnwrap(block.song["0"])
-        XCTAssertEqual(song0.type, "M")
-        XCTAssertEqual(song0.sliceNum, "5")
     }
 
     func testPlayListSongDecodesNullSliceNum() throws {

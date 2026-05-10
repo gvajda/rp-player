@@ -1,15 +1,7 @@
 import Foundation
 
-public enum PlayAction: String, Sendable {
-    case start
-    case play
-}
-
 public protocol RpApiClient: Sendable {
     func listChannels() async throws -> [Channel]
-    func play(channel: Int, bitrate: Int, event: Int, action: PlayAction,
-              audioType: String?, episodeId: Int?, sliceNum: String?) async throws -> GetBlock
-    func getBlock(channel: Int, bitrate: Int, event: Int) async throws -> GetBlock
     func gapless(channel: Int, bitrate: Int, numSongs: Int) async throws -> GaplessResponse
     func info(songId: Int) async throws -> SongInfo
     func rate(songId: Int, rating: Int) async throws -> Rating
@@ -50,38 +42,6 @@ public struct LiveRpApiClient: RpApiClient {
 
     public func listChannels() async throws -> [Channel] {
         try await get(path: "api/list_chan", query: [:])
-    }
-
-    public func play(channel: Int, bitrate: Int, event: Int, action: PlayAction,
-                     audioType: String?, episodeId: Int?, sliceNum: String?) async throws -> GetBlock {
-        var query: [String: String] = [
-            "chan": String(channel),
-            "bitrate": String(bitrate),
-            "event": String(event),
-            "action": action.rawValue,
-            "info": "true",
-            "elapsed": "1",
-            "source": "24",
-        ]
-        if action == .play {
-            query["audio_type"] = audioType ?? ""
-            query["episode_id"] = String(episodeId ?? 0)
-            query["slice_num"] = sliceNum ?? "null"
-        }
-        if let playerId {
-            query["player_id"] = playerId
-        }
-        return try await get(path: "api/play", query: query)
-    }
-
-    public func getBlock(channel: Int, bitrate: Int, event: Int) async throws -> GetBlock {
-        let query: [String: String] = [
-            "bitrate": String(bitrate),
-            "chan": String(channel),
-            "event": String(event),
-            "info": "true",
-        ]
-        return try await get(path: "api/get_block", query: query)
     }
 
     public func gapless(channel: Int, bitrate: Int, numSongs: Int) async throws -> GaplessResponse {

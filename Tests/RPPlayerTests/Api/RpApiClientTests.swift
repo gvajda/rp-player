@@ -39,18 +39,12 @@ final class RpApiClientTests: XCTestCase {
     }
 
     func testInfoBuildsCorrectQueryAndDecodes() async throws {
-        // Read the song_id from the get_block fixture so the query matches what info expects.
-        let blockData = try loadFixture("get_block")
-        let block = try JSONDecoder.rpDecoder.decode(GetBlock.self, from: blockData)
-        let firstSongId = try XCTUnwrap(block.song.values.first?.songId)
-
         var components = URLComponents(url: baseURL.appendingPathComponent("api/info"), resolvingAgainstBaseURL: false)!
-        components.queryItems = [URLQueryItem(name: "song_id", value: firstSongId)]
+        components.queryItems = [URLQueryItem(name: "song_id", value: "20093")]
         StubURLProtocol.register(url: components.url!, body: try loadFixture("info"))
 
         let client = makeClient()
-        let songIdInt = try XCTUnwrap(Int(firstSongId), "PlayListSong.songId must be numeric")
-        let info = try await client.info(songId: songIdInt)
+        let info = try await client.info(songId: 20093)
         XCTAssertFalse(info.artist.isEmpty)
     }
 
@@ -77,104 +71,6 @@ final class RpApiClientTests: XCTestCase {
         let rating = try await client.rate(songId: 12345, rating: 7)
         XCTAssertEqual(rating.status, "success")
         XCTAssertEqual(rating.userRating, 7)
-    }
-
-    func testGetBlockBuildsCorrectURL() async throws {
-        var components = URLComponents(
-            url: baseURL.appendingPathComponent("api/get_block"),
-            resolvingAgainstBaseURL: false)!
-        components.queryItems = [
-            URLQueryItem(name: "bitrate", value: "4"),
-            URLQueryItem(name: "chan", value: "2"),
-            URLQueryItem(name: "event", value: "0"),
-            URLQueryItem(name: "info", value: "true"),
-        ]
-        StubURLProtocol.register(url: components.url!, body: try loadFixture("get_block"))
-
-        let client = makeClient()
-        let block = try await client.getBlock(channel: 2, bitrate: 4, event: 0)
-        XCTAssertFalse(block.song.isEmpty)
-    }
-
-    func testPlayBootstrapBuildsCorrectURL() async throws {
-        var components = URLComponents(url: baseURL.appendingPathComponent("api/play"), resolvingAgainstBaseURL: false)!
-        components.queryItems = [
-            URLQueryItem(name: "action", value: "start"),
-            URLQueryItem(name: "bitrate", value: "2"),
-            URLQueryItem(name: "chan", value: "0"),
-            URLQueryItem(name: "elapsed", value: "1"),
-            URLQueryItem(name: "event", value: "0"),
-            URLQueryItem(name: "info", value: "true"),
-            URLQueryItem(name: "player_id", value: "rp3_test-player"),
-            URLQueryItem(name: "source", value: "24"),
-        ]
-        StubURLProtocol.register(url: components.url!, body: try loadFixture("get_block"))
-
-        let client = makeClient(playerId: "rp3_test-player")
-        let block = try await client.play(channel: 0, bitrate: 2, event: 0, action: .start, audioType: nil, episodeId: nil, sliceNum: nil)
-        XCTAssertFalse(block.song.isEmpty)
-    }
-
-    func testPlayAdvanceIncludesAudioTypeEpisodeIdSliceNum() async throws {
-        var components = URLComponents(url: baseURL.appendingPathComponent("api/play"), resolvingAgainstBaseURL: false)!
-        components.queryItems = [
-            URLQueryItem(name: "action", value: "play"),
-            URLQueryItem(name: "audio_type", value: "M"),
-            URLQueryItem(name: "bitrate", value: "2"),
-            URLQueryItem(name: "chan", value: "0"),
-            URLQueryItem(name: "elapsed", value: "1"),
-            URLQueryItem(name: "episode_id", value: "0"),
-            URLQueryItem(name: "event", value: "2869394"),
-            URLQueryItem(name: "info", value: "true"),
-            URLQueryItem(name: "player_id", value: "rp3_test-player"),
-            URLQueryItem(name: "slice_num", value: "5"),
-            URLQueryItem(name: "source", value: "24"),
-        ]
-        StubURLProtocol.register(url: components.url!, body: try loadFixture("get_block"))
-
-        let client = makeClient(playerId: "rp3_test-player")
-        let block = try await client.play(channel: 0, bitrate: 2, event: 2869394, action: .play, audioType: "M", episodeId: 0, sliceNum: "5")
-        XCTAssertFalse(block.url.isEmpty)
-    }
-
-    func testPlayAdvanceFavoritesSendsLiteralNullSliceNum() async throws {
-        var components = URLComponents(url: baseURL.appendingPathComponent("api/play"), resolvingAgainstBaseURL: false)!
-        components.queryItems = [
-            URLQueryItem(name: "action", value: "play"),
-            URLQueryItem(name: "audio_type", value: "M"),
-            URLQueryItem(name: "bitrate", value: "2"),
-            URLQueryItem(name: "chan", value: "99"),
-            URLQueryItem(name: "elapsed", value: "1"),
-            URLQueryItem(name: "episode_id", value: "0"),
-            URLQueryItem(name: "event", value: "1777746918882"),
-            URLQueryItem(name: "info", value: "true"),
-            URLQueryItem(name: "player_id", value: "rp3_test-player"),
-            URLQueryItem(name: "slice_num", value: "null"),
-            URLQueryItem(name: "source", value: "24"),
-        ]
-        StubURLProtocol.register(url: components.url!, body: try loadFixture("play_favorites"))
-
-        let client = makeClient(playerId: "rp3_test-player")
-        let block = try await client.play(channel: 99, bitrate: 2, event: 1_777_746_918_882, action: .play, audioType: "M", episodeId: 0, sliceNum: nil)
-        XCTAssertEqual(block.song.count, 1)
-    }
-
-    func testPlayOmitsPlayerIdQueryWhenClientHasNone() async throws {
-        var components = URLComponents(url: baseURL.appendingPathComponent("api/play"), resolvingAgainstBaseURL: false)!
-        components.queryItems = [
-            URLQueryItem(name: "action", value: "start"),
-            URLQueryItem(name: "bitrate", value: "2"),
-            URLQueryItem(name: "chan", value: "0"),
-            URLQueryItem(name: "elapsed", value: "1"),
-            URLQueryItem(name: "event", value: "0"),
-            URLQueryItem(name: "info", value: "true"),
-            URLQueryItem(name: "source", value: "24"),
-        ]
-        StubURLProtocol.register(url: components.url!, body: try loadFixture("get_block"))
-
-        let client = makeClient(playerId: nil)
-        let block = try await client.play(channel: 0, bitrate: 2, event: 0, action: .start, audioType: nil, episodeId: nil, sliceNum: nil)
-        XCTAssertFalse(block.song.isEmpty)
     }
 
     func testUpdateHistoryBuildsCorrectURL() async throws {

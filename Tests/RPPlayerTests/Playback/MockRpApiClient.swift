@@ -25,8 +25,6 @@ struct UpdatePauseArgs: Sendable, Equatable {
 actor MockRpApiClient: RpApiClient {
     enum Call: Sendable, Equatable {
         case listChannels
-        case play(channel: Int, bitrate: Int, event: Int, action: PlayAction, audioType: String?, episodeId: Int?, sliceNum: String?)
-        case getBlock(channel: Int, bitrate: Int, event: Int)
         case gapless(channel: Int, bitrate: Int, numSongs: Int)
         case info(songId: Int)
         case rate(songId: Int, rating: Int)
@@ -34,19 +32,14 @@ actor MockRpApiClient: RpApiClient {
     }
 
     private(set) var calls: [Call] = []
-    private(set) var playCancellations: Int = 0
     var updateHistoryCalls: [UpdateHistoryArgs] = []
     var updatePauseCalls: [UpdatePauseArgs] = []
 
-    var playDelayNanos: UInt64 = 0
-    var blockResponses: [GetBlock] = []
-    var getBlockResponses: [GetBlock] = []
     var gaplessResponse: GaplessResponse?
     var gaplessResponses: [GaplessResponse] = []
     var gaplessByChannel: [Int: GaplessResponse] = [:]
     var gaplessError: Error?
     var gaplessDelayNanos: UInt64 = 0
-    var getBlockError: Error?
     var listChannelsResponse: [Channel] = []
     var listChannelsError: Error?
     var infoResponse: SongInfo?
@@ -55,23 +48,6 @@ actor MockRpApiClient: RpApiClient {
     var authStateResponse: Auth = Auth(userId: nil, postOk: nil, username: nil, level: nil,
                                         countryCode: nil, avatar: nil, privmsgNew: nil, status: nil)
     var authStateError: Error?
-
-    func setBlockResponses(_ responses: [GetBlock]) {
-        self.blockResponses = responses
-    }
-
-    func setGetBlockResponses(_ responses: [GetBlock]) {
-        self.getBlockResponses = responses
-        self.getBlockError = nil
-    }
-
-    func setGetBlockError(_ error: Error) {
-        self.getBlockError = error
-    }
-
-    func setPlayDelay(nanos: UInt64) {
-        self.playDelayNanos = nanos
-    }
 
     func setInfoResponse(_ response: SongInfo) {
         self.infoResponse = response
@@ -140,33 +116,6 @@ actor MockRpApiClient: RpApiClient {
         self.gaplessDelayNanos = nanos
     }
 
-
-    func getBlock(channel: Int, bitrate: Int, event: Int) async throws -> GetBlock {
-        calls.append(.getBlock(channel: channel, bitrate: bitrate, event: event))
-        if let error = getBlockError { throw error }
-        guard !getBlockResponses.isEmpty else {
-            throw RpApiError.network(URLError(.unknown))
-        }
-        return getBlockResponses.removeFirst()
-    }
-
-    func play(channel: Int, bitrate: Int, event: Int, action: PlayAction,
-              audioType: String?, episodeId: Int?, sliceNum: String?) async throws -> GetBlock {
-        calls.append(.play(channel: channel, bitrate: bitrate, event: event, action: action,
-                           audioType: audioType, episodeId: episodeId, sliceNum: sliceNum))
-        if playDelayNanos > 0 {
-            do {
-                try await Task.sleep(nanoseconds: playDelayNanos)
-            } catch {
-                playCancellations += 1
-                throw error
-            }
-        }
-        guard !blockResponses.isEmpty else {
-            throw RpApiError.network(URLError(.unknown))
-        }
-        return blockResponses.removeFirst()
-    }
 
     func info(songId: Int) async throws -> SongInfo {
         calls.append(.info(songId: songId))

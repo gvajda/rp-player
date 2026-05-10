@@ -14,14 +14,14 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var ambientBackgroundEnabled: Bool
     public var popoverStyle: PopoverStyle
     public var frostedUpcomingEnabled: Bool
-    /// Radio Paradise bitrate code passed to `api/play`.
+    /// Radio Paradise bitrate code passed to `api/gapless`.
     /// 0 = 32k aac, 1 = 64k aac, 2 = 128k aac, 3 = 320k aac, 4 = flac, 5 = 128k mp3, 6 = 320k mp3.
     /// Default 4 (FLAC) to honour the project's bit-perfect goal.
     public var bitrate: Int
     public var outputDeviceUID: String?
     public var logLevel: AppLogger.Level
     public var verboseLoggingEnabled: Bool
-    /// Stable per-install `rp3_<uuid>` identifier sent as `player_id` URL param to `api/play` (and future telemetry endpoints). Generated lazily by AppContainer on first launch when nil.
+    /// Stable per-install `rp3_<uuid>` identifier sent as `player_id` URL param to `api/gapless` (and telemetry endpoints). Generated lazily by AppContainer on first launch when nil.
     public var playerId: String?
     public var upcomingRowCount: Int
     // Chan 42 and 99 are always excluded from the Upcoming Program view regardless of this list.
