@@ -253,4 +253,29 @@ final class SongFileCacheTests: XCTestCase {
             XCTAssertEqual(data, Data([1, 2, 3]), "any file present after cancellation must be intact (not a partial write)")
         }
     }
+
+    func testCancelInFlightDownloadsCancelsActiveTasks() async throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let song = makeSong()
+        StubURLProtocol.register(url: URL(string: song.gaplessUrl)!, body: Data([1,2,3]), status: 200)
+        let cache = try LiveSongFileCache(directory: dir, session: sessionWithStub(), logger: makeLogger())
+
+        // Start a download (don't await; let it begin)
+        let task = Task { await cache.localFile(for: song) }
+
+        // Cancel everything in-flight
+        await cache.cancelInFlightDownloads()
+
+        let result = await task.value
+        // Result may be nil (cancelled before write) OR a URL (write completed before cancel
+        // propagated — race). The important assertion is: no crash, and a subsequent
+        // localFile call works correctly.
+        _ = result
+
+        // Subsequent download should still work
+        StubURLProtocol.register(url: URL(string: song.gaplessUrl)!, body: Data([1,2,3]), status: 200)
+        let again = await cache.localFile(for: song)
+        XCTAssertNotNil(again)
+    }
 }

@@ -953,9 +953,9 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
                        "nowPlaying must advance to s2 when mpv reports the local cache path")
     }
 
-    // MARK: - Cache-clearing on lifecycle transitions (Task 11)
+    // MARK: - Cancel-in-flight-downloads on lifecycle transitions
 
-    func testChangeChannelClearsSongFileCache() async throws {
+    func testChangeChannelCancelsInFlightDownloads() async throws {
         let api = MockRpApiClient()
         let engine = MockPlayerEngine()
         let cache = MockSongFileCache()
@@ -967,18 +967,18 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
             api: api, engine: engine, songFileCache: cache, logger: silentLogger(), bitrateProvider: { 4 }
         )
         try await coordinator.play(channelId: 0)
-        let clearsBefore = await cache.clearCalls
+        let cancelsBefore = await cache.cancelInFlightCalls
 
         try await coordinator.changeChannel(to: 1)
 
-        // Allow the detached Task { await cacheRef.clear() } to run.
+        // Allow the detached Task { await cacheRef.cancelInFlightDownloads() } to run.
         try await Task.sleep(nanoseconds: 100_000_000)
 
-        let clearsAfter = await cache.clearCalls
-        XCTAssertGreaterThanOrEqual(clearsAfter, clearsBefore + 1)
+        let cancelsAfter = await cache.cancelInFlightCalls
+        XCTAssertGreaterThanOrEqual(cancelsAfter, cancelsBefore + 1)
     }
 
-    func testStopClearsSongFileCache() async throws {
+    func testStopCancelsInFlightDownloads() async throws {
         let api = MockRpApiClient()
         let engine = MockPlayerEngine()
         let cache = MockSongFileCache()
@@ -990,14 +990,14 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
             api: api, engine: engine, songFileCache: cache, logger: silentLogger(), bitrateProvider: { 4 }
         )
         try await coordinator.play(channelId: 0)
-        let clearsBefore = await cache.clearCalls
+        let cancelsBefore = await cache.cancelInFlightCalls
         try await coordinator.stop()
         try await Task.sleep(nanoseconds: 100_000_000)
-        let clearsAfter = await cache.clearCalls
-        XCTAssertGreaterThanOrEqual(clearsAfter, clearsBefore + 1)
+        let cancelsAfter = await cache.cancelInFlightCalls
+        XCTAssertGreaterThanOrEqual(cancelsAfter, cancelsBefore + 1)
     }
 
-    func testShutdownClearsSongFileCache() async throws {
+    func testShutdownCancelsInFlightDownloads() async throws {
         let api = MockRpApiClient()
         let engine = MockPlayerEngine()
         let cache = MockSongFileCache()
@@ -1009,13 +1009,13 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
             api: api, engine: engine, songFileCache: cache, logger: silentLogger(), bitrateProvider: { 4 }
         )
         try await coordinator.play(channelId: 0)
-        let clearsBefore = await cache.clearCalls
+        let cancelsBefore = await cache.cancelInFlightCalls
         await coordinator.shutdown()
-        let clearsAfter = await cache.clearCalls
-        XCTAssertGreaterThanOrEqual(clearsAfter, clearsBefore + 1)
+        let cancelsAfter = await cache.cancelInFlightCalls
+        XCTAssertGreaterThanOrEqual(cancelsAfter, cancelsBefore + 1)
     }
 
-    func testHandlePlaybackErrorClearsSongFileCache() async throws {
+    func testHandlePlaybackErrorCancelsInFlightDownloads() async throws {
         let api = MockRpApiClient()
         let engine = MockPlayerEngine()
         let cache = MockSongFileCache()
@@ -1027,13 +1027,13 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
             api: api, engine: engine, songFileCache: cache, logger: silentLogger(), bitrateProvider: { 4 }
         )
         try await coordinator.play(channelId: 0)
-        let clearsBefore = await cache.clearCalls
+        let cancelsBefore = await cache.cancelInFlightCalls
 
         await engine.fire(.fileEnded(reason: .error(code: -14)))
         try await Task.sleep(nanoseconds: 150_000_000)
 
-        let clearsAfter = await cache.clearCalls
-        XCTAssertGreaterThanOrEqual(clearsAfter, clearsBefore + 1)
+        let cancelsAfter = await cache.cancelInFlightCalls
+        XCTAssertGreaterThanOrEqual(cancelsAfter, cancelsBefore + 1)
     }
 
     func testPlayFallsBackToRemoteUrlWhenCacheFails() async throws {
