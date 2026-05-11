@@ -15,6 +15,10 @@ public final class NotificationCoordinator {
     private let channelTitle: ChannelTitleProvider
     private let cachedFileURL: CachedFileURLProvider
     private var subscriptionTask: Task<Void, Never>?
+    // Coordinator emits NowPlaying twice per song-start (immediate emit from play/skip/resume/error-recovery,
+    // then again from syncQueueHeadFromMpv on mpv's MPV_EVENT_START_FILE). UI is idempotent; notifications
+    // are not — request id uses fresh UUID by design so replays get fresh entries. Dedup back-to-back same-event.
+    private var lastNotifiedKey: (channelId: Int, eventId: Int)?
 
     public init(
         coordinator: any PlaybackCoordinator,
@@ -55,6 +59,9 @@ public final class NotificationCoordinator {
     private func handle(_ np: NowPlaying) async {
         await registry.record(PlayListSong(from: np.song))
         guard await notificationsEnabled() else { return }
+        let key = (channelId: np.channelId, eventId: np.song.eventId)
+        if let last = lastNotifiedKey, last == key { return }
+        lastNotifiedKey = key
         let title = "\(np.song.artist) — \(np.song.title)"
         let subtitlePrefix = np.song.album ?? ""
         let channel = await channelTitle(np.channelId) ?? ""

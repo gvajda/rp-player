@@ -9,12 +9,15 @@ extension NowPlaying {
         cover: String? = nil,
         userRating: String? = nil,
         songId: String = "1",
+        eventId: Int = 100,
+        channelId: Int = 0,
         songDurationSeconds: Double = 180
     ) -> NowPlaying {
         NowPlaying(
-            channelId: 0,
+            channelId: channelId,
             song: makeGaplessSong(
                 songId: songId,
+                eventId: eventId,
                 artist: artist,
                 title: title,
                 album: album,

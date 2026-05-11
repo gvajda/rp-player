@@ -66,6 +66,38 @@ final class NotificationCoordinatorTests: XCTestCase {
         XCTAssertTrue(calls.isEmpty)
     }
 
+    func testDedupesBackToBackEmissionsForSameSong() async throws {
+        await sut.start()
+        // Coordinator emits NowPlaying twice per song-start (synchronous emit from play/skip/resume,
+        // then again from syncQueueHeadFromMpv on mpv's MPV_EVENT_START_FILE). Notify only once.
+        await coordinator.setNowPlaying(.fixture(songId: "42", eventId: 555))
+        try await Task.sleep(nanoseconds: 50_000_000)
+        await coordinator.setNowPlaying(.fixture(songId: "42", eventId: 555))
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let calls = await service.notifyCalls
+        XCTAssertEqual(calls.count, 1)
+    }
+
+    func testNotifiesAgainWhenEventIdChanges() async throws {
+        await sut.start()
+        await coordinator.setNowPlaying(.fixture(songId: "42", eventId: 100))
+        try await Task.sleep(nanoseconds: 50_000_000)
+        await coordinator.setNowPlaying(.fixture(songId: "42", eventId: 101))
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let calls = await service.notifyCalls
+        XCTAssertEqual(calls.count, 2)
+    }
+
+    func testNotifiesAgainWhenChannelChanges() async throws {
+        await sut.start()
+        await coordinator.setNowPlaying(.fixture(songId: "42", eventId: 555, channelId: 0))
+        try await Task.sleep(nanoseconds: 50_000_000)
+        await coordinator.setNowPlaying(.fixture(songId: "42", eventId: 555, channelId: 1))
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let calls = await service.notifyCalls
+        XCTAssertEqual(calls.count, 2)
+    }
+
     func testRecordsSongInRegistryEvenWhenNotificationsDisabled() async throws {
         let registry = SongRegistry()
         let sut = NotificationCoordinator(
