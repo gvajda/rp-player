@@ -230,8 +230,11 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         let now = clock()
         let pausedFor: TimeInterval? = pausedAt.map { now.timeIntervalSince($0) }
         let longIdle = (pausedFor ?? 0) >= Self.longIdleResumeThresholdSeconds
-        if longIdle {
-            logger.info("resume: long idle (\(Int(pausedFor ?? 0))s >= \(Int(Self.longIdleResumeThresholdSeconds))s), refetching gapless")
+
+        // If queue[0]'s cached file was evicted during pause, mpv will fail re-opening
+        // the file:// URL. Fall back to the legacy refetch+restart path.
+        if longIdle && songFileCache.cachedFile(for: queue[0]) == nil {
+            logger.warn("resume: cache miss for queue[0]; falling back to refetch+restart")
             try? await engine.clearPlaylist()
             queue = []
             currentResponse = nil
@@ -239,39 +242,45 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             pausedAt = nil
             pausePositionMs = 0
             try await play(channelId: channelId)
-            armLongIdleStallWatchdog()
             return
         }
-        logger.debug("resume: short idle, engine.resume()")
+
         await prePlayHook()
         do { try await engine.resume() } catch { throw PlaybackCoordinatorError.engineError(message: String(describing: error)) }
         emitState(.playing)
-        guard pausedAt != nil, currentSongInQueueAvailable() else {
-            pausedAt = nil
-            pausePositionMs = 0
-            return
-        }
+
         let song = queue[0]
-        guard song.updateHistory else {
-            pausedAt = nil
-            pausePositionMs = 0
-            return
+        if pausedAt != nil, song.updateHistory {
+            let ppm = pausePositionMs
+            let ts = Int(clock().timeIntervalSince1970)
+            let songId = song.songId
+            let event = String(song.eventId)
+            let audioType = song.type
+            let sliceNum = String(song.sliceNum)
+            let api = self.api
+            Task.detached {
+                try? await api.updateHistory(
+                    songId: songId, chan: channelId, event: event, audioType: audioType,
+                    sliceNum: sliceNum, playPositionMillis: ppm, playtimeSecs: ts,
+                    pauseFlag: true
+                )
+            }
         }
-        let ppm = pausePositionMs
-        let ts = Int(clock().timeIntervalSince1970)
-        let songId = song.songId
-        let event = String(song.eventId)
-        let audioType = song.type
-        let sliceNum = String(song.sliceNum)
-        let api = self.api
         pausedAt = nil
         pausePositionMs = 0
-        Task.detached {
-            try? await api.updateHistory(
-                songId: songId, chan: channelId, event: event, audioType: audioType,
-                sliceNum: sliceNum, playPositionMillis: ppm, playtimeSecs: ts,
-                pauseFlag: true
-            )
+
+        // Long-idle catch-up: drop stale tail beyond queue[1]; refetch in background.
+        if longIdle {
+            logger.info("resume: long idle (\(Int(pausedFor ?? 0))s), kicking background catch-up")
+            if queue.count > 2 {
+                queue = Array(queue.prefix(2))
+            }
+            // Stop downloading the old tail. New tail starts after refetch resolves.
+            downloaderTask?.cancel()
+            downloaderTask = nil
+            let cacheRef = songFileCache
+            Task { await cacheRef.cancelInFlightDownloads() }
+            kickRefetch()
         }
     }
 

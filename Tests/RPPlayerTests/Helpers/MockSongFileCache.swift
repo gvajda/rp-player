@@ -35,7 +35,12 @@ actor MockSongFileCache: SongFileCache {
         }
     }
 
+    /// Override per-song return value for cachedFile. Set to nil for the default (return nil for all songs).
+    /// Use a nonisolated(unsafe) var so the closure can be mutated from test setup before the coordinator runs.
+    nonisolated(unsafe) var cachedFileOverride: (@Sendable (GaplessSong) -> URL?)?
+
     nonisolated func cachedFile(for song: GaplessSong) -> URL? {
+        if let override = cachedFileOverride { return override(song) }
         // Cannot read actor state nonisolated — return nil here.
         // Coordinator code that depends on cachedFile semantics falls into the
         // awaited localFile path in tests, which is fine since the mock resolves
