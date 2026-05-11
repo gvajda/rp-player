@@ -9,19 +9,24 @@ public protocol SongFileCache: Sendable {
 }
 
 public actor LiveSongFileCache: SongFileCache {
+    public static let defaultMaxFiles = 10
+
     nonisolated private let directory: URL
     private let session: URLSession
     private let logger: any Logging
+    private let maxFiles: Int
     private var inFlight: [String: Task<URL?, Never>] = [:]
 
     public init(
         directory: URL,
         session: URLSession = .shared,
-        logger: any Logging
+        logger: any Logging,
+        maxFiles: Int = LiveSongFileCache.defaultMaxFiles
     ) throws {
         self.directory = directory
         self.session = session
         self.logger = logger
+        self.maxFiles = maxFiles
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     }
 
@@ -90,10 +95,34 @@ public actor LiveSongFileCache: SongFileCache {
                 return nil
             }
             try data.write(to: fileURL, options: [.atomic])
+            evictOldestIfNeeded()
             return fileURL
         } catch {
             logger.error("SongFileCache fetch threw: \(error.localizedDescription) for \(url.absoluteString)")
             return nil
+        }
+    }
+
+    private func evictOldestIfNeeded() {
+        let fm = FileManager.default
+        guard let entries = try? fm.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        ) else { return }
+        if entries.count <= maxFiles { return }
+
+        var aged: [(URL, Date)] = []
+        for url in entries {
+            if let date = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate {
+                aged.append((url, date))
+            }
+        }
+        aged.sort { $0.1 < $1.1 }
+
+        while aged.count > maxFiles, let oldest = aged.first {
+            try? fm.removeItem(at: oldest.0)
+            aged.removeFirst()
         }
     }
 

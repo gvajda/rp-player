@@ -202,6 +202,28 @@ final class SongFileCacheTests: XCTestCase {
         XCTAssertEqual(Set(results.compactMap { $0 }).count, 1)
     }
 
+    func testEvictsOldestWhenOverMaxFiles() async throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let cache = try LiveSongFileCache(
+            directory: dir,
+            session: sessionWithStub(),
+            logger: makeLogger(),
+            maxFiles: 3
+        )
+        // Download 5 distinct songs; only the 3 most recent should survive.
+        for i in 1...5 {
+            let song = makeSong(url: "https://s.example.com/song-\(i).flac", eventId: i)
+            StubURLProtocol.register(url: URL(string: song.gaplessUrl)!, body: Data([UInt8(i)]), status: 200)
+            _ = await cache.localFile(for: song)
+            // sleep 50ms so mtimes are distinct enough for the sort to be deterministic
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+
+        let entries = try FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
+        XCTAssertEqual(entries.count, 3, "cache should have evicted down to maxFiles=3")
+    }
+
     // Cancellation contract: when the caller's Task is cancelled before
     // localFile resumes, downloadAndStore must not leave a file on disk.
     // The stub fires synchronously so the write race may still complete
