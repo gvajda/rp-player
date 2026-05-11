@@ -868,10 +868,6 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         self.refetchTask = nil
     }
 
-    private func markQueueHeadPending() {
-        lastStartedEventId = nil
-    }
-
     private func unregister(id: UUID) { continuations.removeValue(forKey: id) }
     private func unregisterPosition(id: UUID) { positionContinuations.removeValue(forKey: id) }
     private func unregisterState(id: UUID) { stateContinuations.removeValue(forKey: id) }
