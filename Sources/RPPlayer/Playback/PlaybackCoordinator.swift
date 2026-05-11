@@ -95,9 +95,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     public var nowPlaying: NowPlaying? { current }
     public var currentPlaybackState: PlaybackState { currentState }
 
-    #if DEBUG
-    public func snapshotQueueIds() -> [Int] { queue.map { $0.eventId } }
-    #endif
+    func snapshotQueueIds() -> [Int] { queue.map { $0.eventId } }
 
     public var nowPlayingUpdates: AsyncStream<NowPlaying> {
         let id = UUID()

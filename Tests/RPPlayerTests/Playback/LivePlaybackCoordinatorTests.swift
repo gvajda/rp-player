@@ -1135,7 +1135,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         // play() consumes the first response; kickRefetch (queue<3 triggers after play) consumes the second.
         let initial = makeGaplessResponse(songs: [songA, songB, songC])
         let merge = makeGaplessResponse(songs: [songB, songD, songE])
-        await api.setGaplessResponses([initial, merge, merge])
+        await api.setGaplessResponses([initial, merge])
         let engine = MockPlayerEngine()
         let coord = LivePlaybackCoordinator(
             api: api, engine: engine, songFileCache: MockSongFileCache(),
