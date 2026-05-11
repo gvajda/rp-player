@@ -6,6 +6,14 @@ Section labels: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`
 
 ## [Unreleased]
 
+### Fixed
+
+- Long-idle resume preserves the currently paused song. Resume after a multi-hour pause now `engine.resume()`s the cached, paused queue head (mpv's playlist still holds the queueNext'd queue[1]), then truncates the in-memory queue to `[queue[0], queue[1]]` and kicks a background `api/gapless` refetch. The merged response appends as the new tail (filter `eventId > queue.last!.eventId`), so playback catches up to the backend's current cursor at the queue[1]→queue[2] boundary instead of abruptly cancelling the user's song. Cache-miss for queue[0] (LRU eviction during pause) falls through to the legacy `clearPlaylist + refetch + restart` path. The double-resume race (user clicks play twice when audio doesn't start instantly because the old code blocked on the synchronous refetch) is gone — `engine.resume()` now returns essentially instantly.
+
+### Removed
+
+- PR 30's long-idle stall watchdog (`armLongIdleStallWatchdog`, `cancelStallWatchdog`, `waitForFirstPositionUpdate`, `logStallWatchdogTimeout`, `surfaceStallError` in `LivePlaybackCoordinator`; `stallWatchdog` field; `stallWatchdogTimeoutSeconds` constant; `sleep:` init param + `private let sleep` field; 7 `cancelStallWatchdog()` call sites across play / pause / stop / skipForward / changeChannel / shutdown / handlePlaybackError; `Tests/RPPlayerTests/Playback/LivePlaybackCoordinatorStallWatchdogTests.swift` file with inline `ControllableSleep` helper + 6 tests; `markQueueHeadPending` dead helper). The defense protected against mpv getting stuck on an HTTP `ffurl_read` after a long pause; with PR 32's local cache the resumed song is a `file://` URL, so the failure mode is unreachable. Historical rationale stays documented in the CLAUDE.md PR 30 entry for revival reference.
+
 ## [v0.6.1] - 2026-05-11
 
 ### Added
