@@ -768,14 +768,17 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         prefetchUpcomingSongArt()
     }
 
-    // Warm the album-art cache for the song that will play next so the popover
-    // doesn't show a blank tile during the cross-fade.
+    // Warm the album-art cache for the next two songs so the popover never
+    // shows a blank tile during transitions. Matches the song-file prefetch
+    // depth (queue[1] + queue[2]) so art lands at the same cadence audio does.
     private func prefetchUpcomingSongArt() {
-        guard queue.count >= 2 else { return }
-        let nextSong = queue[1]
-        let cover = nextSong.coverLarge ?? nextSong.coverMedium
-        guard let cover, !cover.isEmpty else { return }
-        prefetchArt(cover)
+        for offset in 1...2 {
+            guard queue.count > offset else { return }
+            let cover = queue[offset].coverLarge ?? queue[offset].coverMedium
+            if let cover, !cover.isEmpty {
+                prefetchArt(cover)
+            }
+        }
     }
 
     private func fireSongStartTelemetry(song: GaplessSong, channelId: Int) {
