@@ -1329,7 +1329,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
 
         let calls = await engine.recordedCalls()
         let resumeCount = calls.filter { $0 == .resume }.count
-        XCTAssertTrue(resumeCount >= 1 && resumeCount <= 2, "resume should be called 1 or 2 times; got=\(resumeCount)")
+        XCTAssertEqual(resumeCount, 2, "first resume = long-idle path, second = short-idle (pausedAt nil); both call engine.resume; got=\(resumeCount)")
 
         // Tail from first kickRefetch should eventually settle.
         try await waitUntil({

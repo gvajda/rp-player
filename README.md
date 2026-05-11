@@ -30,7 +30,7 @@ MacOS Gatekeeper blocks apps that aren't notarised. You have two options:
 3. Click **Open Anyway** next to the message about RP Player, then authenticate with your admin password.
 4. Launch `RP Player.app` again and confirm the final prompt.
 
-> ⚠ You must complete step 2 within an hour of the first blocked attempt.
+> **⚠** You must complete step 2 within an hour of the first blocked attempt.
 
 **Option B — Terminal:**
 
