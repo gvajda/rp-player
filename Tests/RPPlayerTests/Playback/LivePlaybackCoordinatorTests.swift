@@ -902,6 +902,57 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
                        "skipForward sync-refetch must engine.play the cache-resolved local URL. recorded=\(recorded)")
     }
 
+    /// Regression: PR 32 download-then-play hands mpv a local file path, not the
+    /// remote gaplessUrl. mpv's `path` property therefore returns the local file
+    /// path (no scheme). syncQueueHeadFromMpv must match queue entries against
+    /// SongFileCache.expectedLocalPath in addition to gaplessUrl, otherwise the
+    /// queue head never advances and the UI / telemetry / prefetch chain stalls.
+    func testBoundaryAdvanceMatchesByLocalFilePath() async throws {
+        let api = MockRpApiClient()
+        let engine = MockPlayerEngine()
+        let tmpDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("rp-syncqueue-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+        let cache = try LiveSongFileCache(
+            directory: tmpDir,
+            session: URLSession.shared,
+            logger: silentLogger()
+        )
+        let song1 = makeGaplessSong(songId: "s1", eventId: 100, gaplessUrl: "https://s.example.com/1.flac")
+        let song2 = makeGaplessSong(songId: "s2", eventId: 101, gaplessUrl: "https://s.example.com/2.flac")
+        let song3 = makeGaplessSong(songId: "s3", eventId: 102, gaplessUrl: "https://s.example.com/3.flac")
+        let response = makeGaplessResponse(songs: [song1, song2, song3])
+        await api.setGaplessResponse(response)
+
+        let coord = LivePlaybackCoordinator(
+            api: api, engine: engine, songFileCache: cache, logger: silentLogger(), bitrateProvider: { 4 }
+        )
+        try await coord.play(channelId: 0)
+
+        // Initial fileStarted seeds lastStartedEventId. We bypass the real download
+        // path here (URLSession.shared on a fake URL would fail) — coordinator's
+        // localFile resolution falls back to URL(string: gaplessUrl) when the cache
+        // returns nil, so engine.play got the remote URL. Set simulated path to
+        // match the queue head's gaplessUrl so initial sync succeeds.
+        await engine.setSimulatedCurrentPath(URL(string: song1.gaplessUrl))
+        await engine.fire(.fileStarted)
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        // Simulate mpv reporting the LOCAL file path (no scheme) for song2 — the
+        // PR 32 production path where the cache hit returns a file:// URL and
+        // mpv strips the scheme to /path/to/file.flac. This is the bug case: the
+        // old lookup compared only against gaplessUrl and fell back to queue[0].
+        let song2LocalPath = cache.expectedLocalPath(for: song2).path
+        await engine.setSimulatedCurrentPath(raw: song2LocalPath)
+        await engine.fire(.fileStarted)
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        let np = await coord.nowPlaying
+        XCTAssertEqual(np?.song.songId, "s2",
+                       "nowPlaying must advance to s2 when mpv reports the local cache path")
+    }
+
     // MARK: - Cache-clearing on lifecycle transitions (Task 11)
 
     func testChangeChannelClearsSongFileCache() async throws {

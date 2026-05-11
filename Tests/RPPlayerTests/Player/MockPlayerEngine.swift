@@ -27,6 +27,10 @@ actor MockPlayerEngine: PlayerEngine {
 
     /// Set the URL string that `currentPath()` will return. Tests fire `.fileStarted` after setting this so the coordinator's resync logic finds the right queue index.
     func setSimulatedCurrentPath(_ url: URL?) { simulatedCurrentPath = url?.absoluteString }
+    /// Set the raw path string that `currentPath()` will return. Real mpv reports
+    /// local-file paths without a `file://` scheme prefix; use this to simulate
+    /// that behavior in path-matching tests.
+    func setSimulatedCurrentPath(raw: String?) { simulatedCurrentPath = raw }
 
     func setNextError(_ error: Error) { nextError = error }
 

@@ -603,6 +603,9 @@ private actor NoopSongFileCache: SongFileCache {
     nonisolated func cachedFile(for song: GaplessSong) -> URL? { nil }
     func evict(_ song: GaplessSong) async {}
     func clear() async {}
+    nonisolated func expectedLocalPath(for song: GaplessSong) -> URL {
+        URL(string: song.gaplessUrl) ?? URL(fileURLWithPath: "/dev/null")
+    }
 }
 
 private struct NoopPlayerEngine: PlayerEngine {

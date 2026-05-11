@@ -6,6 +6,10 @@ public protocol SongFileCache: Sendable {
     func cachedFile(for song: GaplessSong) -> URL?
     func evict(_ song: GaplessSong) async
     func clear() async
+    /// File URL where this song would be cached, regardless of whether it
+    /// currently exists on disk. Used by the coordinator to match mpv's
+    /// reported current-file path back to a song in the queue.
+    func expectedLocalPath(for song: GaplessSong) -> URL
 }
 
 public actor LiveSongFileCache: SongFileCache {
@@ -55,6 +59,11 @@ public actor LiveSongFileCache: SongFileCache {
         let filename = Self.cacheFilename(for: song)
         let fileURL = directory.appendingPathComponent(filename)
         return FileManager.default.fileExists(atPath: fileURL.path) ? fileURL : nil
+    }
+
+    public nonisolated func expectedLocalPath(for song: GaplessSong) -> URL {
+        let filename = Self.cacheFilename(for: song)
+        return directory.appendingPathComponent(filename)
     }
 
     public func evict(_ song: GaplessSong) {

@@ -51,4 +51,11 @@ actor MockSongFileCache: SongFileCache {
         clearCalls += 1
         downloadedEventIds.removeAll()
     }
+
+    nonisolated func expectedLocalPath(for song: GaplessSong) -> URL {
+        // Tests using .passthrough mode treat the remote URL as "the path mpv sees".
+        // For .downloaded(URL) tests that need path-matching, drive the engine's
+        // simulated currentPath() to match the URL the test passed into setMode.
+        URL(string: song.gaplessUrl) ?? URL(fileURLWithPath: "/dev/null")
+    }
 }

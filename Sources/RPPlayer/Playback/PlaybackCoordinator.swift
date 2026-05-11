@@ -675,12 +675,24 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     private func syncQueueHeadFromMpv() async {
         guard !queue.isEmpty else { return }
         let path = await engine.currentPath()
-        // Locate mpv's actual playing URL in the queue. If unknown, fall back to queue[0] (fast path / test fallback).
+        // Locate mpv's actual playing URL in the queue. mpv may report either the
+        // remote gaplessUrl (passthrough / fallback) or the local cache file path
+        // (PR 32 normal path: download-then-play). Match against both.
         let idx: Int
-        if let path, let found = queue.firstIndex(where: { $0.gaplessUrl == path }) {
-            idx = found
+        if let path {
+            let cache = songFileCache
+            let found = queue.firstIndex { song in
+                if song.gaplessUrl == path { return true }
+                // mpv reports the path without a file:// scheme; URL.path strips it too.
+                return cache.expectedLocalPath(for: song).path == path
+            }
+            if let found {
+                idx = found
+            } else {
+                logger.warn("syncQueueHead: mpv path \(path) not found in queue; falling back to queue[0]")
+                idx = 0
+            }
         } else {
-            if let path { logger.warn("syncQueueHead: mpv path \(path) not found in queue; falling back to queue[0]") }
             idx = 0
         }
         let head = queue[idx]
