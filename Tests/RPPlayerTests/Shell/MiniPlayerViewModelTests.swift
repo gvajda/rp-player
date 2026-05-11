@@ -568,6 +568,15 @@ final class MiniPlayerViewModelTests: XCTestCase {
 
     func testRequestOpenUpdatePanelInvokesClosureAndDismisses() async throws {
         let spy = SpyUpdateCheckerForMiniPlayer()
+        let info = ReleaseInfo(
+            tagName: "v0.5.0",
+            version: SemVer(major: 0, minor: 5, patch: 0),
+            publishedAt: Date(),
+            body: "",
+            htmlUrl: URL(string: "https://example.com")!,
+            dmgAssetUrl: nil
+        )
+        await spy.setState(.available(info, dismissedFromButton: false))
         let vm = MiniPlayerViewModel(
             coordinator: coordinator,
             api: api,
@@ -583,20 +592,47 @@ final class MiniPlayerViewModelTests: XCTestCase {
         vm.openUpdatePanel = { openCount += 1 }
         await vm.requestOpenUpdatePanel()
         XCTAssertEqual(openCount, 1)
+        let checked = await spy.checkNowCount
+        XCTAssertEqual(checked, 1)
         let dismissed = await spy.dismissCount
         XCTAssertEqual(dismissed, 1)
+    }
+
+    func testRequestOpenUpdatePanelSkipsWhenCheckNowFindsUpToDate() async throws {
+        let spy = SpyUpdateCheckerForMiniPlayer()
+        await spy.setState(.upToDate(checkedAt: Date()))
+        let vm = MiniPlayerViewModel(
+            coordinator: coordinator,
+            api: api,
+            initialChannelId: 0,
+            albumArtCache: StubAlbumArtCache(),
+            auth: auth,
+            configStore: StubConfigStore(initial: .default),
+            paletteExtractor: StubAmbientPaletteExtractor(),
+            openSettings: {},
+            updateChecker: spy
+        )
+        var openCount = 0
+        vm.openUpdatePanel = { openCount += 1 }
+        await vm.requestOpenUpdatePanel()
+        XCTAssertEqual(openCount, 0)
+        let checked = await spy.checkNowCount
+        XCTAssertEqual(checked, 1)
+        let dismissed = await spy.dismissCount
+        XCTAssertEqual(dismissed, 0)
     }
 
 }
 
 private actor SpyUpdateCheckerForMiniPlayer: UpdateChecking {
     private(set) var dismissCount = 0
+    private(set) var checkNowCount = 0
     private var state: UpdateState = .unknown
 
     func setState(_ next: UpdateState) { state = next }
 
     func start() async {}
-    func checkNow() async {}
+    func checkNow() async { checkNowCount += 1 }
     func dismissCurrentForButton() async { dismissCount += 1 }
     var stateUpdates: AsyncStream<UpdateState> {
         AsyncStream { continuation in

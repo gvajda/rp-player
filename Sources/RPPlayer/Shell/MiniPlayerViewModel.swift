@@ -334,8 +334,13 @@ final class MiniPlayerViewModel: ObservableObject {
     }
 
     func requestOpenUpdatePanel() async {
-        openUpdatePanel()
-        await updateChecker.dismissCurrentForButton()
+        await updateChecker.checkNow()
+        let state = await updateChecker.currentState
+        applyUpdateState(state)
+        if case .available = state {
+            openUpdatePanel()
+            await updateChecker.dismissCurrentForButton()
+        }
     }
 
     func refreshAuthState() {
