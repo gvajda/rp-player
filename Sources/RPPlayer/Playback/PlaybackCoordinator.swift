@@ -31,7 +31,6 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     private let logger: any Logging
     private let bitrateProvider: @Sendable () async -> Int
     private let clock: @Sendable () -> Date
-    private let sleep: @Sendable (UInt64) async -> Void
     private let prefetchArt: @Sendable (String) -> Void
     private var pausedAt: Date? = nil
     private var pausePositionMs: Int = 0
@@ -51,14 +50,12 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     private var eventTask: Task<Void, Never>?
     private var refetchTask: Task<Void, Never>?
     private var downloaderTask: Task<Void, Never>?
-    private var stallWatchdog: Task<Void, Never>?
     private var isShutdown = false
     private var errorsContinuation: AsyncStream<String>.Continuation?
     private var consecutivePlaybackFailures = 0
     private static let maxConsecutivePlaybackFailures = 3
     // 59m, just under typical 1h CDN TCP idle eviction; observed mpv stream-end after 8.5h pause.
     private static let longIdleResumeThresholdSeconds: TimeInterval = 59 * 60
-    private static let stallWatchdogTimeoutSeconds: TimeInterval = 10
 
     public var errors: AsyncStream<String>
 
@@ -72,7 +69,6 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         logger: any Logging,
         bitrateProvider: @escaping @Sendable () async -> Int,
         clock: @escaping @Sendable () -> Date = { Date() },
-        sleep: @escaping @Sendable (UInt64) async -> Void = { ns in try? await Task.sleep(nanoseconds: ns) },
         prefetchArt: @escaping @Sendable (String) -> Void = { _ in },
         onDeviceUnavailable: (@Sendable () async -> Void)? = nil,
         prePlayHook: @escaping @Sendable () async -> Void = {}
@@ -83,7 +79,6 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         self.logger = logger
         self.bitrateProvider = bitrateProvider
         self.clock = clock
-        self.sleep = sleep
         self.prefetchArt = prefetchArt
         self.onDeviceUnavailable = onDeviceUnavailable
         self.prePlayHook = prePlayHook
@@ -141,7 +136,6 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
 
     public func play(channelId: Int) async throws {
         logger.debug("play(channelId: \(channelId))")
-        cancelStallWatchdog()
         await ensureEventSubscription()
         let bitrate = await bitrateProvider()
         logger.debug("play resolved bitrate=\(bitrate)")
@@ -200,7 +194,6 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
 
     public func pause() async throws {
         logger.debug("pause()")
-        cancelStallWatchdog()
         guard !queue.isEmpty else { throw PlaybackCoordinatorError.notPlaying }
         do { try await engine.pause() } catch { throw PlaybackCoordinatorError.engineError(message: String(describing: error)) }
         emitState(.paused)
@@ -298,7 +291,6 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         // afterwards, a queued positionUpdate event processed during the
         // engine.stop suspension would see the still-active queue and could
         // spawn a fresh refetch task that survives the cleanup.
-        cancelStallWatchdog()
         refetchTask?.cancel()
         refetchTask = nil
         queue = []
@@ -315,7 +307,6 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
 
     public func skipForward() async throws {
         logger.debug("skipForward at queueCount=\(queue.count), pos=\(currentPositionSeconds)")
-        cancelStallWatchdog()
         guard !queue.isEmpty, let channelId = currentChannelId else {
             throw PlaybackCoordinatorError.notPlaying
         }
@@ -395,7 +386,6 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     }
 
     public func changeChannel(to channelId: Int) async throws {
-        cancelStallWatchdog()
         refetchTask?.cancel()
         refetchTask = nil
         try? await engine.clearPlaylist()
@@ -469,7 +459,6 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     public func shutdown() async {
         guard !isShutdown else { return }
         isShutdown = true
-        cancelStallWatchdog()
         refetchTask?.cancel()
         refetchTask = nil
         downloaderTask?.cancel()
@@ -594,7 +583,6 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         downloaderTask = nil
         let cacheRef = songFileCache
         Task { await cacheRef.cancelInFlightDownloads() }
-        cancelStallWatchdog()
         refetchTask?.cancel()
         refetchTask = nil
         currentChannelId = nil
@@ -882,81 +870,6 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
 
     private func markQueueHeadPending() {
         lastStartedEventId = nil
-    }
-
-    private func cancelStallWatchdog() {
-        stallWatchdog?.cancel()
-        stallWatchdog = nil
-    }
-
-    private func armLongIdleStallWatchdog() {
-        cancelStallWatchdog()
-        guard let head = queue.first,
-              let url = URL(string: head.gaplessUrl) else { return }
-        let snapshot = currentPositionSeconds
-        let retryStart: Double? = currentPositionSeconds > 0 ? currentPositionSeconds : nil
-        let timeoutNanoseconds = UInt64(Self.stallWatchdogTimeoutSeconds * 1_000_000_000)
-        stallWatchdog = Task { [weak self, url, snapshot, retryStart, timeoutNanoseconds] in
-            guard let self else { return }
-            if await self.waitForFirstPositionUpdate(snapshot: snapshot, timeoutNanoseconds: timeoutNanoseconds) { return }
-            if Task.isCancelled { return }
-            await self.logStallWatchdogTimeout(attempt: 1)
-            do {
-                try await self.engine.stop()
-                await self.markQueueHeadPending()
-                try await self.engine.play(url: url, startSeconds: retryStart)
-            } catch {
-                await self.surfaceStallError()
-                return
-            }
-            if await self.waitForFirstPositionUpdate(snapshot: snapshot, timeoutNanoseconds: timeoutNanoseconds) { return }
-            if Task.isCancelled { return }
-            await self.logStallWatchdogTimeout(attempt: 2)
-            await self.surfaceStallError()
-        }
-    }
-
-    private func waitForFirstPositionUpdate(snapshot: Double, timeoutNanoseconds: UInt64) async -> Bool {
-        let stream = positionUpdates
-        let sleep = self.sleep
-        return await withTaskGroup(of: Bool.self) { group in
-            group.addTask {
-                for await pos in stream {
-                    if pos != snapshot { return true }
-                }
-                return false
-            }
-            group.addTask {
-                await sleep(timeoutNanoseconds)
-                return false
-            }
-            let result = await group.next() ?? false
-            group.cancelAll()
-            return result
-        }
-    }
-
-    private func logStallWatchdogTimeout(attempt: Int) {
-        logger.info("stall watchdog: no positionUpdate within \(Int(Self.stallWatchdogTimeoutSeconds))s on attempt \(attempt)")
-    }
-
-    private func surfaceStallError() async {
-        logger.error("stall watchdog: surfacing error after retry timeout")
-        try? await engine.stop()
-        try? await engine.clearPlaylist()
-        cancelStallWatchdog()
-        refetchTask?.cancel()
-        refetchTask = nil
-        currentChannelId = nil
-        queue = []
-        currentResponse = nil
-        lastStartedEventId = nil
-        currentPositionSeconds = 0
-        pausedAt = nil
-        pausePositionMs = 0
-        current = nil
-        emitState(.stopped)
-        errorsContinuation?.yield("Playback stalled. Try Pause/Play to recover.")
     }
 
     private func unregister(id: UUID) { continuations.removeValue(forKey: id) }
