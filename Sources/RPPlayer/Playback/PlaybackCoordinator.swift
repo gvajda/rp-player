@@ -282,7 +282,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         downloaderTask?.cancel()
         downloaderTask = nil
         let cacheRef = songFileCache
-        Task { await cacheRef.clear() }
+        Task { await cacheRef.cancelInFlightDownloads() }
         // Clear coordinator state BEFORE awaiting engine.stop. If we cleared
         // afterwards, a queued positionUpdate event processed during the
         // engine.stop suspension would see the still-active queue and could
@@ -391,7 +391,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         downloaderTask?.cancel()
         downloaderTask = nil
         let cacheRef = songFileCache
-        Task { await cacheRef.clear() }
+        Task { await cacheRef.cancelInFlightDownloads() }
         try await stop()
         try await play(channelId: channelId)
     }
@@ -433,13 +433,14 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         self.currentResponse = response
         emitNowPlaying(forSongAt: 0)
         try? await engine.clearPlaylist()
-        // Bitrate change minted new gaplessUrls; the on-disk cache holds the
-        // old bitrate's files. Cancel any in-flight downloader walk and wipe
-        // the cache so the new bitrate's URLs aren't shadowed by stale hashes.
+        // Bitrate change minted new gaplessUrls. Cancel any in-flight downloader
+        // walk so old-bitrate downloads stop stealing bandwidth from the new
+        // bitrate's queue; on-disk old-bitrate files become orphans and the
+        // LRU cap will reclaim them.
         downloaderTask?.cancel()
         downloaderTask = nil
         let cacheRef = songFileCache
-        Task { await cacheRef.clear() }
+        Task { await cacheRef.cancelInFlightDownloads() }
         if self.queue.count >= 2 {
             let next = self.queue[1]
             let nextUrl = await songFileCache.localFile(for: next)
@@ -462,7 +463,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         refetchTask = nil
         downloaderTask?.cancel()
         downloaderTask = nil
-        await songFileCache.clear()
+        await songFileCache.cancelInFlightDownloads()
         eventTask?.cancel()
         await eventTask?.value
         eventTask = nil
@@ -581,7 +582,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         downloaderTask?.cancel()
         downloaderTask = nil
         let cacheRef = songFileCache
-        Task { await cacheRef.clear() }
+        Task { await cacheRef.cancelInFlightDownloads() }
         cancelStallWatchdog()
         refetchTask?.cancel()
         refetchTask = nil
