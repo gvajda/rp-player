@@ -18,6 +18,7 @@ actor MockSongFileCache: SongFileCache {
     private(set) var cachedFileCalls: [Int] = []
     private(set) var evictCalls: [Int] = []
     private(set) var clearCalls: Int = 0
+    private(set) var cancelInFlightCalls: Int = 0
     private var downloadedEventIds: Set<Int> = []
 
     func setMode(_ m: Mode) { mode = m }
@@ -50,6 +51,10 @@ actor MockSongFileCache: SongFileCache {
     func clear() async {
         clearCalls += 1
         downloadedEventIds.removeAll()
+    }
+
+    func cancelInFlightDownloads() {
+        cancelInFlightCalls += 1
     }
 
     nonisolated func expectedLocalPath(for song: GaplessSong) -> URL {

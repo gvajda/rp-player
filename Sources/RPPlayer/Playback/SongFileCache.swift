@@ -5,7 +5,17 @@ public protocol SongFileCache: Sendable {
     func localFile(for song: GaplessSong) async -> URL?
     func cachedFile(for song: GaplessSong) -> URL?
     func evict(_ song: GaplessSong) async
+    /// Wipes every cached file. Kept on the protocol for explicit "wipe all"
+    /// admin actions and for `testClearRemovesAll`; coordinator cleanup paths
+    /// use `cancelInFlightDownloads()` instead so disk cache survives across
+    /// channel changes (LRU cap handles capacity).
     func clear() async
+    /// Cancels every currently-in-flight download. URLSession.data honors task
+    /// cancellation, so this releases network bandwidth immediately. Files that
+    /// were already fully downloaded and written to disk remain. Used by the
+    /// coordinator on channel/stop/bitrate transitions to prevent bandwidth
+    /// contention from now-irrelevant downloads.
+    func cancelInFlightDownloads() async
     /// File URL where this song would be cached, regardless of whether it
     /// currently exists on disk. Used by the coordinator to match mpv's
     /// reported current-file path back to a song in the queue.
@@ -78,6 +88,11 @@ public actor LiveSongFileCache: SongFileCache {
         for url in entries {
             try? fm.removeItem(at: url)
         }
+    }
+
+    public func cancelInFlightDownloads() {
+        for task in inFlight.values { task.cancel() }
+        inFlight.removeAll()
     }
 
     private func clearInFlight(filename: String) {
