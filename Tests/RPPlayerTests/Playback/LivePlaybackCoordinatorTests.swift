@@ -444,38 +444,6 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         XCTAssertEqual(np?.song.songId, "b1", "race-guard must discard stale chan-0 refetch")
     }
 
-    /// 13. PR 30 stall watchdog interplay: long-idle resume still arms watchdog.
-    // TODO(PR33-Task3): delete this test along with the rest of the stall watchdog suite.
-    func skip_testStallWatchdogStillArmsAfterLongIdleResume() async throws {
-        final class MutableClock: @unchecked Sendable {
-            var date = Date(timeIntervalSince1970: 1_000)
-        }
-        let clockState = MutableClock()
-        let api = MockRpApiClient()
-        let initial = makeGaplessResponse(songs: [
-            makeGaplessSong(songId: "s1", eventId: 100, gaplessUrl: "https://example.com/s1.flac"),
-            makeGaplessSong(songId: "s2", eventId: 101, gaplessUrl: "https://example.com/s2.flac"),
-        ])
-        let refetched = makeGaplessResponse(songs: [
-            makeGaplessSong(songId: "s3", eventId: 200, gaplessUrl: "https://example.com/s3.flac"),
-            makeGaplessSong(songId: "s4", eventId: 201, gaplessUrl: "https://example.com/s4.flac"),
-        ])
-        await api.setGaplessResponses([initial, initial, refetched, refetched])
-        let engine = MockPlayerEngine()
-        let sleeper = ControllableSleep()
-        let coord = LivePlaybackCoordinator(
-            api: api, engine: engine, songFileCache: MockSongFileCache(), logger: silentLogger(),
-            bitrateProvider: { 4 }, clock: { clockState.date }, sleep: sleeper.sleep
-        )
-        try await coord.play(channelId: 0)
-        try await coord.pause()
-        clockState.date = Date(timeIntervalSince1970: 1_000 + 60 * 60)
-        try await coord.resume()
-
-        let armed = await pollUntil { sleeper.pendingCount > 0 }
-        XCTAssertTrue(armed, "watchdog must arm after long-idle gapless resume")
-    }
-
     /// 14. Promo song at queue head: updateHistory == false → no telemetry.
     func testPromoSongAtQueueZeroSkipsTelemetry() async throws {
         let api = MockRpApiClient()
@@ -1286,8 +1254,8 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         XCTAssertEqual(ids.first, 2001, "after fallback refetch, queue head must be 2001; got=\(ids)")
     }
 
-    /// Long-idle resume with 1-song queue still does engine.resume + kickRefetch (no truncate needed).
-    func testLongIdleResumeQueueCountOneSkipsTruncate() async throws {
+    /// Long-idle resume with a short queue still does engine.resume + kickRefetch.
+    func testLongIdleResumeKicksRefetchAfterShortQueue() async throws {
         final class MutableClock: @unchecked Sendable {
             var date = Date(timeIntervalSince1970: 1_000)
         }
@@ -1299,8 +1267,6 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         let refetch = makeGaplessResponse(songs: (2001...2003).map { id in
             makeGaplessSong(eventId: id, gaplessUrl: "https://example.com/\(id).flac")
         })
-        // play() consumes initial (1 song); post-play kickRefetch would need a slot but queue==1 → kicks.
-        // Use gaplessResponses so both play's kickRefetch and resume's kickRefetch can be served.
         await api.setGaplessResponses([initial, refetch, refetch])
         let engine = MockPlayerEngine()
         let cache = MockSongFileCache()
@@ -1312,10 +1278,6 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         try await coord.play(channelId: 0)
         // Let the post-play kickRefetch consume the second slot (refetch).
         try await Task.sleep(nanoseconds: 150_000_000)
-        // Re-truncate queue to [1001] by simulating the kickRefetch returned only new songs.
-        // Instead: reset by re-queueing: just pause and advance clock so the queue shape is 1 at resume.
-        // Actually after post-play kickRefetch we may have [1001, 2001, 2002, 2003].
-        // Let's just verify that after resume, engine.resume was called and new tail appeared.
         try await coord.pause()
         clockState.date = Date(timeIntervalSince1970: 1_000 + 60 * 60)
         try await coord.resume()
@@ -1374,5 +1336,10 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
             let ids = await coord.snapshotQueueIds()
             return ids.contains(2001) && ids.contains(2005)
         }, timeout: 2.0)
+
+        // Exactly 2 gapless calls: one for play() bootstrap, one for the long-idle kickRefetch.
+        // The second resume() must NOT trigger a duplicate fetch (refetchTask != nil guard).
+        let gaplessCalls = await api.calls.filter { if case .gapless = $0 { return true } else { return false } }.count
+        XCTAssertEqual(gaplessCalls, 2, "expected exactly one bootstrap gapless + one long-idle refetch; got \(gaplessCalls)")
     }
 }

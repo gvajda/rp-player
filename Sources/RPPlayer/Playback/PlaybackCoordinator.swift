@@ -239,6 +239,8 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             queue = []
             currentResponse = nil
             lastStartedEventId = nil
+            currentPositionSeconds = 0
+            current = nil
             pausedAt = nil
             pausePositionMs = 0
             try await play(channelId: channelId)
@@ -283,8 +285,6 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             kickRefetch()
         }
     }
-
-    private func currentSongInQueueAvailable() -> Bool { !queue.isEmpty }
 
     public func stop() async throws {
         logger.debug("stop()")
