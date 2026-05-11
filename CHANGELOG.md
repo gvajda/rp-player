@@ -6,14 +6,26 @@ Section labels: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`
 
 ## [Unreleased]
 
+## [v0.6.1] - 2026-05-11
+
 ### Added
 
-- Pre-downloaded song file cache (`LiveSongFileCache`). Songs are downloaded to `~/Library/Application Support/RP Player/SongFileCache/` before being handed to mpv as `file://` URLs, eliminating the audible inter-song gap caused by HTTP body-fetch latency at the playlist boundary.
+- **Sample-accurate gapless playback via pre-downloaded song files.** Each song from `api/gapless` is downloaded fully to disk under `~/Library/Application Support/RP Player/SongFileCache/` before being handed to mpv as a `file://` URL. Required because mpv's `prefetch-playlist=yes` only opens the next playlist entry's URL (TCP + HTTP headers) — it does NOT pull body bytes ahead of time (confirmed by the mpv maintainer in mpv#6437). Without pre-download every song boundary had ~100–500 ms of audible silence while mpv pulled the first bytes of the next file over HTTP. With pre-download the next file is fully on disk before its boundary arrives, so mpv only opens a local file at the boundary and the transition is sample-accurate.
+- **Sequential, capped prefetch.** At most one outstanding download at a time; only the next 2 songs (queue[1] + queue[2]) are pre-fetched. Saves bandwidth and disk — previously the entire 20-song `api/gapless` response was being walked in background.
+- **LRU cache cap of 10 files.** Oldest files evicted on every successful write. Switching to a previously-played channel reuses cached files (no re-download).
+- **`SongFileCache.cancelInFlightDownloads()`** — releases network bandwidth immediately on channel-change / stop / bitrate change / shutdown. URLSession.data honors Task cancellation, so the underlying network stream actually stops streaming bytes (previously the in-flight downloads continued in the background after the coordinator cancelled, stealing bandwidth from the new channel's first song).
+- **Album art prefetched 2 songs ahead** (was: 1 song ahead). Matches the song-file prefetch depth so the popover never shows a blank tile on skip.
 
 ### Changed
 
-- `LivePlaybackCoordinator` now resolves every play / queueNext URL through `SongFileCache`. Falls back to the remote `gaplessUrl` on cache failure so playback never breaks because of a download error.
-- mpv baseline tweaks (committed in `505f777`): `gapless-audio=yes` and `demuxer-max-bytes=32MiB`. Standalone these do not eliminate the inter-song gap (see Added above) but they reduce a separate small gap (AO format-mismatch reopen) and improve skip-forward smoothness on FLAC.
+- **mpv baseline tweaks.** `gapless-audio=yes` (was: `weak` default — keeps the audio output device open across all song boundaries instead of close+reopen on any format mismatch). `demuxer-max-bytes` bumped 8 MiB → 32 MiB so a whole FLAC fits in the demuxer cache for snappier skip-forward.
+- `LivePlaybackCoordinator` resolves every `engine.play` / `engine.queueNext` URL through `SongFileCache`. Falls back to the remote `gaplessUrl` on cache miss (network failure, disk error, `NoopSongFileCache`) so playback never breaks because of a download error.
+
+### Fixed
+
+- **Queue head matched against both remote URL and local file path.** With pre-downloaded files, mpv reports the local file path (`/Users/.../SongFileCache/<hash>.flac`) as its current path. The boundary-advance lookup used to only check `gaplessUrl` (remote URL), so every boundary advance fell back to queue[0]: the UI stayed stuck on the first song, telemetry kept reporting the first event id, and after two skips mpv exhausted its playlist (visible freeze). The coordinator now matches against both the remote URL and `cache.expectedLocalPath(for: song).path`.
+- **In-flight downloads now actually cancel on channel-change.** Previously, cancelling the coordinator's `downloaderTask` cancelled the outer Task but the cache's inner `Task<URL?, Never>` kept running and `URLSession.data(from:)` kept draining bytes. Net effect: the new channel's first song shared bandwidth with the previous channel's now-irrelevant downloads, so first-song-start could take 3× longer than necessary. `cancelInFlightDownloads()` fixes this — bandwidth releases immediately.
+- **Cache files no longer wiped on channel-change / stop / bitrate change.** Previously every cleanup path called `cache.clear()` — meaning a quick channel A → B → A round-trip re-downloaded every song. Now LRU eviction is the only deletion mechanism; channel changes only cancel in-flight downloads.
 
 ## [v0.6.0] - 2026-05-11
 
