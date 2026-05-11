@@ -1121,4 +1121,33 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         XCTAssertTrue(evicted.contains(10), "expected cache.evict for the just-finished song; got=\(evicted)")
         XCTAssertTrue(history.contains(where: { $0.event == "10" }), "expected updateHistory for the just-finished song; got=\(history.map { $0.event })")
     }
+
+    /// kickRefetch filters by queue.last.eventId and appends — preserves entire prefix.
+    /// queue=[A(1),B(2),C(3)]; refetch returns [B(2),D(4),E(5)].
+    /// Expected settled queue: [1,2,3,4,5] — prefix preserved, new tail appended.
+    func testKickRefetchFiltersByQueueLastEventIdAndAppendsTail() async throws {
+        let api = MockRpApiClient()
+        let songA = makeGaplessSong(eventId: 1, gaplessUrl: "https://example.com/a.flac", title: "A")
+        let songB = makeGaplessSong(eventId: 2, gaplessUrl: "https://example.com/b.flac", title: "B")
+        let songC = makeGaplessSong(eventId: 3, gaplessUrl: "https://example.com/c.flac", title: "C")
+        let songD = makeGaplessSong(eventId: 4, gaplessUrl: "https://example.com/d.flac", title: "D")
+        let songE = makeGaplessSong(eventId: 5, gaplessUrl: "https://example.com/e.flac", title: "E")
+        // play() consumes the first response; kickRefetch (queue<3 triggers after play) consumes the second.
+        let initial = makeGaplessResponse(songs: [songA, songB, songC])
+        let merge = makeGaplessResponse(songs: [songB, songD, songE])
+        await api.setGaplessResponses([initial, merge, merge])
+        let engine = MockPlayerEngine()
+        let coord = LivePlaybackCoordinator(
+            api: api, engine: engine, songFileCache: MockSongFileCache(),
+            logger: silentLogger(), bitrateProvider: { 4 }
+        )
+        try await coord.play(channelId: 0)
+        // play() fetches initial (3 songs, count==3, NO kickRefetch), then we need to verify the
+        // queue shape. Since queue.count==3 the bootstrap does NOT kick a refetch; the queue
+        // stays [A,B,C]. To trigger the merge-scenario refetch, simulate a boundary advance that
+        // drops A, leaving [B,C] (count<3 → kickRefetch with tailEvent=C.eventId=3).
+        await engine.setSimulatedCurrentPath(URL(string: "https://example.com/b.flac"))
+        await engine.fire(.fileStarted)
+        try await waitUntil({ await coord.snapshotQueueIds() == [2, 3, 4, 5] }, timeout: 2.0)
+    }
 }

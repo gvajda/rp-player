@@ -95,6 +95,10 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     public var nowPlaying: NowPlaying? { current }
     public var currentPlaybackState: PlaybackState { currentState }
 
+    #if DEBUG
+    public func snapshotQueueIds() -> [Int] { queue.map { $0.eventId } }
+    #endif
+
     public var nowPlayingUpdates: AsyncStream<NowPlaying> {
         let id = UUID()
         return AsyncStream { continuation in
@@ -813,9 +817,10 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     private func kickRefetch() {
         guard refetchTask == nil, let channelId = currentChannelId else { return }
         let headEvent = queue.first?.eventId ?? 0
+        let tailEvent = queue.last?.eventId ?? 0
         refetchTask = Task { [weak self] in
             guard let self else { return }
-            await self.runRefetch(channelId: channelId, headEvent: headEvent)
+            await self.runRefetch(channelId: channelId, headEvent: headEvent, tailEvent: tailEvent)
         }
     }
 
@@ -834,7 +839,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         }
     }
 
-    private func runRefetch(channelId: Int, headEvent: Int) async {
+    private func runRefetch(channelId: Int, headEvent: Int, tailEvent: Int) async {
         let bitrate = await bitrateProvider()
         let response: GaplessResponse
         do {
@@ -844,20 +849,17 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             self.refetchTask = nil
             return
         }
-        // Race-guard: discard if channel changed or head moved during await.
+        // Race-guard: discard if channel changed or queue head/tail moved during await.
         guard self.currentChannelId == channelId,
-              self.queue.first?.eventId == headEvent else {
-            logger.debug("kickRefetch result discarded: channel/head moved during fetch")
+              self.queue.first?.eventId == headEvent,
+              self.queue.last?.eventId == tailEvent else {
+            logger.debug("kickRefetch result discarded: channel/head/tail moved during fetch")
             self.refetchTask = nil
             return
         }
-        guard let firstHead = self.queue.first else {
-            self.refetchTask = nil
-            return
-        }
-        let newSongs = response.songs.filter { $0.eventId > firstHead.eventId }
+        let newSongs = response.songs.filter { $0.eventId > tailEvent }
         let hadShortQueue = self.queue.count < 2
-        self.queue = [firstHead] + newSongs
+        self.queue = self.queue + newSongs
         self.currentResponse = response
         if hadShortQueue, self.queue.count >= 2 {
             let next = self.queue[1]
