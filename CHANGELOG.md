@@ -6,8 +6,11 @@ Section labels: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`
 
 ## [Unreleased]
 
+## [v0.6.2] - 2026-05-12
+
 ### Fixed
 
+- Duplicate macOS notifications on every song change. The coordinator emits `NowPlaying` twice per song-start by design (synchronously from `play`/`skip`/`resume`/error-recovery so the UI doesn't wait for mpv, then again from `syncQueueHeadFromMpv` on `MPV_EVENT_START_FILE`). The UI is idempotent — art is keyed by cover path — but notifications were not: the request id format `<UUID>|<songId>` uses a fresh UUID per emission by design (so a replayed song generates a fresh notification instead of being collapsed by `usernoted`), which also meant the second emission for the same song produced a second visible banner. `NotificationCoordinator` now dedupes by `(channelId, eventId)`, preserving the replay-makes-fresh-notification semantics while killing the duplicate.
 - Long-idle resume preserves the currently paused song. Resume after a multi-hour pause now `engine.resume()`s the cached, paused queue head (mpv's playlist still holds the queueNext'd queue[1]), then truncates the in-memory queue to `[queue[0], queue[1]]` and kicks a background `api/gapless` refetch. The merged response appends as the new tail (filter `eventId > queue.last!.eventId`), so playback catches up to the backend's current cursor at the queue[1]→queue[2] boundary instead of abruptly cancelling the user's song. Cache-miss for queue[0] (LRU eviction during pause) falls through to the legacy `clearPlaylist + refetch + restart` path. The double-resume race (user clicks play twice when audio doesn't start instantly because the old code blocked on the synchronous refetch) is gone — `engine.resume()` now returns essentially instantly.
 
 ### Removed
