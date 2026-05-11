@@ -1008,7 +1008,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         XCTAssertEqual(firstPlayUrl, URL(string: "https://s.example.com/42.flac"))
     }
 
-    func testPlayKicksSequentialDownloadOfRemainingQueue() async throws {
+    func testPlayKicksSequentialDownloadOfAtMostTwoAhead() async throws {
         let api = MockRpApiClient()
         let engine = MockPlayerEngine()
         let cache = MockSongFileCache()
@@ -1017,6 +1017,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
             makeGaplessSong(eventId: 2, gaplessUrl: "https://s.example.com/2.flac"),
             makeGaplessSong(eventId: 3, gaplessUrl: "https://s.example.com/3.flac"),
             makeGaplessSong(eventId: 4, gaplessUrl: "https://s.example.com/4.flac"),
+            makeGaplessSong(eventId: 5, gaplessUrl: "https://s.example.com/5.flac"),
         ])
         await api.setGaplessResponses([response])
         let coordinator = LivePlaybackCoordinator(
@@ -1032,7 +1033,8 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         XCTAssertTrue(calls.contains(1), "queue[0] resolved synchronously by play()")
         XCTAssertTrue(calls.contains(2), "queue[1] resolved by play()'s explicit queueNext call")
         XCTAssertTrue(calls.contains(3), "queue[2] resolved by kickSequentialDownload")
-        XCTAssertTrue(calls.contains(4), "queue[3] resolved by kickSequentialDownload")
+        XCTAssertFalse(calls.contains(4), "queue[3] should NOT be downloaded (cap = 2 ahead)")
+        XCTAssertFalse(calls.contains(5), "queue[4] should NOT be downloaded (cap = 2 ahead)")
     }
 
     func testQueueAdvanceEvictsDroppedSongAfterTelemetry() async throws {

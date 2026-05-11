@@ -808,7 +808,10 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         let snapshot = queue
         let cache = songFileCache
         downloaderTask = Task {
-            for song in snapshot.dropFirst() {
+            // Cap at 2 ahead: queue[1] (typically already on disk from play()'s sync resolve,
+            // fast-deduped via fs-exists) and queue[2] (the actual prefetch target).
+            // Anything further is downloaded later as the queue head advances and this kicks again.
+            for song in snapshot.dropFirst().prefix(2) {
                 if Task.isCancelled { return }
                 _ = await cache.localFile(for: song)
             }
