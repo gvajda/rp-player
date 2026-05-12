@@ -7,6 +7,7 @@ struct SettingsView: View {
     @State private var showForceMaxConfirm = false
     @State private var eqImportAlert: EqImportAlert?
     @State private var eqDeleteAlert: EqDeleteAlert?
+    @State private var showEqDetails: Bool = false
 
     private struct EqImportAlert: Identifiable {
         let id = UUID()
@@ -226,66 +227,118 @@ struct SettingsView: View {
     }
 
     private var eqSection: some View {
-        HStack(spacing: 8) {
-            Text("Equalizer")
-            HoverInfoIcon(text: eqTooltip)
-            if viewModel.eqEnabled {
-                Picker(
-                    "",
-                    selection: Binding<String?>(
-                        get: { viewModel.eqPresetName },
-                        set: { v in Task { await viewModel.setEqPresetName(v) } }
-                    )
-                ) {
-                    Text("None (Bypass)").tag(String?.none)
-                    ForEach(viewModel.availablePresets, id: \.self) { name in
-                        Text(name).tag(Optional(name))
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text("Equalizer")
+                HoverInfoIcon(text: eqTooltip)
+                if viewModel.eqEnabled {
+                    Spacer(minLength: 8)
+                    Picker(
+                        "",
+                        selection: Binding<String?>(
+                            get: { viewModel.eqPresetName },
+                            set: { v in Task { await viewModel.setEqPresetName(v) } }
+                        )
+                    ) {
+                        Text("None (Bypass)").tag(String?.none)
+                        ForEach(viewModel.availablePresets, id: \.self) { name in
+                            Text(name).tag(Optional(name))
+                        }
                     }
-                }
-                .labelsHidden()
-                .frame(maxWidth: .infinity)
+                    .labelsHidden()
+                    .frame(maxWidth: 180)
 
-                Button {
-                    guard let name = viewModel.eqPresetName else { return }
-                    showEqDeleteConfirm(presetName: name)
-                } label: {
-                    Image(systemName: "trash")
-                }
-                .buttonStyle(.borderless)
-                .disabled(viewModel.eqPresetName == nil)
-                .help("Delete selected preset")
+                    Button {
+                        guard let name = viewModel.eqPresetName else { return }
+                        showEqDeleteConfirm(presetName: name)
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(viewModel.eqPresetName == nil)
+                    .help("Delete selected preset")
 
-                Button {
-                    showEqImportPanel()
-                } label: {
-                    Image(systemName: "square.and.arrow.down")
-                }
-                .buttonStyle(.borderless)
-                .help("Import preset (.txt)")
+                    Button {
+                        showEqDetails.toggle()
+                    } label: {
+                        Image(systemName: showEqDetails ? "eye.fill" : "eye")
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(viewModel.parsedEqPreset == nil)
+                    .help("Show parsed preset values")
 
-                Button {
-                    showEqExportPanel()
-                } label: {
-                    Image(systemName: "square.and.arrow.up")
+                    Button {
+                        showEqImportPanel()
+                    } label: {
+                        Image(systemName: "square.and.arrow.down")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Import preset (.txt)")
+
+                    Button {
+                        showEqExportPanel()
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(viewModel.eqPresetName == nil)
+                    .help("Export selected preset")
+                } else {
+                    Spacer(minLength: 8)
                 }
-                .buttonStyle(.borderless)
-                .disabled(viewModel.eqPresetName == nil)
-                .help("Export selected preset")
-            } else {
-                Spacer(minLength: 8)
-            }
-            Toggle(
-                "",
-                isOn: Binding(
-                    get: { viewModel.eqEnabled },
-                    set: { v in Task { await viewModel.setEqEnabled(v) } }
+                Toggle(
+                    "",
+                    isOn: Binding(
+                        get: { viewModel.eqEnabled },
+                        set: { v in Task { await viewModel.setEqEnabled(v) } }
+                    )
                 )
-            )
-            .labelsHidden()
+                .labelsHidden()
+            }
+            if viewModel.eqEnabled, showEqDetails, let preset = viewModel.parsedEqPreset {
+                eqDetailsView(preset: preset)
+            }
         }
         .onAppear {
-            Task { await viewModel.refreshPresets() }
+            Task {
+                await viewModel.refreshPresets()
+                await viewModel.reloadParsedPreset()
+            }
         }
+    }
+
+    @ViewBuilder
+    private func eqDetailsView(preset: EqPreset) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(String(format: "Preamp · %+.1f dB", preset.preampDb))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+            ForEach(Array(preset.bands.enumerated()), id: \.offset) { _, band in
+                Text(eqBandLine(band))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+        }
+        .padding(.leading, 4)
+        .padding(.top, 2)
+    }
+
+    private func eqBandLine(_ band: EqBand) -> String {
+        let type: String
+        switch band.type {
+        case .peak: type = "PK"
+        case .lowShelf: type = "LS"
+        case .highShelf: type = "HS"
+        }
+        let freq: String
+        if band.fcHz >= 1000 {
+            freq = String(format: "%.2f kHz", band.fcHz / 1000.0)
+        } else {
+            freq = String(format: "%.0f Hz", band.fcHz)
+        }
+        return String(format: "%@ · %@ · Q %.2f · %+.1f dB", type, freq, band.q, band.gainDb)
     }
 
     private var eqTooltip: String {

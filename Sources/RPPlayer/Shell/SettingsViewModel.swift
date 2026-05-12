@@ -30,6 +30,7 @@ final class SettingsViewModel: ObservableObject {
     @Published public private(set) var eqEnabled: Bool = false
     @Published public private(set) var eqPresetName: String?
     @Published public private(set) var availablePresets: [String] = []
+    @Published public private(set) var parsedEqPreset: EqPreset?
     @Published public private(set) var crossfeedEnabled: Bool = false
     @Published public private(set) var crossfeedStrength: Double = 0.2
     @Published public private(set) var crossfeedRange: Double = 0.5
@@ -138,7 +139,10 @@ final class SettingsViewModel: ObservableObject {
                     let uid = snapshot.outputDeviceUID
                     let profile = uid.flatMap { snapshot.audioProfiles[$0] }
                     self.eqEnabled = profile?.eqEnabled ?? false
-                    self.eqPresetName = profile?.eqPresetName
+                    if self.eqPresetName != profile?.eqPresetName {
+                        self.eqPresetName = profile?.eqPresetName
+                        Task { [weak self] in await self?.reloadParsedPreset() }
+                    }
                     self.crossfeedEnabled = profile?.crossfeedEnabled ?? false
                     self.crossfeedStrength = profile?.crossfeedStrength ?? 0.2
                     self.crossfeedRange = profile?.crossfeedRange ?? 0.5
@@ -391,6 +395,28 @@ final class SettingsViewModel: ObservableObject {
         await MainActor.run { self.availablePresets = names }
     }
 
+    public func reloadParsedPreset() async {
+        guard let name = self.eqPresetName else {
+            await MainActor.run { self.parsedEqPreset = nil }
+            return
+        }
+        let text: String
+        do {
+            text = try await eqPresetStore.loadText(name: name)
+        } catch {
+            await MainActor.run { self.parsedEqPreset = nil }
+            return
+        }
+        let result = EqPresetParser.parse(text: text, filename: name)
+        await MainActor.run {
+            if case .success(let preset) = result {
+                self.parsedEqPreset = preset
+            } else {
+                self.parsedEqPreset = nil
+            }
+        }
+    }
+
     public func importPresetFile(url: URL, overwrite: Bool) async throws -> ImportOutcome {
         logger?.info("importPresetFile entry url=\(url.path) overwrite=\(overwrite) ext=\(url.pathExtension)")
         guard url.pathExtension.lowercased() == "txt" else {
@@ -418,6 +444,7 @@ final class SettingsViewModel: ObservableObject {
             do {
                 try await eqPresetStore.save(name: name, text: raw, overwrite: overwrite)
                 await refreshPresets()
+                if self.eqPresetName == name { await reloadParsedPreset() }
                 logger?.info("importPresetFile saved name=\(name)")
                 return .imported(name: name)
             } catch EqPresetStoreError.alreadyExists {

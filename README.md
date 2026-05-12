@@ -105,9 +105,20 @@ The app installs a status item in the menu bar (no Dock icon, no main window). C
   - **Release on Pause** (default on): the device returns to shared use whenever you pause, so other apps and Mac calls work normally without quitting RP Player.
 
 - **Volume mode** (3-state picker, per device):
-  - **None**: clean signal, no normalization or volume pinning.
+  - **None (Bypass)**: no normalization or volume pinning.
   - **ReplayGain**: per-track loudness normalisation via mpv's `replaygain=track`.
   - **Force Max** (for external DACs): pins the device's CoreAudio volume to 100% and locks `volume-max` so no software attenuation is in the signal path. Confirmation alert before enabling — set your DAC/amp/headphone volume first. Requires Hog Mode on.
+
+- **Parametric EQ** (per device):
+  - Import AutoEQ / Equalizer APO / REW `.txt` presets (peaking + low-shelf + high-shelf bands, up to 10, plus a Preamp). Strict parser — files with unsupported filter types or malformed lines are rejected.
+  - Library is global; multiple devices can share a preset. Built-in import / export / delete; deleting a preset clears every device reference.
+  - Inline "show parsed values" view (eye icon) lists preamp + every band (type, frequency, Q, gain) so you can verify the imported curve at a glance.
+  - Applied via libmpv `af` chain (`volume` + `equalizer` + `lowshelf` + `highshelf`). Composes with hog mode, ReplayGain, and Crossfeed; bit-perfect path is preserved when EQ is off.
+
+- **Crossfeed** for headphones (per device):
+  - Bauer-style stereo crossfeed (BS2B-derived) — softens hard-panned stereo so headphone listening feels less fatiguing without collapsing the soundstage.
+  - Two tunable parameters: **Strength** (0.0–1.0, default 0.2) and **Range** (0.0–1.0, default 0.5).
+  - Filter chain order is locked at **Preamp → EQ → Crossfeed** so EQ acts on the source signal and crossfeed operates on the equalized result.
 
 <p align="center"><img src=".screenshots/settings.png" alt="Settings window: bitrate, output device, hog mode toggle."/></p>
 
