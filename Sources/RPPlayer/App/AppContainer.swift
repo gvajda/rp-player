@@ -111,17 +111,17 @@ extension AppContainer {
             guard let uid = loaded.outputDeviceUID, !uid.isEmpty else { return loaded }
             let knownUIDs = Set(CoreAudioDeviceLister().currentDevices().map { $0.uid })
             if knownUIDs.contains(uid) { return loaded }
-            logger.info("saved output device '\(uid)' not present at startup; clearing hog + force-max + outputDeviceUID for safety")
+            logger.info("saved output device '\(uid)' not present at startup; clearing hog + volumeMode + outputDeviceUID for safety")
             if let store {
                 Task { try? await store.update {
                     $0.hogModeEnabled = false
-                    $0.forceMaxVolumeEnabled = false
+                    $0.volumeMode = .none
                     $0.outputDeviceUID = nil
                 } }
             }
             var safe = loaded
             safe.hogModeEnabled = false
-            safe.forceMaxVolumeEnabled = false
+            safe.volumeMode = .none
             safe.outputDeviceUID = nil
             return safe
         }()
@@ -220,10 +220,10 @@ extension AppContainer {
                 // present. Release hog explicitly too so we're not still holding
                 // the (now-gone) device.
                 guard let store else { return }
-                logger.info("device unavailable: clearing hogModeEnabled + forceMaxVolumeEnabled + outputDeviceUID for safety")
+                logger.info("device unavailable: clearing hogModeEnabled + volumeMode + outputDeviceUID for safety")
                 try? await store.update {
                     $0.hogModeEnabled = false
-                    $0.forceMaxVolumeEnabled = false
+                    $0.volumeMode = .none
                     $0.outputDeviceUID = nil
                 }
                 await hogController.release()
@@ -265,8 +265,7 @@ extension AppContainer {
                         try? await store.update { s in
                             s.hogModeEnabled = profile.hogModeEnabled
                             s.releaseHogOnPauseEnabled = profile.releaseHogOnPauseEnabled
-                            s.forceMaxVolumeEnabled = (profile.volumeMode == .forceMax)
-                            s.applyReplayGainEnabled = (profile.volumeMode == .replayGain)
+                            s.volumeMode = profile.volumeMode
                             s.bitrate = profile.bitrate
                             if let uid = newUID, s.audioProfiles[uid] == nil {
                                 s.audioProfiles[uid] = profile
@@ -280,7 +279,7 @@ extension AppContainer {
                         // Force force-max re-evaluation on the next iteration so that
                         // switching between two devices that both have force-max ON still
                         // pins the volume on the new device.
-                        lastForceMax = !(profile.volumeMode == .forceMax)
+                        lastForceMax = profile.volumeMode != .forceMax
                         lastDeviceUID = newUID
                         lastBitrate = profile.bitrate
                         continue
@@ -310,35 +309,35 @@ extension AppContainer {
                     let deviceChanged = settings.outputDeviceUID != lastDeviceUID
                     lastDeviceUID = settings.outputDeviceUID
 
-                    // Hog OFF → ON transition: read device volume now, reset
-                    // forceMaxVolume to match. User can then trust the toggle: ON
-                    // means "currently at max and will be locked there"; OFF means
-                    // "currently below max, set max via OS first".
+                    // Hog OFF → ON transition: if forceMax is set but the device is not
+                    // at max, demote to .none. This prevents locking a non-max volume.
+                    // Does NOT promote .none → .forceMax when the device happens to be at max.
                     let hogTurnedOn = settings.hogModeEnabled && !lastHog
                     lastHog = settings.hogModeEnabled
                     if hogTurnedOn, let uid = settings.outputDeviceUID, !uid.isEmpty {
                         let v = await volumeController.currentVolume(deviceUID: uid)
                         let isMax = (v ?? 0) >= 0.999
-                        if isMax != settings.forceMaxVolumeEnabled {
-                            try? await store.update { $0.forceMaxVolumeEnabled = isMax }
+                        let isForceMax = settings.volumeMode == .forceMax
+                        if isForceMax && !isMax {
+                            try? await store.update { $0.volumeMode = .none }
                             // Settings stream will re-emit; let the next iteration
                             // handle engine.setForceMaxVolume + locking.
                             continue
                         }
                     }
-                    if settings.forceMaxVolumeEnabled != lastForceMax {
-                        try? await engine.setForceMaxVolume(settings.forceMaxVolumeEnabled)
-                        lastForceMax = settings.forceMaxVolumeEnabled
-                        if settings.forceMaxVolumeEnabled,
-                           let uid = settings.outputDeviceUID, !uid.isEmpty {
+                    let nowForceMax = settings.volumeMode == .forceMax
+                    if nowForceMax != lastForceMax {
+                        try? await engine.setForceMaxVolume(nowForceMax)
+                        lastForceMax = nowForceMax
+                        if nowForceMax, let uid = settings.outputDeviceUID, !uid.isEmpty {
                             _ = await volumeController.setVolumeMax(deviceUID: uid)
                         }
-                    } else if settings.forceMaxVolumeEnabled, deviceChanged,
+                    } else if nowForceMax, deviceChanged,
                               let uid = settings.outputDeviceUID, !uid.isEmpty {
                         // Device switched while force-max stayed on — reapply to the new device.
                         _ = await volumeController.setVolumeMax(deviceUID: uid)
                     }
-                    let effectiveRG = settings.applyReplayGainEnabled && !settings.forceMaxVolumeEnabled
+                    let effectiveRG = settings.volumeMode == .replayGain
                     if effectiveRG != lastEffectiveRG {
                         try? await engine.setApplyReplayGain(effectiveRG)
                         lastEffectiveRG = effectiveRG
@@ -348,9 +347,7 @@ extension AppContainer {
                             s.audioProfiles[uid] = AudioProfile(
                                 hogModeEnabled: s.hogModeEnabled,
                                 releaseHogOnPauseEnabled: s.releaseHogOnPauseEnabled,
-                                volumeMode: s.forceMaxVolumeEnabled
-                                    ? .forceMax
-                                    : (s.applyReplayGainEnabled ? .replayGain : VolumeMode.none),
+                                volumeMode: s.volumeMode,
                                 bitrate: s.bitrate
                             )
                         }
@@ -373,7 +370,7 @@ extension AppContainer {
                             await hogController.release()
                         }
                     }
-                    if state == .playing, s.forceMaxVolumeEnabled {
+                    if state == .playing, s.volumeMode == .forceMax {
                         _ = await volumeController.setVolumeMax(deviceUID: uid)
                     }
                 }
@@ -410,10 +407,10 @@ extension AppContainer {
                     let s = await store.settings
                     guard let uid = s.outputDeviceUID, !uid.isEmpty else { continue }
                     if devices.contains(where: { $0.uid == uid }) { continue }
-                    logger.info("output device '\(uid)' disappeared at runtime; clearing hogModeEnabled + forceMaxVolumeEnabled + outputDeviceUID for safety")
+                    logger.info("output device '\(uid)' disappeared at runtime; clearing hogModeEnabled + volumeMode + outputDeviceUID for safety")
                     try? await store.update {
                         $0.hogModeEnabled = false
-                        $0.forceMaxVolumeEnabled = false
+                        $0.volumeMode = .none
                         $0.outputDeviceUID = nil
                     }
                 }

@@ -160,27 +160,3 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try c.encodeIfPresent(cachedLatestRelease, forKey: .cachedLatestRelease)
     }
 }
-
-public extension AppSettings {
-    // Transitional bridges removed in Task 6 once binder/VM/View land.
-    var forceMaxVolumeEnabled: Bool {
-        get { volumeMode == .forceMax }
-        set {
-            if newValue {
-                volumeMode = .forceMax
-            } else if volumeMode == .forceMax {
-                volumeMode = .none
-            }
-        }
-    }
-    var applyReplayGainEnabled: Bool {
-        get { volumeMode == .replayGain }
-        set {
-            if newValue {
-                volumeMode = .replayGain
-            } else if volumeMode == .replayGain {
-                volumeMode = .none
-            }
-        }
-    }
-}

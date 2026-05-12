@@ -174,16 +174,6 @@ final class SettingsViewModel: ObservableObject {
         }
     }
 
-    // Transitional — removed in Task 6 once SettingsView lands.
-    var forceMaxVolumeEnabled: Bool { volumeMode == .forceMax }
-    var applyReplayGainEnabled: Bool { volumeMode == .replayGain }
-    func setForceMaxVolumeEnabled(_ value: Bool) async {
-        await setVolumeMode(value ? .forceMax : .none)
-    }
-    func setApplyReplayGainEnabled(_ value: Bool) async {
-        await setVolumeMode(value ? .replayGain : .none)
-    }
-
     func setVolumeMode(_ value: VolumeMode) async {
         await update { s in
             s.volumeMode = value
