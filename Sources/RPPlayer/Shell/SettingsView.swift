@@ -295,6 +295,8 @@ struct SettingsView: View {
     private var crossfeedSection: some View {
         HStack(spacing: 8) {
             Text("Crossfeed")
+                .lineLimit(1)
+                .fixedSize()
             HoverInfoIcon(text: crossfeedTooltip)
             if viewModel.crossfeedEnabled {
                 Spacer(minLength: 8)
