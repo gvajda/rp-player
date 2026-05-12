@@ -30,6 +30,9 @@ final class SettingsViewModel: ObservableObject {
     @Published public private(set) var eqEnabled: Bool = false
     @Published public private(set) var eqPresetName: String?
     @Published public private(set) var availablePresets: [String] = []
+    @Published public private(set) var crossfeedEnabled: Bool = false
+    @Published public private(set) var crossfeedStrength: Double = 0.2
+    @Published public private(set) var crossfeedRange: Double = 0.5
 
     public enum ImportOutcome: Equatable, Sendable {
         case imported(name: String)
@@ -136,6 +139,9 @@ final class SettingsViewModel: ObservableObject {
                     let profile = uid.flatMap { snapshot.audioProfiles[$0] }
                     self.eqEnabled = profile?.eqEnabled ?? false
                     self.eqPresetName = profile?.eqPresetName
+                    self.crossfeedEnabled = profile?.crossfeedEnabled ?? false
+                    self.crossfeedStrength = profile?.crossfeedStrength ?? 0.2
+                    self.crossfeedRange = profile?.crossfeedRange ?? 0.5
                 }
             }
         }
@@ -344,6 +350,38 @@ final class SettingsViewModel: ObservableObject {
             guard let uid = s.outputDeviceUID else { return }
             var p = s.audioProfiles[uid] ?? .safeDefault
             p.eqPresetName = name
+            s.audioProfiles[uid] = p
+        }
+    }
+
+    public func setCrossfeedEnabled(_ value: Bool) async {
+        logger?.debug("setCrossfeedEnabled value=\(value)")
+        await update { s in
+            guard let uid = s.outputDeviceUID else { return }
+            var p = s.audioProfiles[uid] ?? .safeDefault
+            p.crossfeedEnabled = value
+            s.audioProfiles[uid] = p
+        }
+    }
+
+    public func setCrossfeedStrength(_ value: Double) async {
+        let clamped = min(1.0, max(0.0, value))
+        logger?.debug("setCrossfeedStrength value=\(clamped)")
+        await update { s in
+            guard let uid = s.outputDeviceUID else { return }
+            var p = s.audioProfiles[uid] ?? .safeDefault
+            p.crossfeedStrength = clamped
+            s.audioProfiles[uid] = p
+        }
+    }
+
+    public func setCrossfeedRange(_ value: Double) async {
+        let clamped = min(1.0, max(0.0, value))
+        logger?.debug("setCrossfeedRange value=\(clamped)")
+        await update { s in
+            guard let uid = s.outputDeviceUID else { return }
+            var p = s.audioProfiles[uid] ?? .safeDefault
+            p.crossfeedRange = clamped
             s.audioProfiles[uid] = p
         }
     }
