@@ -116,7 +116,7 @@ struct SettingsView: View {
             HoverInfoIcon(text: volumeTooltip)
             Spacer(minLength: 8)
             HStack(spacing: 6) {
-                volumeButton(.none, label: "None")
+                volumeButton(.none, label: "Bypass")
                 volumeButton(.replayGain, label: "ReplayGain")
                 volumeForceMaxButton
             }
@@ -127,7 +127,7 @@ struct SettingsView: View {
         Button {
             Task { await viewModel.setVolumeMode(mode) }
         } label: {
-            Text(label).frame(minWidth: 90)
+            Text(label).frame(minWidth: 72)
         }
         .buttonStyle(StableButtonStyle(filled: viewModel.volumeMode == mode))
     }
@@ -138,14 +138,14 @@ struct SettingsView: View {
                 showForceMaxConfirm = true
             }
         } label: {
-            Text("Force Max").frame(minWidth: 90)
+            Text("Force Max").frame(minWidth: 72)
         }
         .buttonStyle(StableButtonStyle(filled: viewModel.volumeMode == .forceMax))
         .disabled(!viewModel.hogModeEnabled)
     }
 
     private var volumeTooltip: String {
-        "ReplayGain: Applies per-track loudness normalization metadata embedded by Radio Paradise. Reduces peaks; small variation track-to-track.\n\nForce-Max Volume: Pins device to max volume + caps mpv at 100. Use external attenuation. Hearing damage warning. Bit-perfect when EQ is off."
+        "ReplayGain:\nApplies per-track loudness normalization metadata embedded by Radio Paradise. Reduces peaks; small variation track-to-track.\n\nForce-Max Volume:\nOnly available in Hog mode.\nPins device to max volume + caps mpv at 100. Use external attenuation. Hearing damage warning. Bit-perfect when EQ is off."
     }
 
     private var deviceSettingsSectionTitle: String {
@@ -357,7 +357,7 @@ struct SettingsView: View {
         )
     }
 
-private var notificationsBinding: Binding<Bool> {
+    private var notificationsBinding: Binding<Bool> {
         Binding(
             get: { viewModel.notificationsEnabled },
             set: { newValue in Task { await viewModel.setNotificationsEnabled(newValue) } }
