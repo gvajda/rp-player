@@ -36,26 +36,27 @@ struct ClampedNumericField: View {
         HStack(alignment: .center, spacing: 2) {
             TextField("", text: $rawText)
                 .textFieldStyle(.roundedBorder)
-                .frame(width: 56)
-                .multilineTextAlignment(.trailing)
+                .frame(width: 48)
+                .multilineTextAlignment(.center)
                 .focused($focused)
                 .disabled(!isEnabled)
-                .onChange(of: rawText) { newText in
+                .onChange(of: rawText) { _, newText in
                     guard let parsed = ClampedNumericFieldLogic.parse(newText),
-                          ClampedNumericFieldLogic.isValid(parsed, in: range) else {
+                        ClampedNumericFieldLogic.isValid(parsed, in: range)
+                    else {
                         isInvalid = true
                         return
                     }
                     isInvalid = false
                     if parsed != value { value = parsed }
                 }
-                .onChange(of: focused) { isFocused in
+                .onChange(of: focused) { _, isFocused in
                     if !isFocused && isInvalid {
                         rawText = ClampedNumericFieldLogic.format(value)
                         isInvalid = false
                     }
                 }
-                .onChange(of: value) { newValue in
+                .onChange(of: value) { _, newValue in
                     if !focused {
                         rawText = ClampedNumericFieldLogic.format(newValue)
                     }
@@ -72,6 +73,7 @@ struct ClampedNumericField: View {
                 .disabled(!isEnabled)
                 .fixedSize()
         }
+        .controlSize(.small)
         .onAppear { rawText = ClampedNumericFieldLogic.format(value) }
     }
 }
