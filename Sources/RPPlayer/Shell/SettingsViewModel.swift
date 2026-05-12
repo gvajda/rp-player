@@ -57,6 +57,7 @@ final class SettingsViewModel: ObservableObject {
     private var configTask: Task<Void, Never>?
     private var deviceTask: Task<Void, Never>?
     private var updateStateTask: Task<Void, Never>?
+    private var presetsRefreshTask: Task<Void, Never>?
 
     init(
         configStore: any ConfigStore,
@@ -155,7 +156,8 @@ final class SettingsViewModel: ObservableObject {
             }
         }
         refreshAuthState()
-        Task { [weak self] in
+        presetsRefreshTask = Task { [weak self] in
+            if Task.isCancelled { return }
             await self?.refreshPresets()
         }
         Task { [weak self] in
@@ -176,6 +178,8 @@ final class SettingsViewModel: ObservableObject {
         deviceTask = nil
         updateStateTask?.cancel()
         updateStateTask = nil
+        presetsRefreshTask?.cancel()
+        presetsRefreshTask = nil
     }
 
     func setBitrate(_ value: Int) async {
