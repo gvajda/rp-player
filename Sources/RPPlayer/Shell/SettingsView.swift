@@ -1,8 +1,26 @@
+import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @ObservedObject var viewModel: SettingsViewModel
     @State private var showForceMaxConfirm = false
+    @State private var eqImportAlert: EqImportAlert?
+    @State private var eqDeleteAlert: EqDeleteAlert?
+
+    private struct EqImportAlert: Identifiable {
+        let id = UUID()
+        let title: String
+        let message: String
+        let collisionName: String?
+        let pendingURL: URL?
+    }
+
+    private struct EqDeleteAlert: Identifiable {
+        let id = UUID()
+        let presetName: String
+        let affectedDeviceUIDs: [String]
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -32,6 +50,39 @@ struct SettingsView: View {
         } message: {
             Text(
                 "This sets the macOS output volume for the selected device to 100% and removes software volume from the signal path. Lower the volume on your DAC, amp, or headphones first to avoid hearing damage."
+            )
+        }
+        .alert(item: $eqImportAlert) { alert in
+            if alert.collisionName != nil, let url = alert.pendingURL {
+                return Alert(
+                    title: Text(alert.title),
+                    message: Text(alert.message),
+                    primaryButton: .destructive(Text("Overwrite")) {
+                        Task { await runEqImport(url: url, overwrite: true) }
+                    },
+                    secondaryButton: .cancel()
+                )
+            } else {
+                return Alert(
+                    title: Text(alert.title),
+                    message: Text(alert.message),
+                    dismissButton: .default(Text("OK"))
+                )
+            }
+        }
+        .alert(item: $eqDeleteAlert) { alert in
+            let count = alert.affectedDeviceUIDs.count
+            let body =
+                count == 0
+                ? "Delete preset \u{201C}\(alert.presetName)\u{201D}?"
+                : "Preset \u{201C}\(alert.presetName)\u{201D} is in use by \(count) device\(count == 1 ? "" : "s"). Deleting it will clear that reference."
+            return Alert(
+                title: Text("Delete preset?"),
+                message: Text(body),
+                primaryButton: .destructive(Text("Delete")) {
+                    Task { try? await viewModel.deletePresetConfirmed(name: alert.presetName) }
+                },
+                secondaryButton: .cancel()
             )
         }
     }
@@ -169,6 +220,138 @@ struct SettingsView: View {
                 .padding(.leading, 20)
                 .disabled(!viewModel.hogModeEnabled)
             volumeRow
+            eqSection
+        }
+    }
+
+    private var eqSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Equalizer")
+                Spacer()
+                Toggle(
+                    "",
+                    isOn: Binding(
+                        get: { viewModel.eqEnabled },
+                        set: { v in Task { await viewModel.setEqEnabled(v) } }
+                    )
+                )
+                .labelsHidden()
+            }
+            HStack {
+                Picker(
+                    "",
+                    selection: Binding<String?>(
+                        get: { viewModel.eqPresetName },
+                        set: { v in Task { await viewModel.setEqPresetName(v) } }
+                    )
+                ) {
+                    Text("(None)").tag(String?.none)
+                    ForEach(viewModel.availablePresets, id: \.self) { name in
+                        Text(name).tag(Optional(name))
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: .infinity)
+
+                Button {
+                    guard let name = viewModel.eqPresetName else { return }
+                    showEqDeleteConfirm(presetName: name)
+                } label: {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(.borderless)
+                .disabled(viewModel.eqPresetName == nil)
+                .help("Delete selected preset")
+            }
+            HStack {
+                Button("Import Preset…") { showEqImportPanel() }
+                Button("Export Preset…") { showEqExportPanel() }
+                    .disabled(viewModel.eqPresetName == nil)
+            }
+            (Text("Create presets at ") + Text("[squig.link](https://squig.link)"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.leading, 8)
+        .onAppear {
+            Task { await viewModel.refreshPresets() }
+        }
+    }
+
+    private func showEqImportPanel() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.plainText]
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        Task { await runEqImport(url: url, overwrite: false) }
+    }
+
+    private func runEqImport(url: URL, overwrite: Bool) async {
+        do {
+            let outcome = try await viewModel.importPresetFile(url: url, overwrite: overwrite)
+            switch outcome {
+            case .imported(let name):
+                await viewModel.setEqPresetName(name)
+            case .nameCollision(let name):
+                await MainActor.run {
+                    eqImportAlert = EqImportAlert(
+                        title: "Preset \u{201C}\(name)\u{201D} already exists",
+                        message: "Overwrite the existing preset?",
+                        collisionName: name,
+                        pendingURL: url
+                    )
+                }
+            }
+        } catch SettingsViewModel.EqImportError.parseFailed(let reasons) {
+            await MainActor.run {
+                eqImportAlert = EqImportAlert(
+                    title: "Cannot import preset",
+                    message: reasons.joined(separator: "\n"),
+                    collisionName: nil,
+                    pendingURL: nil
+                )
+            }
+        } catch {
+            await MainActor.run {
+                eqImportAlert = EqImportAlert(
+                    title: "Cannot import preset",
+                    message: "\(error)",
+                    collisionName: nil,
+                    pendingURL: nil
+                )
+            }
+        }
+    }
+
+    private func showEqExportPanel() {
+        guard let name = viewModel.eqPresetName else { return }
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "\(name).txt"
+        panel.allowedContentTypes = [.plainText]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        Task {
+            do { try await viewModel.exportPreset(to: url) } catch {
+                await MainActor.run {
+                    eqImportAlert = EqImportAlert(
+                        title: "Export failed",
+                        message: "\(error)",
+                        collisionName: nil,
+                        pendingURL: nil
+                    )
+                }
+            }
+        }
+    }
+
+    private func showEqDeleteConfirm(presetName: String) {
+        Task {
+            let uids = await viewModel.prepareDeletePreset(name: presetName)
+            await MainActor.run {
+                eqDeleteAlert = EqDeleteAlert(presetName: presetName, affectedDeviceUIDs: uids)
+            }
         }
     }
 
