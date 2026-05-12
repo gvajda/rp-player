@@ -225,72 +225,70 @@ struct SettingsView: View {
     }
 
     private var eqSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("Equalizer")
-                Spacer()
-                Toggle(
-                    "",
-                    isOn: Binding(
-                        get: { viewModel.eqEnabled },
-                        set: { v in Task { await viewModel.setEqEnabled(v) } }
-                    )
-                )
-                .labelsHidden()
-            }
+        HStack(spacing: 8) {
+            Text("Equalizer")
+            HoverInfoIcon(text: eqTooltip)
             if viewModel.eqEnabled {
-                HStack {
-                    Picker(
-                        "",
-                        selection: Binding<String?>(
-                            get: { viewModel.eqPresetName },
-                            set: { v in Task { await viewModel.setEqPresetName(v) } }
-                        )
-                    ) {
-                        Text("None (Bypass)").tag(String?.none)
-                        ForEach(viewModel.availablePresets, id: \.self) { name in
-                            Text(name).tag(Optional(name))
-                        }
+                Picker(
+                    "",
+                    selection: Binding<String?>(
+                        get: { viewModel.eqPresetName },
+                        set: { v in Task { await viewModel.setEqPresetName(v) } }
+                    )
+                ) {
+                    Text("None (Bypass)").tag(String?.none)
+                    ForEach(viewModel.availablePresets, id: \.self) { name in
+                        Text(name).tag(Optional(name))
                     }
-                    .labelsHidden()
-                    .frame(maxWidth: .infinity)
-
-                    Button {
-                        guard let name = viewModel.eqPresetName else { return }
-                        showEqDeleteConfirm(presetName: name)
-                    } label: {
-                        Image(systemName: "trash")
-                    }
-                    .buttonStyle(.borderless)
-                    .disabled(viewModel.eqPresetName == nil)
-                    .help("Delete selected preset")
-
-                    Button {
-                        showEqImportPanel()
-                    } label: {
-                        Image(systemName: "square.and.arrow.down")
-                    }
-                    .buttonStyle(.borderless)
-                    .help("Import preset (.txt)")
-
-                    Button {
-                        showEqExportPanel()
-                    } label: {
-                        Image(systemName: "square.and.arrow.up")
-                    }
-                    .buttonStyle(.borderless)
-                    .disabled(viewModel.eqPresetName == nil)
-                    .help("Export selected preset")
                 }
-                (Text("Create presets at ") + Text("[squig.link](https://squig.link)"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                .labelsHidden()
+                .frame(maxWidth: .infinity)
+
+                Button {
+                    guard let name = viewModel.eqPresetName else { return }
+                    showEqDeleteConfirm(presetName: name)
+                } label: {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(.borderless)
+                .disabled(viewModel.eqPresetName == nil)
+                .help("Delete selected preset")
+
+                Button {
+                    showEqImportPanel()
+                } label: {
+                    Image(systemName: "square.and.arrow.down")
+                }
+                .buttonStyle(.borderless)
+                .help("Import preset (.txt)")
+
+                Button {
+                    showEqExportPanel()
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                }
+                .buttonStyle(.borderless)
+                .disabled(viewModel.eqPresetName == nil)
+                .help("Export selected preset")
+            } else {
+                Spacer(minLength: 8)
             }
+            Toggle(
+                "",
+                isOn: Binding(
+                    get: { viewModel.eqEnabled },
+                    set: { v in Task { await viewModel.setEqEnabled(v) } }
+                )
+            )
+            .labelsHidden()
         }
-        .padding(.leading, 8)
         .onAppear {
             Task { await viewModel.refreshPresets() }
         }
+    }
+
+    private var eqTooltip: String {
+        "Parametric EQ applied via libmpv (lavfi: volume + equalizer + lowshelf + highshelf).\n\nImport AutoEQ / Equalizer APO / REW .txt presets. Strict parser — files with unsupported filter types, malformed lines, or more than 10 bands are rejected.\n\nCreate presets at https://squig.link"
     }
 
     private func showEqImportPanel() {
