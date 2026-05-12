@@ -126,8 +126,7 @@ final class AppSettingsCodableTests: XCTestCase {
         let d = AudioProfile.safeDefault
         XCTAssertFalse(d.hogModeEnabled)
         XCTAssertFalse(d.releaseHogOnPauseEnabled)
-        XCTAssertFalse(d.forceMaxVolumeEnabled)
-        XCTAssertFalse(d.applyReplayGainEnabled)
+        XCTAssertEqual(d.volumeMode, VolumeMode.none)
         XCTAssertEqual(d.bitrate, 3)
     }
 
@@ -135,8 +134,7 @@ final class AppSettingsCodableTests: XCTestCase {
         let profile = AudioProfile(
             hogModeEnabled: true,
             releaseHogOnPauseEnabled: false,
-            forceMaxVolumeEnabled: true,
-            applyReplayGainEnabled: false,
+            volumeMode: .forceMax,
             bitrate: 4
         )
         let data = try JSONEncoder().encode(profile)
@@ -158,8 +156,7 @@ final class AppSettingsCodableTests: XCTestCase {
         settings.audioProfiles["uid-dac"] = AudioProfile(
             hogModeEnabled: true,
             releaseHogOnPauseEnabled: true,
-            forceMaxVolumeEnabled: false,
-            applyReplayGainEnabled: true,
+            volumeMode: .replayGain,
             bitrate: 4
         )
         let data = try JSONEncoder().encode(settings)
@@ -171,7 +168,7 @@ final class AppSettingsCodableTests: XCTestCase {
         var settings = AppSettings.default
         settings.audioProfiles["uid-a"] = AudioProfile(
             hogModeEnabled: true, releaseHogOnPauseEnabled: true,
-            forceMaxVolumeEnabled: true, applyReplayGainEnabled: true, bitrate: 4
+            volumeMode: .forceMax, bitrate: 4
         )
         settings.audioProfiles["uid-b"] = AudioProfile.safeDefault
         settings.audioProfiles["uid-a"]?.bitrate = 2

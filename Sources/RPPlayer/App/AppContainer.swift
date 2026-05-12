@@ -170,10 +170,10 @@ extension AppContainer {
         do {
             // Force-max forces replaygain out of the signal path regardless of the
             // user's stored replaygain intent (which is preserved for restore).
-            let effectiveReplayGain = startupProfile.applyReplayGainEnabled && !startupProfile.forceMaxVolumeEnabled
+            let effectiveReplayGain = startupProfile.volumeMode == .replayGain
             engine = try MpvPlayerEngine(
                 initialDeviceUID: initial.outputDeviceUID,
-                initialForceMaxVolume: startupProfile.forceMaxVolumeEnabled,
+                initialForceMaxVolume: startupProfile.volumeMode == .forceMax,
                 initialApplyReplayGain: effectiveReplayGain,
                 logger: logger
             )
@@ -193,7 +193,7 @@ extension AppContainer {
            let uid = initial.outputDeviceUID, !uid.isEmpty {
             Task { _ = await hogController.acquire(deviceUID: uid) }
         }
-        if startupProfile.forceMaxVolumeEnabled, let uid = initial.outputDeviceUID, !uid.isEmpty {
+        if startupProfile.volumeMode == .forceMax, let uid = initial.outputDeviceUID, !uid.isEmpty {
             Task { _ = await volumeController.setVolumeMax(deviceUID: uid) }
         }
 
@@ -250,8 +250,8 @@ extension AppContainer {
         if let store {
             Task { [engine, hogController, volumeController, coordinator, store] in
                 let stream = await store.changes
-                var lastForceMax = startupProfile.forceMaxVolumeEnabled
-                var lastEffectiveRG = startupProfile.applyReplayGainEnabled && !startupProfile.forceMaxVolumeEnabled
+                var lastForceMax = startupProfile.volumeMode == .forceMax
+                var lastEffectiveRG = startupProfile.volumeMode == .replayGain
                 var lastDeviceUID = initial.outputDeviceUID
                 var lastHog = startupProfile.hogModeEnabled
                 var lastBitrate = initial.bitrate
@@ -265,8 +265,8 @@ extension AppContainer {
                         try? await store.update { s in
                             s.hogModeEnabled = profile.hogModeEnabled
                             s.releaseHogOnPauseEnabled = profile.releaseHogOnPauseEnabled
-                            s.forceMaxVolumeEnabled = profile.forceMaxVolumeEnabled
-                            s.applyReplayGainEnabled = profile.applyReplayGainEnabled
+                            s.forceMaxVolumeEnabled = (profile.volumeMode == .forceMax)
+                            s.applyReplayGainEnabled = (profile.volumeMode == .replayGain)
                             s.bitrate = profile.bitrate
                             if let uid = newUID, s.audioProfiles[uid] == nil {
                                 s.audioProfiles[uid] = profile
@@ -280,7 +280,7 @@ extension AppContainer {
                         // Force force-max re-evaluation on the next iteration so that
                         // switching between two devices that both have force-max ON still
                         // pins the volume on the new device.
-                        lastForceMax = !profile.forceMaxVolumeEnabled
+                        lastForceMax = !(profile.volumeMode == .forceMax)
                         lastDeviceUID = newUID
                         lastBitrate = profile.bitrate
                         continue
@@ -348,8 +348,9 @@ extension AppContainer {
                             s.audioProfiles[uid] = AudioProfile(
                                 hogModeEnabled: s.hogModeEnabled,
                                 releaseHogOnPauseEnabled: s.releaseHogOnPauseEnabled,
-                                forceMaxVolumeEnabled: s.forceMaxVolumeEnabled,
-                                applyReplayGainEnabled: s.applyReplayGainEnabled,
+                                volumeMode: s.forceMaxVolumeEnabled
+                                    ? .forceMax
+                                    : (s.applyReplayGainEnabled ? .replayGain : VolumeMode.none),
                                 bitrate: s.bitrate
                             )
                         }

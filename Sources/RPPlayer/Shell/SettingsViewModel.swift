@@ -180,14 +180,20 @@ final class SettingsViewModel: ObservableObject {
     func setForceMaxVolumeEnabled(_ value: Bool) async {
         await update { s in
             s.forceMaxVolumeEnabled = value
-            if let uid = s.outputDeviceUID { s.audioProfiles[uid, default: .safeDefault].forceMaxVolumeEnabled = value }
+            if let uid = s.outputDeviceUID {
+                let rg = s.audioProfiles[uid, default: .safeDefault].volumeMode == .replayGain
+                s.audioProfiles[uid, default: .safeDefault].volumeMode = value ? .forceMax : (rg ? .replayGain : VolumeMode.none)
+            }
         }
     }
 
     func setApplyReplayGainEnabled(_ value: Bool) async {
         await update { s in
             s.applyReplayGainEnabled = value
-            if let uid = s.outputDeviceUID { s.audioProfiles[uid, default: .safeDefault].applyReplayGainEnabled = value }
+            if let uid = s.outputDeviceUID {
+                let fm = s.audioProfiles[uid, default: .safeDefault].volumeMode == .forceMax
+                s.audioProfiles[uid, default: .safeDefault].volumeMode = value ? .replayGain : (fm ? .forceMax : VolumeMode.none)
+            }
         }
     }
 
