@@ -5,9 +5,18 @@ Self-contained libmpv runtime for RP Player. macOS universal binary
 
 ## Source
 
-- Tarball: `libmpv-libs_v0.6.3_macos-universal-audio-default.tar.gz`
+- Tarball: `libmpv-libs_v0.6.3_macos-universal-audio-encodersgpl.tar.gz`
 - Origin: <https://github.com/media-kit/libmpv-darwin-build/releases/tag/v0.6.3>
-- License: LGPL-2.1 (no GPL components in the audio-default flavour).
+- License: **GPL-2.0-or-later** — built with FFmpeg `--enable-gpl`. The MIT
+  source license of RP Player is unchanged, but distributing the bundled
+  `.app` triggers GPL terms (provide source on request, no proprietary
+  derivative-by-distribution).
+
+This variant ships the full FFmpeg audio filter set (`volume`, `equalizer`,
+`lowshelf`, `highshelf`, `crossfeed`, `bass`, `treble`, `biquad`,
+`firequalizer`, …) which the parametric EQ (PR 35) and future crossfeed PR
+depend on. The previous `audio-default` flavour stripped all of these except
+`equalizer`, so EQ presets with shelves or preamp failed at filter init.
 
 ## Public header
 
