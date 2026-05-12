@@ -115,16 +115,33 @@ struct SettingsView: View {
             Text("Volume")
             HoverInfoIcon(text: volumeTooltip)
             Spacer(minLength: 8)
-            Picker("", selection: volumeModeBinding) {
-                Text("None").tag(VolumeMode.none)
-                Text("ReplayGain").tag(VolumeMode.replayGain)
-                Text("Force Max").tag(VolumeMode.forceMax)
-                    .disabled(!viewModel.hogModeEnabled)
+            HStack(spacing: 6) {
+                volumeButton(.none, label: "None")
+                volumeButton(.replayGain, label: "ReplayGain")
+                volumeForceMaxButton
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
         }
+    }
+
+    private func volumeButton(_ mode: VolumeMode, label: String) -> some View {
+        Button {
+            Task { await viewModel.setVolumeMode(mode) }
+        } label: {
+            Text(label).frame(minWidth: 56)
+        }
+        .buttonStyle(StableButtonStyle(filled: viewModel.volumeMode == mode))
+    }
+
+    private var volumeForceMaxButton: some View {
+        Button {
+            if viewModel.volumeMode != .forceMax {
+                showForceMaxConfirm = true
+            }
+        } label: {
+            Text("Force Max").frame(minWidth: 56)
+        }
+        .buttonStyle(StableButtonStyle(filled: viewModel.volumeMode == .forceMax))
+        .disabled(!viewModel.hogModeEnabled)
     }
 
     private var volumeTooltip: String {
@@ -340,23 +357,7 @@ struct SettingsView: View {
         )
     }
 
-    private var volumeModeBinding: Binding<VolumeMode> {
-        Binding(
-            get: { viewModel.volumeMode },
-            set: { newValue in
-                if newValue == .forceMax {
-                    guard viewModel.hogModeEnabled else { return }
-                    if viewModel.volumeMode != .forceMax {
-                        showForceMaxConfirm = true
-                        return
-                    }
-                }
-                Task { await viewModel.setVolumeMode(newValue) }
-            }
-        )
-    }
-
-    private var notificationsBinding: Binding<Bool> {
+private var notificationsBinding: Binding<Bool> {
         Binding(
             get: { viewModel.notificationsEnabled },
             set: { newValue in Task { await viewModel.setNotificationsEnabled(newValue) } }
