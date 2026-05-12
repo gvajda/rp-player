@@ -18,6 +18,7 @@ final class SettingsWindowController: NSWindowController {
         window.setContentSize(Self.contentSize)
         window.center()
         window.isReleasedWhenClosed = false
+        window.initialFirstResponder = nil
         super.init(window: window)
     }
 
@@ -28,6 +29,7 @@ final class SettingsWindowController: NSWindowController {
 
     func show() {
         window?.makeKeyAndOrderFront(nil)
+        window?.makeFirstResponder(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
 
