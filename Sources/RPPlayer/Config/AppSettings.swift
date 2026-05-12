@@ -6,8 +6,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var selectedChannelId: Int
     public var hogModeEnabled: Bool
     public var releaseHogOnPauseEnabled: Bool
-    public var forceMaxVolumeEnabled: Bool
-    public var applyReplayGainEnabled: Bool
+    public var volumeMode: VolumeMode
     public var notificationsEnabled: Bool
     public var appearance: AppearanceMode
     public var menuBarIconStyle: MenuBarIconStyle
@@ -39,8 +38,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         selectedChannelId: Int = 0,
         hogModeEnabled: Bool = true,
         releaseHogOnPauseEnabled: Bool = true,
-        forceMaxVolumeEnabled: Bool = false,
-        applyReplayGainEnabled: Bool = false,
+        volumeMode: VolumeMode = .none,
         notificationsEnabled: Bool = true,
         appearance: AppearanceMode = .system,
         menuBarIconStyle: MenuBarIconStyle = .template,
@@ -64,8 +62,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.selectedChannelId = selectedChannelId
         self.hogModeEnabled = hogModeEnabled
         self.releaseHogOnPauseEnabled = releaseHogOnPauseEnabled
-        self.forceMaxVolumeEnabled = forceMaxVolumeEnabled
-        self.applyReplayGainEnabled = applyReplayGainEnabled
+        self.volumeMode = volumeMode
         self.notificationsEnabled = notificationsEnabled
         self.appearance = appearance
         self.menuBarIconStyle = menuBarIconStyle
@@ -92,8 +89,13 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.selectedChannelId = try c.decodeIfPresent(Int.self, forKey: .selectedChannelId) ?? 0
         self.hogModeEnabled = try c.decodeIfPresent(Bool.self, forKey: .hogModeEnabled) ?? true
         self.releaseHogOnPauseEnabled = try c.decodeIfPresent(Bool.self, forKey: .releaseHogOnPauseEnabled) ?? true
-        self.forceMaxVolumeEnabled = try c.decodeIfPresent(Bool.self, forKey: .forceMaxVolumeEnabled) ?? false
-        self.applyReplayGainEnabled = try c.decodeIfPresent(Bool.self, forKey: .applyReplayGainEnabled) ?? false
+        if let mode = try c.decodeIfPresent(VolumeMode.self, forKey: .volumeMode) {
+            self.volumeMode = mode
+        } else {
+            let forceMax = try c.decodeIfPresent(Bool.self, forKey: .forceMaxVolumeEnabled) ?? false
+            let rg = try c.decodeIfPresent(Bool.self, forKey: .applyReplayGainEnabled) ?? false
+            self.volumeMode = forceMax ? .forceMax : (rg ? .replayGain : .none)
+        }
         self.notificationsEnabled = try c.decodeIfPresent(Bool.self, forKey: .notificationsEnabled) ?? true
         self.appearance = try c.decodeIfPresent(AppearanceMode.self, forKey: .appearance) ?? .system
         self.menuBarIconStyle = try c.decodeIfPresent(MenuBarIconStyle.self, forKey: .menuBarIconStyle) ?? .template
@@ -116,4 +118,69 @@ public struct AppSettings: Codable, Equatable, Sendable {
     }
 
     public static let `default` = AppSettings()
+
+    private enum CodingKeys: String, CodingKey {
+        case selectedChannelId, hogModeEnabled, releaseHogOnPauseEnabled
+        case volumeMode
+        case notificationsEnabled, appearance, menuBarIconStyle
+        case ambientBackgroundEnabled, popoverStyle, frostedUpcomingEnabled
+        case bitrate, outputDeviceUID, logLevel, verboseLoggingEnabled
+        case playerId, upcomingRowCount, upcomingHiddenChannelIds
+        case popoverFloating, audioProfiles, updateCheckEnabled
+        case lastUpdateCheckAt, dismissedUpdateVersion, cachedLatestRelease
+        // Legacy migration only — never encoded.
+        case forceMaxVolumeEnabled
+        case applyReplayGainEnabled
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(selectedChannelId, forKey: .selectedChannelId)
+        try c.encode(hogModeEnabled, forKey: .hogModeEnabled)
+        try c.encode(releaseHogOnPauseEnabled, forKey: .releaseHogOnPauseEnabled)
+        try c.encode(volumeMode, forKey: .volumeMode)
+        try c.encode(notificationsEnabled, forKey: .notificationsEnabled)
+        try c.encode(appearance, forKey: .appearance)
+        try c.encode(menuBarIconStyle, forKey: .menuBarIconStyle)
+        try c.encode(ambientBackgroundEnabled, forKey: .ambientBackgroundEnabled)
+        try c.encode(popoverStyle, forKey: .popoverStyle)
+        try c.encode(frostedUpcomingEnabled, forKey: .frostedUpcomingEnabled)
+        try c.encode(bitrate, forKey: .bitrate)
+        try c.encodeIfPresent(outputDeviceUID, forKey: .outputDeviceUID)
+        try c.encode(logLevel, forKey: .logLevel)
+        try c.encode(verboseLoggingEnabled, forKey: .verboseLoggingEnabled)
+        try c.encodeIfPresent(playerId, forKey: .playerId)
+        try c.encode(upcomingRowCount, forKey: .upcomingRowCount)
+        try c.encode(upcomingHiddenChannelIds, forKey: .upcomingHiddenChannelIds)
+        try c.encode(popoverFloating, forKey: .popoverFloating)
+        try c.encode(audioProfiles, forKey: .audioProfiles)
+        try c.encode(updateCheckEnabled, forKey: .updateCheckEnabled)
+        try c.encodeIfPresent(lastUpdateCheckAt, forKey: .lastUpdateCheckAt)
+        try c.encodeIfPresent(dismissedUpdateVersion, forKey: .dismissedUpdateVersion)
+        try c.encodeIfPresent(cachedLatestRelease, forKey: .cachedLatestRelease)
+    }
+}
+
+public extension AppSettings {
+    // Transitional bridges removed in Task 6 once binder/VM/View land.
+    var forceMaxVolumeEnabled: Bool {
+        get { volumeMode == .forceMax }
+        set {
+            if newValue {
+                volumeMode = .forceMax
+            } else if volumeMode == .forceMax {
+                volumeMode = .none
+            }
+        }
+    }
+    var applyReplayGainEnabled: Bool {
+        get { volumeMode == .replayGain }
+        set {
+            if newValue {
+                volumeMode = .replayGain
+            } else if volumeMode == .replayGain {
+                volumeMode = .none
+            }
+        }
+    }
 }
