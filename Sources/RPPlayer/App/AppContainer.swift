@@ -142,6 +142,8 @@ extension AppContainer {
         let keychainAuth = KeychainCookieProvider()
         let api = LiveRpApiClient(cookieProvider: keychainAuth, playerId: playerId, logger: logger)
 
+        let eqPresetStore: any EqPresetStore = LiveEqPresetStore(directory: ConfigPaths.eqPresetsDirectory)
+
         let imageBaseURL = URL(string: "https://img.radioparadise.com/")!
         let cache: any AlbumArtCache
         do {
@@ -353,11 +355,14 @@ extension AppContainer {
                     }
                     if let uid = settings.outputDeviceUID {
                         try? await store.update { s in
+                            let existing = s.audioProfiles[uid] ?? AudioProfile.safeDefault
                             s.audioProfiles[uid] = AudioProfile(
                                 hogModeEnabled: s.hogModeEnabled,
                                 releaseHogOnPauseEnabled: s.releaseHogOnPauseEnabled,
                                 volumeMode: s.volumeMode,
-                                bitrate: s.bitrate
+                                bitrate: s.bitrate,
+                                eqEnabled: existing.eqEnabled,
+                                eqPresetName: existing.eqPresetName
                             )
                         }
                     }
@@ -399,6 +404,14 @@ extension AppContainer {
                     case .dark:   NSApp.appearance = NSAppearance(named: .darkAqua)
                     }
                 }
+            }
+            Task { [engine, eqPresetStore, store] in
+                await AppContainer.runEqBinder(
+                    store: store,
+                    engine: engine,
+                    eqPresetStore: eqPresetStore,
+                    initialProfile: startupProfile
+                )
             }
         }
 
@@ -488,7 +501,8 @@ extension AppContainer {
                 NSWorkspace.shared.open(ConfigPaths.applicationSupportRoot)
             },
             listChannels: { [api] in try await api.listChannels() },
-            updateChecker: updateChecker
+            updateChecker: updateChecker,
+            eqPresetStore: eqPresetStore
         )
 
         let settingsWindowController = SettingsWindowController(viewModel: settingsViewModel)
@@ -569,6 +583,50 @@ extension AppContainer {
             quietNow: { engine.muteImmediately() },
             onLaunchTasks: onLaunchTasks
         )
+    }
+
+    internal static func runEqBinder(
+        store: any ConfigStore,
+        engine: any PlayerEngine,
+        eqPresetStore: any EqPresetStore,
+        initialProfile: AudioProfile
+    ) async {
+        var lastEnabled = initialProfile.eqEnabled
+        var lastName = initialProfile.eqPresetName
+        await applyEqState(engine: engine, store: eqPresetStore, enabled: lastEnabled, name: lastName)
+
+        for await snapshot in await store.changes {
+            let uid = snapshot.outputDeviceUID
+            let profile = uid.flatMap { snapshot.audioProfiles[$0] } ?? AudioProfile.safeDefault
+            if profile.eqEnabled != lastEnabled || profile.eqPresetName != lastName {
+                lastEnabled = profile.eqEnabled
+                lastName = profile.eqPresetName
+                await applyEqState(engine: engine, store: eqPresetStore, enabled: lastEnabled, name: lastName)
+            }
+        }
+    }
+
+    internal static func applyEqState(
+        engine: any PlayerEngine,
+        store: any EqPresetStore,
+        enabled: Bool,
+        name: String?
+    ) async {
+        guard enabled, let name = name else {
+            try? await engine.setAudioFilterChain(nil)
+            return
+        }
+        do {
+            let raw = try await store.loadText(name: name)
+            switch EqPresetParser.parse(text: raw, filename: name) {
+            case .success(let preset):
+                try? await engine.setAudioFilterChain(EqChainBuilder.build(preset))
+            case .failure:
+                try? await engine.setAudioFilterChain(nil)
+            }
+        } catch {
+            try? await engine.setAudioFilterChain(nil)
+        }
     }
 
     private static func loadSettings(from url: URL) -> AppSettings {
