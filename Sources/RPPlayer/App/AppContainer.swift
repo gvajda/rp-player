@@ -88,10 +88,12 @@ final class AppContainer {
 extension AppContainer {
     static func live() throws -> AppContainer {
         let logger = AppLogger.fileBacked(category: "shell", directory: ConfigPaths.logsDirectory)
+        let eqLogger = AppLogger.fileBacked(category: "eq", directory: ConfigPaths.logsDirectory)
         logger.info("AppContainer.live() starting")
         let configURL = ConfigPaths.configFile
         let loaded = Self.loadSettings(from: configURL)
         logger.setVerbose(loaded.verboseLoggingEnabled)
+        eqLogger.setVerbose(loaded.verboseLoggingEnabled)
         logger.info("loaded settings: hog=\(loaded.hogModeEnabled) device=\(loaded.outputDeviceUID ?? "nil") bitrate=\(loaded.bitrate) verboseLogging=\(loaded.verboseLoggingEnabled)")
         let store: JSONConfigStore?
         do {
@@ -142,7 +144,7 @@ extension AppContainer {
         let keychainAuth = KeychainCookieProvider()
         let api = LiveRpApiClient(cookieProvider: keychainAuth, playerId: playerId, logger: logger)
 
-        let eqPresetStore: any EqPresetStore = LiveEqPresetStore(directory: ConfigPaths.eqPresetsDirectory)
+        let eqPresetStore: any EqPresetStore = LiveEqPresetStore(directory: ConfigPaths.eqPresetsDirectory, logger: eqLogger)
 
         let imageBaseURL = URL(string: "https://img.radioparadise.com/")!
         let cache: any AlbumArtCache
@@ -389,10 +391,11 @@ extension AppContainer {
                     }
                 }
             }
-            Task { [logger] in
+            Task { [logger, eqLogger] in
                 let stream = await store.changes
                 for await settings in stream {
                     logger.setVerbose(settings.verboseLoggingEnabled)
+                    eqLogger.setVerbose(settings.verboseLoggingEnabled)
                 }
             }
             Task { @MainActor in
@@ -502,7 +505,8 @@ extension AppContainer {
             },
             listChannels: { [api] in try await api.listChannels() },
             updateChecker: updateChecker,
-            eqPresetStore: eqPresetStore
+            eqPresetStore: eqPresetStore,
+            logger: eqLogger
         )
 
         let settingsWindowController = SettingsWindowController(viewModel: settingsViewModel)

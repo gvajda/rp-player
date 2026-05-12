@@ -18,10 +18,17 @@ public protocol EqPresetStore: Sendable {
 public actor LiveEqPresetStore: EqPresetStore {
     public let directory: URL
     private let fm = FileManager.default
+    private let logger: (any Logging)?
 
-    public init(directory: URL) {
+    public init(directory: URL, logger: (any Logging)? = nil) {
         self.directory = directory
-        try? fm.createDirectory(at: directory, withIntermediateDirectories: true)
+        self.logger = logger
+        do {
+            try fm.createDirectory(at: directory, withIntermediateDirectories: true)
+            logger?.debug("EqPresetStore: directory ready at \(directory.path)")
+        } catch {
+            logger?.error("EqPresetStore: failed to create directory at \(directory.path): \(error)")
+        }
     }
 
     public func list() async -> [String] {
@@ -40,29 +47,64 @@ public actor LiveEqPresetStore: EqPresetStore {
     }
 
     public func loadText(name: String) async throws -> String {
-        guard validate(name) else { throw EqPresetStoreError.invalidName }
+        logger?.debug("EqPresetStore.loadText name=\(name)")
+        guard validate(name) else {
+            logger?.warn("EqPresetStore.loadText rejected name=\(name) reason=invalidName")
+            throw EqPresetStoreError.invalidName
+        }
         let url = fileURL(for: name)
-        guard fm.fileExists(atPath: url.path) else { throw EqPresetStoreError.notFound }
-        do { return try String(contentsOf: url, encoding: .utf8) }
-        catch { throw EqPresetStoreError.ioFailure("\(error)") }
+        guard fm.fileExists(atPath: url.path) else {
+            logger?.warn("EqPresetStore.loadText name=\(name) reason=notFound path=\(url.path)")
+            throw EqPresetStoreError.notFound
+        }
+        do {
+            let text = try String(contentsOf: url, encoding: .utf8)
+            logger?.debug("EqPresetStore.loadText name=\(name) read=\(text.utf8.count) bytes")
+            return text
+        } catch {
+            logger?.error("EqPresetStore.loadText name=\(name) ioFailure=\(error)")
+            throw EqPresetStoreError.ioFailure("\(error)")
+        }
     }
 
     public func save(name: String, text: String, overwrite: Bool) async throws {
-        guard validate(name) else { throw EqPresetStoreError.invalidName }
+        logger?.debug("EqPresetStore.save name=\(name) bytes=\(text.utf8.count) overwrite=\(overwrite)")
+        guard validate(name) else {
+            logger?.warn("EqPresetStore.save rejected name=\(name) reason=invalidName")
+            throw EqPresetStoreError.invalidName
+        }
         let url = fileURL(for: name)
         if fm.fileExists(atPath: url.path) && !overwrite {
+            logger?.info("EqPresetStore.save name=\(name) skipped reason=alreadyExists")
             throw EqPresetStoreError.alreadyExists
         }
-        do { try text.write(to: url, atomically: true, encoding: .utf8) }
-        catch { throw EqPresetStoreError.ioFailure("\(error)") }
+        do {
+            try text.write(to: url, atomically: true, encoding: .utf8)
+            logger?.info("EqPresetStore.save name=\(name) wrote=\(url.path)")
+        } catch {
+            logger?.error("EqPresetStore.save name=\(name) ioFailure=\(error)")
+            throw EqPresetStoreError.ioFailure("\(error)")
+        }
     }
 
     public func delete(name: String) async throws {
-        guard validate(name) else { throw EqPresetStoreError.invalidName }
+        logger?.debug("EqPresetStore.delete name=\(name)")
+        guard validate(name) else {
+            logger?.warn("EqPresetStore.delete rejected name=\(name) reason=invalidName")
+            throw EqPresetStoreError.invalidName
+        }
         let url = fileURL(for: name)
-        guard fm.fileExists(atPath: url.path) else { throw EqPresetStoreError.notFound }
-        do { try fm.removeItem(at: url) }
-        catch { throw EqPresetStoreError.ioFailure("\(error)") }
+        guard fm.fileExists(atPath: url.path) else {
+            logger?.warn("EqPresetStore.delete name=\(name) reason=notFound")
+            throw EqPresetStoreError.notFound
+        }
+        do {
+            try fm.removeItem(at: url)
+            logger?.info("EqPresetStore.delete name=\(name) removed=\(url.path)")
+        } catch {
+            logger?.error("EqPresetStore.delete name=\(name) ioFailure=\(error)")
+            throw EqPresetStoreError.ioFailure("\(error)")
+        }
     }
 
     private func fileURL(for name: String) -> URL {

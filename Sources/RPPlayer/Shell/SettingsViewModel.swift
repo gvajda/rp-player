@@ -53,6 +53,7 @@ final class SettingsViewModel: ObservableObject {
     private let updateChecker: any UpdateChecking
     private let currentVersionString: String
     private let eqPresetStore: any EqPresetStore
+    private let logger: (any Logging)?
 
     private var configTask: Task<Void, Never>?
     private var deviceTask: Task<Void, Never>?
@@ -68,7 +69,8 @@ final class SettingsViewModel: ObservableObject {
         listChannels: @Sendable @escaping () async throws -> [Channel] = { [] },
         updateChecker: any UpdateChecking = NoopUpdateChecker(),
         currentVersionString: String = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "dev",
-        eqPresetStore: any EqPresetStore = NoopEqPresetStore()
+        eqPresetStore: any EqPresetStore = NoopEqPresetStore(),
+        logger: (any Logging)? = nil
     ) {
         self.configStore = configStore
         self.deviceCatalog = deviceCatalog
@@ -79,6 +81,7 @@ final class SettingsViewModel: ObservableObject {
         self.updateChecker = updateChecker
         self.currentVersionString = currentVersionString
         self.eqPresetStore = eqPresetStore
+        self.logger = logger
 
         let snapshot = AppSettings.default
         self.selectedChannelId = snapshot.selectedChannelId
@@ -326,6 +329,7 @@ final class SettingsViewModel: ObservableObject {
     }
 
     public func setEqEnabled(_ value: Bool) async {
+        logger?.debug("setEqEnabled value=\(value)")
         await update { s in
             guard let uid = s.outputDeviceUID else { return }
             var p = s.audioProfiles[uid] ?? .safeDefault
@@ -335,6 +339,7 @@ final class SettingsViewModel: ObservableObject {
     }
 
     public func setEqPresetName(_ name: String?) async {
+        logger?.debug("setEqPresetName name=\(name ?? "<nil>")")
         await update { s in
             guard let uid = s.outputDeviceUID else { return }
             var p = s.audioProfiles[uid] ?? .safeDefault
@@ -349,26 +354,39 @@ final class SettingsViewModel: ObservableObject {
     }
 
     public func importPresetFile(url: URL, overwrite: Bool) async throws -> ImportOutcome {
+        logger?.info("importPresetFile entry url=\(url.path) overwrite=\(overwrite) ext=\(url.pathExtension)")
         guard url.pathExtension.lowercased() == "txt" else {
+            logger?.warn("importPresetFile rejected reason=invalidExtension ext=\(url.pathExtension)")
             throw EqImportError.invalidExtension
         }
         let raw: String
-        do { raw = try String(contentsOf: url, encoding: .utf8) }
-        catch { throw EqImportError.ioFailure("\(error)") }
+        do {
+            raw = try String(contentsOf: url, encoding: .utf8)
+            logger?.debug("importPresetFile read \(raw.utf8.count) bytes from \(url.lastPathComponent)")
+        } catch {
+            logger?.error("importPresetFile read failed: \(error)")
+            throw EqImportError.ioFailure("\(error)")
+        }
         let name = url.deletingPathExtension().lastPathComponent
         switch EqPresetParser.parse(text: raw, filename: name) {
         case .failure(.warningsNotPermitted(let reasons)):
+            logger?.warn("importPresetFile rejected reason=warningsNotPermitted reasons=\(reasons.joined(separator: " | "))")
             throw EqImportError.parseFailed(reasons: reasons)
         case .failure(.empty):
+            logger?.warn("importPresetFile rejected reason=empty (parser found no usable filter lines)")
             throw EqImportError.parseFailed(reasons: ["No recognised filter lines"])
-        case .success:
+        case .success(let preset):
+            logger?.info("importPresetFile parsed name=\(name) preamp=\(preset.preampDb) bands=\(preset.bands.count)")
             do {
                 try await eqPresetStore.save(name: name, text: raw, overwrite: overwrite)
                 await refreshPresets()
+                logger?.info("importPresetFile saved name=\(name)")
                 return .imported(name: name)
             } catch EqPresetStoreError.alreadyExists {
+                logger?.info("importPresetFile collision name=\(name) overwrite=false")
                 return .nameCollision(name: name)
             } catch {
+                logger?.error("importPresetFile save failed: \(error)")
                 throw EqImportError.ioFailure("\(error)")
             }
         }
@@ -388,6 +406,7 @@ final class SettingsViewModel: ObservableObject {
     }
 
     public func deletePresetConfirmed(name: String) async throws {
+        logger?.info("deletePresetConfirmed name=\(name)")
         try await configStore.update { settings in
             for (uid, var profile) in settings.audioProfiles where profile.eqPresetName == name {
                 profile.eqPresetName = nil

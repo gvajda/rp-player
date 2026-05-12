@@ -1,6 +1,23 @@
 import XCTest
 @testable import RPPlayer
 
+private final class CapturingLogger: Logging, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _lines: [String] = []
+    var lines: [String] {
+        lock.lock(); defer { lock.unlock() }
+        return _lines
+    }
+    func debug(_ message: @autoclosure () -> String) { record("debug", message()) }
+    func info(_ message: @autoclosure () -> String)  { record("info",  message()) }
+    func warn(_ message: @autoclosure () -> String)  { record("warn",  message()) }
+    func error(_ message: @autoclosure () -> String) { record("error", message()) }
+    private func record(_ level: String, _ msg: String) {
+        lock.lock(); defer { lock.unlock() }
+        _lines.append("\(level): \(msg)")
+    }
+}
+
 final class EqPresetStoreTests: XCTestCase {
     private var tmpDir: URL!
 
@@ -100,5 +117,13 @@ final class EqPresetStoreTests: XCTestCase {
         } catch EqPresetStoreError.invalidName {
             // expected
         }
+    }
+
+    func testLoggerCapturesSaveSuccess() async throws {
+        let logger = CapturingLogger()
+        let store = LiveEqPresetStore(directory: tmpDir, logger: logger)
+        try await store.save(name: "n", text: "x", overwrite: false)
+        XCTAssertTrue(logger.lines.contains { $0.contains("EqPresetStore.save") && $0.contains("name=n") })
+        XCTAssertTrue(logger.lines.contains { $0.contains("wrote=") })
     }
 }
