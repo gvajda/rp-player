@@ -4,7 +4,7 @@ public enum EqChainBuilder {
     public static func build(_ preset: EqPreset) -> String? {
         let enabled = preset.bands.filter(\.enabled)
         if enabled.isEmpty && preset.preampDb == 0 { return nil }
-        var parts: [String] = ["volume=\(format(preset.preampDb))dB"]
+        var parts: [String] = ["volume=volume=\(format(preset.preampDb))dB"]
         for b in enabled {
             switch b.type {
             case .peak:
