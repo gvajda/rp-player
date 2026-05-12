@@ -296,33 +296,33 @@ struct SettingsView: View {
         HStack(spacing: 8) {
             Text("Crossfeed")
             HoverInfoIcon(text: crossfeedTooltip)
+            if viewModel.crossfeedEnabled {
+                Spacer(minLength: 8)
 
-            Spacer(minLength: 8)
+                Text("Strength")
+                ClampedNumericField(
+                    value: Binding(
+                        get: { viewModel.crossfeedStrength },
+                        set: { v in Task { await viewModel.setCrossfeedStrength(v) } }
+                    ),
+                    range: 0.0...1.0,
+                    step: 0.05,
+                    isEnabled: true
+                )
 
-            Text("Strength")
-                .font(.caption)
-            ClampedNumericField(
-                value: Binding(
-                    get: { viewModel.crossfeedStrength },
-                    set: { v in Task { await viewModel.setCrossfeedStrength(v) } }
-                ),
-                range: 0.0...1.0,
-                step: 0.05,
-                isEnabled: viewModel.crossfeedEnabled
-            )
-
-            Text("Range")
-                .font(.caption)
-            ClampedNumericField(
-                value: Binding(
-                    get: { viewModel.crossfeedRange },
-                    set: { v in Task { await viewModel.setCrossfeedRange(v) } }
-                ),
-                range: 0.0...1.0,
-                step: 0.05,
-                isEnabled: viewModel.crossfeedEnabled
-            )
-
+                Text("Range")
+                ClampedNumericField(
+                    value: Binding(
+                        get: { viewModel.crossfeedRange },
+                        set: { v in Task { await viewModel.setCrossfeedRange(v) } }
+                    ),
+                    range: 0.0...1.0,
+                    step: 0.05,
+                    isEnabled: true
+                )
+            } else {
+                Spacer(minLength: 8)
+            }
             Toggle(
                 "",
                 isOn: Binding(

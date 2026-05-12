@@ -33,7 +33,7 @@ struct ClampedNumericField: View {
     @FocusState private var focused: Bool
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(alignment: .center, spacing: 2) {
             TextField("", text: $rawText)
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 56)
@@ -70,6 +70,7 @@ struct ClampedNumericField: View {
             Stepper("", value: $value, in: range, step: step)
                 .labelsHidden()
                 .disabled(!isEnabled)
+                .fixedSize()
         }
         .onAppear { rawText = ClampedNumericFieldLogic.format(value) }
     }
