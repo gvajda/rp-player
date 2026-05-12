@@ -96,18 +96,18 @@ The app installs a status item in the menu bar (no Dock icon, no main window). C
   - Previous-track and seek are intentionally disabled — Radio Paradise is forward-only.
 
 - **Per-device audio settings**:
-  - Each output device stores its own profile (hog mode, release-on-pause, force-max volume, ReplayGain, bitrate).
-  - Switching devices instantly restores that device's saved profile. Devices seen for the first time start from safe defaults — all toggles off, 320k AAC — so a DAC profile with Force Max Volume on can never bleed over to built-in speakers.
+  - Each output device stores its own profile (hog mode, release-on-pause, volume mode, bitrate).
+  - Switching devices instantly restores that device's saved profile. Devices seen for the first time start from safe defaults — hog off, volume mode None, 320k AAC — so a DAC profile can never bleed over to built-in speakers.
 
 - **Bit-perfect output via CoreAudio hog mode**
   - The app acquires the audio device exclusively (`kAudioDevicePropertyHogMode`) and feeds it the decoded sample stream untouched — no system mixer, no resampling.
   - Hog mode is opt-out in Settings if you'd rather share the device with other apps.
   - **Release on Pause** (default on): the device returns to shared use whenever you pause, so other apps and Mac calls work normally without quitting RP Player.
-  - **Force Max Volume** (for external DACs): pins the device's CoreAudio volume to 100% and locks `volume-max` so no software attenuation is in the signal path. Confirmation alert before enabling — set your DAC/amp/headphone volume first.
 
-- **Apply ReplayGain**
-  - Per-track loudness normalisation when on, untouched audio when off.
-  - default off; force-max overrides it.
+- **Volume mode** (3-state picker, per device):
+  - **None**: clean signal, no normalization or volume pinning.
+  - **ReplayGain**: per-track loudness normalisation via mpv's `replaygain=track`.
+  - **Force Max** (for external DACs): pins the device's CoreAudio volume to 100% and locks `volume-max` so no software attenuation is in the signal path. Confirmation alert before enabling — set your DAC/amp/headphone volume first. Requires Hog Mode on.
 
 <p align="center"><img src=".screenshots/settings.png" alt="Settings window: bitrate, output device, hog mode toggle."/></p>
 
