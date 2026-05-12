@@ -156,7 +156,7 @@ The app installs a status item in the menu bar (no Dock icon, no main window). C
 ## Under the hood
 
 - **Audio pipeline**
-  - **Decoder:** libmpv 0.36.0, vendored under `Vendor/libmpv/` (universal binaries via `media-kit/libmpv-darwin-build`).
+  - **Decoder:** libmpv 0.36.0, vendored under `Vendor/libmpv/` (`audio-encodersgpl` universal variant from `media-kit/libmpv-darwin-build` — GPL-built FFmpeg, required for the full audio filter set EQ depends on; see License section below).
   - **Output:** mpv's plain `coreaudio` AO. The app does not use `coreaudio_exclusive` — it opens hog mode itself via `AudioObjectSetPropertyData` on `kAudioDevicePropertyHogMode` *before* mpv opens the device, then hands the device back on shutdown. This avoids the format-negotiation failures observed on USB DACs (e.g. Qudelix-5K) when mpv tries to own exclusive mode itself.
   - **Per-song self-contained URLs:** every song from `api/gapless` is its own audio file with its own duration and event id, so the coordinator carries a flat queue of song objects instead of stitching multi-song "blocks" together. Album art, song info and the URL travel as one unit, which makes "what's playing" identical to "what's displayed" by construction.
   - **Songs are pre-downloaded to disk before mpv plays them.** Each gapless song is fetched fully via `URLSession` to `~/Library/Application Support/RP Player/SongFileCache/` and then handed to mpv as a local `file://` URL. This is **required for sample-accurate gapless transitions over HTTP**. The cache holds up to **10 files** (LRU, oldest evicted on every successful write); only the next **2 songs** are pre-fetched at a time, sequentially. Switching to a previously-played channel reuses cached files instead of re-downloading.
@@ -246,4 +246,11 @@ Please also consider [donating to Radio Paradise](https://radioparadise.com/dona
 
 ## License
 
-MIT — see [`LICENSE`](LICENSE).
+Source code: **MIT** — see [`LICENSE`](LICENSE).
+
+Bundled `.app` binary: distributed under **GPL-2.0-or-later** because it
+embeds libmpv built with FFmpeg `--enable-gpl` (the `audio-encodersgpl`
+variant of [`media-kit/libmpv-darwin-build`](https://github.com/media-kit/libmpv-darwin-build)
+— required for the parametric EQ filter set). The MIT source license is
+unchanged; if you redistribute the bundled binary you must comply with GPL
+terms (provide source on request, no proprietary derivative-by-distribution).
