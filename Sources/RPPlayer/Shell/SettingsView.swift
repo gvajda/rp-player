@@ -221,6 +221,7 @@ struct SettingsView: View {
                 .disabled(!viewModel.hogModeEnabled)
             volumeRow
             eqSection
+            crossfeedSection
         }
     }
 
@@ -289,6 +290,59 @@ struct SettingsView: View {
 
     private var eqTooltip: String {
         "Parametric EQ applied via libmpv (lavfi: volume + equalizer + lowshelf + highshelf).\n\nImport AutoEQ / Equalizer APO / REW .txt presets. Strict parser — files with unsupported filter types, malformed lines, or more than 10 bands are rejected.\n\nCreate presets at https://squig.link"
+    }
+
+    private var crossfeedSection: some View {
+        HStack(spacing: 8) {
+            Text("Crossfeed")
+            HoverInfoIcon(text: crossfeedTooltip)
+
+            Spacer(minLength: 8)
+
+            Text("Strength")
+                .font(.caption)
+            ClampedNumericField(
+                value: Binding(
+                    get: { viewModel.crossfeedStrength },
+                    set: { v in Task { await viewModel.setCrossfeedStrength(v) } }
+                ),
+                range: 0.0...1.0,
+                step: 0.05,
+                isEnabled: viewModel.crossfeedEnabled
+            )
+
+            Text("Range")
+                .font(.caption)
+            ClampedNumericField(
+                value: Binding(
+                    get: { viewModel.crossfeedRange },
+                    set: { v in Task { await viewModel.setCrossfeedRange(v) } }
+                ),
+                range: 0.0...1.0,
+                step: 0.05,
+                isEnabled: viewModel.crossfeedEnabled
+            )
+
+            Toggle(
+                "",
+                isOn: Binding(
+                    get: { viewModel.crossfeedEnabled },
+                    set: { v in Task { await viewModel.setCrossfeedEnabled(v) } }
+                )
+            )
+            .labelsHidden()
+        }
+    }
+
+    private var crossfeedTooltip: String {
+        """
+        Crossfeed simulates a small amount of acoustic leakage between the left and right channels — only useful for headphones, where hard-panned stereo can feel unnaturally separated.
+
+        Strength (0.0–1.0): how much signal crosses to the opposite ear. Default 0.20. Higher = stronger spatial blend.
+        Range (0.0–1.0): high-frequency rolloff of the crossfed signal. Default 0.50. Lower = darker / more natural at higher strengths.
+
+        Bauer-style (BS2B). No effect on speaker output; safe to leave off for non-headphone devices.
+        """
     }
 
     private func showEqImportPanel() {
