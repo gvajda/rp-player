@@ -7,8 +7,7 @@ final class SettingsViewModel: ObservableObject {
     @Published private(set) var bitrate: Int
     @Published private(set) var hogModeEnabled: Bool
     @Published private(set) var releaseHogOnPauseEnabled: Bool
-    @Published private(set) var forceMaxVolumeEnabled: Bool
-    @Published private(set) var applyReplayGainEnabled: Bool
+    @Published private(set) var volumeMode: VolumeMode
     @Published private(set) var notificationsEnabled: Bool
     @Published private(set) var outputDeviceUID: String?
     @Published private(set) var verboseLoggingEnabled: Bool
@@ -68,8 +67,7 @@ final class SettingsViewModel: ObservableObject {
         self.bitrate = snapshot.bitrate
         self.hogModeEnabled = snapshot.hogModeEnabled
         self.releaseHogOnPauseEnabled = snapshot.releaseHogOnPauseEnabled
-        self.forceMaxVolumeEnabled = snapshot.forceMaxVolumeEnabled
-        self.applyReplayGainEnabled = snapshot.applyReplayGainEnabled
+        self.volumeMode = snapshot.volumeMode
         self.notificationsEnabled = snapshot.notificationsEnabled
         self.outputDeviceUID = snapshot.outputDeviceUID
         self.verboseLoggingEnabled = snapshot.verboseLoggingEnabled
@@ -97,8 +95,7 @@ final class SettingsViewModel: ObservableObject {
                     self.bitrate = snapshot.bitrate
                     self.hogModeEnabled = snapshot.hogModeEnabled
                     self.releaseHogOnPauseEnabled = snapshot.releaseHogOnPauseEnabled
-                    self.forceMaxVolumeEnabled = snapshot.forceMaxVolumeEnabled
-                    self.applyReplayGainEnabled = snapshot.applyReplayGainEnabled
+                    self.volumeMode = snapshot.volumeMode
                     self.notificationsEnabled = snapshot.notificationsEnabled
                     self.outputDeviceUID = snapshot.outputDeviceUID
                     self.verboseLoggingEnabled = snapshot.verboseLoggingEnabled
@@ -177,22 +174,21 @@ final class SettingsViewModel: ObservableObject {
         }
     }
 
+    // Transitional — removed in Task 6 once SettingsView lands.
+    var forceMaxVolumeEnabled: Bool { volumeMode == .forceMax }
+    var applyReplayGainEnabled: Bool { volumeMode == .replayGain }
     func setForceMaxVolumeEnabled(_ value: Bool) async {
-        await update { s in
-            s.forceMaxVolumeEnabled = value
-            if let uid = s.outputDeviceUID {
-                let rg = s.audioProfiles[uid, default: .safeDefault].volumeMode == .replayGain
-                s.audioProfiles[uid, default: .safeDefault].volumeMode = value ? .forceMax : (rg ? .replayGain : VolumeMode.none)
-            }
-        }
+        await setVolumeMode(value ? .forceMax : .none)
+    }
+    func setApplyReplayGainEnabled(_ value: Bool) async {
+        await setVolumeMode(value ? .replayGain : .none)
     }
 
-    func setApplyReplayGainEnabled(_ value: Bool) async {
+    func setVolumeMode(_ value: VolumeMode) async {
         await update { s in
-            s.applyReplayGainEnabled = value
+            s.volumeMode = value
             if let uid = s.outputDeviceUID {
-                let fm = s.audioProfiles[uid, default: .safeDefault].volumeMode == .forceMax
-                s.audioProfiles[uid, default: .safeDefault].volumeMode = value ? .replayGain : (fm ? .forceMax : VolumeMode.none)
+                s.audioProfiles[uid, default: .safeDefault].volumeMode = value
             }
         }
     }
