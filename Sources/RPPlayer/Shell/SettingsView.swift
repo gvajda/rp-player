@@ -116,7 +116,7 @@ struct SettingsView: View {
             HoverInfoIcon(text: volumeTooltip)
             Spacer(minLength: 8)
             HStack(spacing: 6) {
-                volumeButton(.none, label: "Bypass")
+                volumeButton(.none, label: "Default")
                 volumeButton(.replayGain, label: "ReplayGain")
                 volumeForceMaxButton
             }
@@ -145,7 +145,7 @@ struct SettingsView: View {
     }
 
     private var volumeTooltip: String {
-        "ReplayGain:\nApplies per-track loudness normalization metadata embedded by Radio Paradise. Reduces peaks; small variation track-to-track.\n\nForce-Max Volume:\nOnly available in Hog mode.\nPins device to max volume + caps mpv at 100. Use external attenuation. Hearing damage warning. Bit-perfect when EQ is off."
+        "Default:\nNo loudness processing and no volume pinning. The audio signal is passed through unchanged; the macOS output slider controls the level.\n\nReplayGain:\nApplies per-track loudness normalization metadata embedded by Radio Paradise. Reduces peaks; small variation track-to-track.\n\nForce-Max Volume:\nOnly available in Hog mode, designed to use with external DACs with on-device volume control.\nPins device to max volume + caps mpv at 100. Hearing damage warning. Bit-perfect when EQ is off."
     }
 
     private var deviceSettingsSectionTitle: String {
