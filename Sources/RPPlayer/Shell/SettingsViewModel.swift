@@ -27,6 +27,20 @@ final class SettingsViewModel: ObservableObject {
     @Published private(set) var lastCheckedRelative: String = "never"
     @Published private(set) var currentVersionLine: String = ""
     @Published private(set) var updateAvailable: Bool = false
+    @Published public private(set) var eqEnabled: Bool = false
+    @Published public private(set) var eqPresetName: String?
+    @Published public private(set) var availablePresets: [String] = []
+
+    public enum ImportOutcome: Equatable, Sendable {
+        case imported(name: String)
+        case nameCollision(name: String)
+    }
+
+    public enum EqImportError: Error, Equatable, Sendable {
+        case parseFailed(reasons: [String])
+        case ioFailure(String)
+        case invalidExtension
+    }
 
     var openUpdatePanel: @MainActor (ReleaseInfo) -> Void = { _ in }
 
@@ -38,6 +52,7 @@ final class SettingsViewModel: ObservableObject {
     private let listChannels: @Sendable () async throws -> [Channel]
     private let updateChecker: any UpdateChecking
     private let currentVersionString: String
+    private let eqPresetStore: any EqPresetStore
 
     private var configTask: Task<Void, Never>?
     private var deviceTask: Task<Void, Never>?
@@ -51,7 +66,8 @@ final class SettingsViewModel: ObservableObject {
         openApplicationData: @escaping @MainActor () -> Void,
         listChannels: @Sendable @escaping () async throws -> [Channel] = { [] },
         updateChecker: any UpdateChecking = NoopUpdateChecker(),
-        currentVersionString: String = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "dev"
+        currentVersionString: String = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "dev",
+        eqPresetStore: any EqPresetStore = NoopEqPresetStore()
     ) {
         self.configStore = configStore
         self.deviceCatalog = deviceCatalog
@@ -61,6 +77,7 @@ final class SettingsViewModel: ObservableObject {
         self.listChannels = listChannels
         self.updateChecker = updateChecker
         self.currentVersionString = currentVersionString
+        self.eqPresetStore = eqPresetStore
 
         let snapshot = AppSettings.default
         self.selectedChannelId = snapshot.selectedChannelId
@@ -110,6 +127,11 @@ final class SettingsViewModel: ObservableObject {
                     self.currentDeviceName = self.devices.first(where: { $0.uid == snapshot.outputDeviceUID })?.name
                     self.updateCheckEnabled = snapshot.updateCheckEnabled
                     self.applyLastChecked(snapshot.lastUpdateCheckAt)
+
+                    let uid = snapshot.outputDeviceUID
+                    let profile = uid.flatMap { snapshot.audioProfiles[$0] }
+                    self.eqEnabled = profile?.eqEnabled ?? false
+                    self.eqPresetName = profile?.eqPresetName
                 }
             }
         }
@@ -133,6 +155,9 @@ final class SettingsViewModel: ObservableObject {
             }
         }
         refreshAuthState()
+        Task { [weak self] in
+            await self?.refreshPresets()
+        }
         Task { [weak self] in
             guard let self else { return }
             let channels = (try? await listChannels()) ?? []
@@ -296,7 +321,88 @@ final class SettingsViewModel: ObservableObject {
         currentVersionString.hasPrefix("v") ? currentVersionString : "v" + currentVersionString
     }
 
+    public func setEqEnabled(_ value: Bool) async {
+        await update { s in
+            guard let uid = s.outputDeviceUID else { return }
+            var p = s.audioProfiles[uid] ?? .safeDefault
+            p.eqEnabled = value
+            s.audioProfiles[uid] = p
+        }
+    }
+
+    public func setEqPresetName(_ name: String?) async {
+        await update { s in
+            guard let uid = s.outputDeviceUID else { return }
+            var p = s.audioProfiles[uid] ?? .safeDefault
+            p.eqPresetName = name
+            s.audioProfiles[uid] = p
+        }
+    }
+
+    public func refreshPresets() async {
+        let names = await eqPresetStore.list()
+        await MainActor.run { self.availablePresets = names }
+    }
+
+    public func importPresetFile(url: URL, overwrite: Bool) async throws -> ImportOutcome {
+        guard url.pathExtension.lowercased() == "txt" else {
+            throw EqImportError.invalidExtension
+        }
+        let raw: String
+        do { raw = try String(contentsOf: url, encoding: .utf8) }
+        catch { throw EqImportError.ioFailure("\(error)") }
+        let name = url.deletingPathExtension().lastPathComponent
+        switch EqPresetParser.parse(text: raw, filename: name) {
+        case .failure(.warningsNotPermitted(let reasons)):
+            throw EqImportError.parseFailed(reasons: reasons)
+        case .failure(.empty):
+            throw EqImportError.parseFailed(reasons: ["No recognised filter lines"])
+        case .success:
+            do {
+                try await eqPresetStore.save(name: name, text: raw, overwrite: overwrite)
+                await refreshPresets()
+                return .imported(name: name)
+            } catch EqPresetStoreError.alreadyExists {
+                return .nameCollision(name: name)
+            } catch {
+                throw EqImportError.ioFailure("\(error)")
+            }
+        }
+    }
+
+    public func exportPreset(to url: URL) async throws {
+        guard let name = eqPresetName else { return }
+        let text = try await eqPresetStore.loadText(name: name)
+        try text.write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    public func prepareDeletePreset(name: String) async -> [String] {
+        let settings = await configStore.settings
+        return settings.audioProfiles
+            .filter { $0.value.eqPresetName == name }
+            .map(\.key)
+    }
+
+    public func deletePresetConfirmed(name: String) async throws {
+        try await configStore.update { settings in
+            for (uid, var profile) in settings.audioProfiles where profile.eqPresetName == name {
+                profile.eqPresetName = nil
+                settings.audioProfiles[uid] = profile
+            }
+        }
+        try await eqPresetStore.delete(name: name)
+        await refreshPresets()
+    }
+
     private func update(_ mutate: @Sendable (inout AppSettings) -> Void) async {
         try? await configStore.update(mutate)
     }
+}
+
+private final class NoopEqPresetStore: EqPresetStore {
+    func list() async -> [String] { [] }
+    func exists(name: String) async -> Bool { false }
+    func loadText(name: String) async throws -> String { throw EqPresetStoreError.notFound }
+    func save(name: String, text: String, overwrite: Bool) async throws { throw EqPresetStoreError.ioFailure("noop") }
+    func delete(name: String) async throws { throw EqPresetStoreError.notFound }
 }

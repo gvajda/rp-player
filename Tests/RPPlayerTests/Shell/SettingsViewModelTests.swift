@@ -526,6 +526,195 @@ final class SettingsViewModelTests: XCTestCase {
         await sut.openUpdate()
         XCTAssertEqual(openCount, 0)
     }
+
+    // MARK: - EQ surface (PR 35 Task 7)
+
+    private func makeEqTempDir() -> URL {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("svm-eq-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    private func writeEqFixture(_ text: String, named: String, in dir: URL) -> URL {
+        let url = dir.appendingPathComponent("\(named).txt", isDirectory: false)
+        try? text.write(to: url, atomically: true, encoding: .utf8)
+        return url
+    }
+
+    func testSetEqEnabledWritesToActiveDeviceProfile() async throws {
+        var initial = AppSettings.default
+        initial.outputDeviceUID = "uid-dac"
+        let store = StubConfigStore(initial: initial)
+        let dir = makeEqTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let vm = SettingsViewModel(
+            configStore: store, deviceCatalog: deviceCatalog, auth: auth,
+            openLoginWindow: {}, openApplicationData: {},
+            eqPresetStore: LiveEqPresetStore(directory: dir)
+        )
+        await vm.start()
+        await vm.setEqEnabled(true)
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(store.current.audioProfiles["uid-dac"]?.eqEnabled, true)
+        XCTAssertTrue(vm.eqEnabled)
+        await vm.stop()
+    }
+
+    func testSetEqPresetNameWritesToActiveDeviceProfile() async throws {
+        var initial = AppSettings.default
+        initial.outputDeviceUID = "uid-dac"
+        let store = StubConfigStore(initial: initial)
+        let dir = makeEqTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let vm = SettingsViewModel(
+            configStore: store, deviceCatalog: deviceCatalog, auth: auth,
+            openLoginWindow: {}, openApplicationData: {},
+            eqPresetStore: LiveEqPresetStore(directory: dir)
+        )
+        await vm.start()
+        await vm.setEqPresetName("foo")
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(store.current.audioProfiles["uid-dac"]?.eqPresetName, "foo")
+        XCTAssertEqual(vm.eqPresetName, "foo")
+        await vm.stop()
+    }
+
+    func testImportPresetFileValidTxtSavesAndRefreshes() async throws {
+        let store = StubConfigStore(initial: .default)
+        let dir = makeEqTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let importDir = makeEqTempDir()
+        defer { try? FileManager.default.removeItem(at: importDir) }
+        let vm = SettingsViewModel(
+            configStore: store, deviceCatalog: deviceCatalog, auth: auth,
+            openLoginWindow: {}, openApplicationData: {},
+            eqPresetStore: LiveEqPresetStore(directory: dir)
+        )
+        await vm.start()
+        let fixture = writeEqFixture(
+            "Filter 1: ON PK Fc 1000 Hz Gain 0 dB Q 1.0\n",
+            named: "MyPreset",
+            in: importDir
+        )
+
+        let outcome = try await vm.importPresetFile(url: fixture, overwrite: false)
+        XCTAssertEqual(outcome, .imported(name: "MyPreset"))
+        try await Task.sleep(nanoseconds: 30_000_000)
+        XCTAssertTrue(vm.availablePresets.contains("MyPreset"))
+        await vm.stop()
+    }
+
+    func testImportPresetFileWithUnsupportedFilterTypeThrowsParseFailed() async throws {
+        let store = StubConfigStore(initial: .default)
+        let dir = makeEqTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let importDir = makeEqTempDir()
+        defer { try? FileManager.default.removeItem(at: importDir) }
+        let vm = SettingsViewModel(
+            configStore: store, deviceCatalog: deviceCatalog, auth: auth,
+            openLoginWindow: {}, openApplicationData: {},
+            eqPresetStore: LiveEqPresetStore(directory: dir)
+        )
+        await vm.start()
+        let fixture = writeEqFixture(
+            "Filter 1: ON LP Fc 8000 Hz Gain 0 dB Q 1.0\n",
+            named: "Bad",
+            in: importDir
+        )
+
+        do {
+            _ = try await vm.importPresetFile(url: fixture, overwrite: false)
+            XCTFail("expected EqImportError.parseFailed")
+        } catch let error as SettingsViewModel.EqImportError {
+            switch error {
+            case .parseFailed: break
+            default: XCTFail("expected .parseFailed, got \(error)")
+            }
+        }
+        await vm.stop()
+    }
+
+    func testImportPresetFileNameCollisionWithOverwriteFalseReturnsCollision() async throws {
+        let store = StubConfigStore(initial: .default)
+        let dir = makeEqTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let importDir = makeEqTempDir()
+        defer { try? FileManager.default.removeItem(at: importDir) }
+        let presetStore = LiveEqPresetStore(directory: dir)
+        try await presetStore.save(name: "Dup", text: "Filter 1: ON PK Fc 1000 Hz Gain 0 dB Q 1.0\n", overwrite: false)
+        let vm = SettingsViewModel(
+            configStore: store, deviceCatalog: deviceCatalog, auth: auth,
+            openLoginWindow: {}, openApplicationData: {},
+            eqPresetStore: presetStore
+        )
+        await vm.start()
+        let fixture = writeEqFixture(
+            "Filter 1: ON PK Fc 2000 Hz Gain 0 dB Q 1.0\n",
+            named: "Dup",
+            in: importDir
+        )
+
+        let outcome = try await vm.importPresetFile(url: fixture, overwrite: false)
+        XCTAssertEqual(outcome, .nameCollision(name: "Dup"))
+        await vm.stop()
+    }
+
+    func testPrepareDeletePresetReturnsAllReferencingDeviceUids() async throws {
+        var initial = AppSettings.default
+        var p1 = AudioProfile.safeDefault
+        p1.eqPresetName = "Shared"
+        var p2 = AudioProfile.safeDefault
+        p2.eqPresetName = "Shared"
+        var p3 = AudioProfile.safeDefault
+        p3.eqPresetName = "Other"
+        initial.audioProfiles = ["uid-a": p1, "uid-b": p2, "uid-c": p3]
+        let store = StubConfigStore(initial: initial)
+        let dir = makeEqTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let vm = SettingsViewModel(
+            configStore: store, deviceCatalog: deviceCatalog, auth: auth,
+            openLoginWindow: {}, openApplicationData: {},
+            eqPresetStore: LiveEqPresetStore(directory: dir)
+        )
+
+        let uids = await vm.prepareDeletePreset(name: "Shared")
+        XCTAssertEqual(Set(uids), Set(["uid-a", "uid-b"]))
+    }
+
+    func testDeletePresetConfirmedClearsReferencesAndRemovesFile() async throws {
+        var initial = AppSettings.default
+        var p1 = AudioProfile.safeDefault
+        p1.eqPresetName = "Target"
+        var p2 = AudioProfile.safeDefault
+        p2.eqPresetName = "Target"
+        var p3 = AudioProfile.safeDefault
+        p3.eqPresetName = "Keep"
+        initial.audioProfiles = ["uid-a": p1, "uid-b": p2, "uid-c": p3]
+        let store = StubConfigStore(initial: initial)
+        let dir = makeEqTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let presetStore = LiveEqPresetStore(directory: dir)
+        try await presetStore.save(name: "Target", text: "Filter 1: ON PK Fc 1000 Hz Gain 0 dB Q 1.0\n", overwrite: false)
+        try await presetStore.save(name: "Keep", text: "Filter 1: ON PK Fc 2000 Hz Gain 0 dB Q 1.0\n", overwrite: false)
+        let vm = SettingsViewModel(
+            configStore: store, deviceCatalog: deviceCatalog, auth: auth,
+            openLoginWindow: {}, openApplicationData: {},
+            eqPresetStore: presetStore
+        )
+        await vm.start()
+
+        try await vm.deletePresetConfirmed(name: "Target")
+
+        XCTAssertNil(store.current.audioProfiles["uid-a"]?.eqPresetName)
+        XCTAssertNil(store.current.audioProfiles["uid-b"]?.eqPresetName)
+        XCTAssertEqual(store.current.audioProfiles["uid-c"]?.eqPresetName, "Keep")
+        let exists = await presetStore.exists(name: "Target")
+        XCTAssertFalse(exists)
+        let stillKeep = await presetStore.exists(name: "Keep")
+        XCTAssertTrue(stillKeep)
+        await vm.stop()
+    }
 }
 
 private actor SpyUpdateChecker: UpdateChecking {
