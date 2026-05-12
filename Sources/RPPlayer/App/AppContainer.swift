@@ -627,6 +627,7 @@ private struct NoopPlayerEngine: PlayerEngine {
     func setOutputDevice(uid: String?) async throws { throw error }
     func setForceMaxVolume(_ enabled: Bool) async throws { throw error }
     func setApplyReplayGain(_ enabled: Bool) async throws { throw error }
+    func setAudioFilterChain(_ chain: String?) async throws { throw error }
     func setMute(_ muted: Bool) async throws { throw error }
     func queueNext(url: URL, startSeconds: Double?) async throws { throw error }
     func advanceToQueued() async throws { throw error }

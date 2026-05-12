@@ -11,6 +11,7 @@ public protocol PlayerEngine: Sendable {
     func setOutputDevice(uid: String?) async throws
     func setForceMaxVolume(_ enabled: Bool) async throws
     func setApplyReplayGain(_ enabled: Bool) async throws
+    func setAudioFilterChain(_ chain: String?) async throws
     func setMute(_ muted: Bool) async throws
     func queueNext(url: URL, startSeconds: Double?) async throws
     func advanceToQueued() async throws

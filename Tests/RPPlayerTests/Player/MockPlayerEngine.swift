@@ -11,6 +11,7 @@ actor MockPlayerEngine: PlayerEngine {
         case setOutputDevice(uid: String?)
         case setForceMaxVolume(enabled: Bool)
         case setApplyReplayGain(enabled: Bool)
+        case setAudioFilterChain(chain: String?)
         case setMute(muted: Bool)
         case queueNext(url: URL, startSeconds: Double?)
         case advanceToQueued
@@ -74,6 +75,9 @@ actor MockPlayerEngine: PlayerEngine {
     }
     func setApplyReplayGain(_ enabled: Bool) async throws {
         try recordOrThrow(.setApplyReplayGain(enabled: enabled))
+    }
+    func setAudioFilterChain(_ chain: String?) async throws {
+        try recordOrThrow(.setAudioFilterChain(chain: chain))
     }
     func setMute(_ muted: Bool) async throws {
         try recordOrThrow(.setMute(muted: muted))

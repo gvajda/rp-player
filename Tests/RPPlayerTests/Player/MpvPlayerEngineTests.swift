@@ -257,4 +257,24 @@ extension MpvPlayerEngineTests {
         // Must not crash on a freed handle.
         engine.muteImmediately()
     }
+
+    func testSetAudioFilterChainAppliesAfProperty() async throws {
+        let engine = try MpvPlayerEngine()
+        defer { Task { await engine.shutdown() } }
+
+        // mpv normalizes the `af` property string on readback (e.g.
+        // `lavfi=[...]` graph syntax becomes `lavfi=graph=%46%...`). Assert the
+        // observable invariants — non-empty after set, empty after clear, and
+        // that the equalizer label survives normalization — rather than the
+        // exact echo of our input.
+        try await engine.setAudioFilterChain("lavfi=[volume=-1.2dB,equalizer=f=1000:t=q:w=0.7:g=2.0]")
+        let stored = await engine.currentAudioFilterChainForTesting()
+        XCTAssertNotNil(stored)
+        XCTAssertFalse(stored?.isEmpty ?? true)
+        XCTAssertTrue(stored?.contains("equalizer") ?? false, "expected mpv-stored af to mention equalizer; got \(stored ?? "nil")")
+
+        try await engine.setAudioFilterChain(nil)
+        let cleared = await engine.currentAudioFilterChainForTesting()
+        XCTAssertEqual(cleared, "")
+    }
 }

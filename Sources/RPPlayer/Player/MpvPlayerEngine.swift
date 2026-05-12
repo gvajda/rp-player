@@ -282,6 +282,18 @@ public actor MpvPlayerEngine: PlayerEngine {
         try setStringProperty("replaygain", enabled ? "track" : "no")
     }
 
+    public func setAudioFilterChain(_ chain: String?) async throws {
+        try requireHandle()
+        try setStringProperty("af", chain ?? "")
+    }
+
+    func currentAudioFilterChainForTesting() -> String? {
+        guard let h = handle else { return nil }
+        guard let raw = mpv_get_property_string(h, "af") else { return nil }
+        defer { mpv_free(raw) }
+        return String(cString: raw)
+    }
+
     public func setOutputDevice(uid: String?) async throws {
         logger?.debug("engine setOutputDevice(uid: \(uid ?? "nil"))")
         try requireHandle()
