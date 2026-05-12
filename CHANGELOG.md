@@ -6,8 +6,14 @@ Section labels: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`
 
 ## [Unreleased]
 
+### Added
+
+- Parametric EQ MVP. Per-device toggle plus preset library at `~/Library/Application Support/RP Player/EqPresets/`. Imports AutoEQ / Equalizer APO / REW `.txt` format (PK / LS / HS bands, up to 10, with Preamp). Strict parser — files with unsupported filter types, malformed lines, or more than 10 bands are rejected before save. Export writes the stored .txt verbatim. Delete prompts when other devices reference the preset and nil-outs their reference on confirm. Filter chain applied via libmpv `af` property using FFmpeg `lavfi=[volume,equalizer,lowshelf,highshelf,...]` graph. Diagnostic flag `RPSmoke --probe-filters` confirms the three filters are available in the vendored libmpv.
+
 ### Changed
 
+- `AudioProfile` gains `eqEnabled: Bool` (default false) and `eqPresetName: String?` (default nil). Pre-PR-35 profiles migrate via `decodeIfPresent` defaults; the existing per-device binder write-back path preserves both fields across other settings changes.
+- `PlayerEngine` gains `setAudioFilterChain(_ chain: String?) async throws`. `MpvPlayerEngine` writes the `af` property (empty string clears the chain).
 - Settings → Output device settings: replaces the "Force Max Volume" + "Apply ReplayGain" toggles with a 3-state Volume button row (`None` / `ReplayGain` / `Force Max`) matching the existing Appearance / Menu bar icon / Popover style row patterns (Button + `StableButtonStyle`). A single ⓘ hover tooltip sits to the left of the buttons (after the "Volume" label) covering both modes. Force Max button is disabled when Hog Mode is off (SwiftUI honors `.disabled` on `Button`, unlike `Picker(.segmented)`'s per-tag disable). Destructive-confirmation alert fires from the Force Max button's action handler on transition into Force Max. Bit-perfect lingo moves from the Hog row label to the Force Max section of the tooltip ("Bit-perfect when EQ is off").
 - `AppSettings` + `AudioProfile`: replaces `forceMaxVolumeEnabled` + `applyReplayGainEnabled` bool pair with a single `volumeMode: VolumeMode` enum (`none` / `replayGain` / `forceMax`). Legacy JSON migrates automatically on first decode (Force Max wins on conflict). Encoded JSON omits the legacy keys.
 - AppContainer audio-settings binder reads `volumeMode` directly. The dual-bool `effectiveRG = applyRG && !forceMax` collapses to `volumeMode == .replayGain` since the enum encodes mutual exclusion at the type level. The hog OFF→ON ground-truth check is demote-only: when device volume is below max but `volumeMode == .forceMax`, downgrades to `.none`. No longer silently promotes `.none → .forceMax` when the device happens to be at max — that bidirectional sync was a property of the old bool-toggle UI and is gone in the picker model.
