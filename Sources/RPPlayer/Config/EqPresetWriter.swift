@@ -6,7 +6,7 @@ public enum EqPresetWriter {
         lines.append("CH: 0")
         lines.append("TYPE: PEQ")
         lines.append("Preamp: \(format(preset.preampDb)) dB")
-        for (i, b) in preset.bands.enumerated() where b.enabled {
+        for (i, b) in preset.bands.filter(\.enabled).enumerated() {
             let abbr: String
             switch b.type {
             case .peak: abbr = "PK"

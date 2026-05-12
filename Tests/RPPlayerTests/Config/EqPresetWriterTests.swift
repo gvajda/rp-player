@@ -30,4 +30,20 @@ final class EqPresetWriterTests: XCTestCase {
         let reparsed = try EqPresetParser.parse(text: written, filename: "n").get()
         XCTAssertEqual(reparsed, parsed)
     }
+
+    func testFilterNumberingCompactsOverDisabledBands() {
+        let preset = EqPreset(
+            name: nil,
+            preampDb: 0,
+            bands: [
+                EqBand(enabled: false, type: .peak, fcHz: 100, gainDb: 0, q: 1),
+                EqBand(enabled: true,  type: .peak, fcHz: 200, gainDb: 0, q: 1),
+                EqBand(enabled: true,  type: .peak, fcHz: 300, gainDb: 0, q: 1),
+            ]
+        )
+        let text = EqPresetWriter.write(preset)
+        XCTAssertTrue(text.contains("Filter 1: ON PK Fc 200 Hz"), "got:\n\(text)")
+        XCTAssertTrue(text.contains("Filter 2: ON PK Fc 300 Hz"), "got:\n\(text)")
+        XCTAssertFalse(text.contains("Filter 3:"))
+    }
 }
