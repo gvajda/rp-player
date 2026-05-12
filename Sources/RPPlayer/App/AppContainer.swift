@@ -624,7 +624,12 @@ extension AppContainer {
             let raw = try await store.loadText(name: name)
             switch EqPresetParser.parse(text: raw, filename: name) {
             case .success(let preset):
-                try? await engine.setAudioFilterChain(EqChainBuilder.build(preset))
+                let parts = EqChainBuilder.buildParts(preset)
+                if parts.isEmpty {
+                    try? await engine.setAudioFilterChain(nil)
+                } else {
+                    try? await engine.setAudioFilterChain("lavfi=[" + parts.joined(separator: ",") + "]")
+                }
             case .failure:
                 try? await engine.setAudioFilterChain(nil)
             }

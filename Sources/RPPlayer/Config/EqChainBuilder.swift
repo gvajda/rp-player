@@ -1,9 +1,9 @@
 import Foundation
 
 public enum EqChainBuilder {
-    public static func build(_ preset: EqPreset) -> String? {
+    public static func buildParts(_ preset: EqPreset) -> [String] {
         let enabled = preset.bands.filter(\.enabled)
-        if enabled.isEmpty && preset.preampDb == 0 { return nil }
+        if enabled.isEmpty && preset.preampDb == 0 { return [] }
         var parts: [String] = ["volume=volume=\(format(preset.preampDb))dB"]
         for b in enabled {
             switch b.type {
@@ -15,7 +15,7 @@ public enum EqChainBuilder {
                 parts.append("highshelf=f=\(format(b.fcHz)):t=q:w=\(format(b.q)):g=\(format(b.gainDb))")
             }
         }
-        return "lavfi=[" + parts.joined(separator: ",") + "]"
+        return parts
     }
 
     private static func format(_ v: Double) -> String {
