@@ -32,14 +32,33 @@ struct ClampedNumericField: View {
     @State private var isInvalid: Bool = false
     @FocusState private var focused: Bool
 
+    private var borderColor: Color {
+        if isInvalid { return Color.red.opacity(0.85) }
+        if focused { return Color.accentColor.opacity(0.85) }
+        return Color.secondary.opacity(0.5)
+    }
+
     var body: some View {
         HStack(alignment: .center, spacing: 2) {
             TextField("", text: $rawText)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 48)
+                .textFieldStyle(.plain)
+                .lineLimit(1)
                 .multilineTextAlignment(.center)
                 .focused($focused)
                 .disabled(!isEnabled)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 2)
+                .frame(width: 56, height: 18)
+                .background(
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color(nsColor: .textBackgroundColor))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(borderColor, lineWidth: isInvalid ? 1.5 : 1)
+                        .animation(.easeInOut(duration: 0.15), value: isInvalid)
+                        .allowsHitTesting(false)
+                )
                 .onChange(of: rawText) { _, newText in
                     guard let parsed = ClampedNumericFieldLogic.parse(newText),
                         ClampedNumericFieldLogic.isValid(parsed, in: range)
@@ -61,12 +80,6 @@ struct ClampedNumericField: View {
                         rawText = ClampedNumericFieldLogic.format(newValue)
                     }
                 }
-                .overlay(
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke(Color.red.opacity(isInvalid ? 0.85 : 0), lineWidth: 1.5)
-                        .animation(.easeInOut(duration: 0.15), value: isInvalid)
-                        .allowsHitTesting(false)
-                )
 
             Stepper("", value: $value, in: range, step: step)
                 .labelsHidden()
@@ -74,6 +87,7 @@ struct ClampedNumericField: View {
                 .fixedSize()
         }
         .controlSize(.small)
+        .alignmentGuide(.firstTextBaseline) { d in d[VerticalAlignment.center] }
         .onAppear { rawText = ClampedNumericFieldLogic.format(value) }
     }
 }
