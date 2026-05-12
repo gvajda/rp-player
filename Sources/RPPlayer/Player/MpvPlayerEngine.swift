@@ -236,6 +236,9 @@ public actor MpvPlayerEngine: PlayerEngine {
             logger?.debug("engine.queueNext url=\(url.absoluteString)")
             try runCommand(["loadfile", url.absoluteString, "append-play"])
         }
+        let count = playlistCountForTesting() ?? "?"
+        let pos = playlistPosForTesting() ?? "?"
+        logger?.debug("engine.queueNext post: playlist-count=\(count) playlist-pos=\(pos)")
     }
 
     public func advanceToQueued() async throws {

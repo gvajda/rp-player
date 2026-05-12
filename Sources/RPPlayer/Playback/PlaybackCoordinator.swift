@@ -505,6 +505,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             consecutivePlaybackFailures = 0
 
         case .fileStarted:
+            logger.debug("engine fileStarted (mpv MPV_EVENT_START_FILE)")
             await syncQueueHeadFromMpv()
 
         case .positionUpdate(let seconds):

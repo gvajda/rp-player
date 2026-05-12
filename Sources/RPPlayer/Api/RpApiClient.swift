@@ -53,7 +53,18 @@ public struct LiveRpApiClient: RpApiClient {
         if let playerId {
             query["player_id"] = playerId
         }
-        return try await get(path: "api/gapless", query: query)
+        let started = Date()
+        logger.debug("api.gapless chan=\(channel) bitrate=\(bitrate) numSongs=\(numSongs) START")
+        do {
+            let resp: GaplessResponse = try await get(path: "api/gapless", query: query)
+            let ms = Int(Date().timeIntervalSince(started) * 1000)
+            logger.debug("api.gapless chan=\(channel) END elapsed=\(ms)ms songs=\(resp.songs.count)")
+            return resp
+        } catch {
+            let ms = Int(Date().timeIntervalSince(started) * 1000)
+            logger.warn("api.gapless chan=\(channel) FAILED elapsed=\(ms)ms error=\(error)")
+            throw error
+        }
     }
 
     public func info(songId: Int) async throws -> SongInfo {
