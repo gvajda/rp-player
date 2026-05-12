@@ -5,24 +5,32 @@ public struct AudioProfile: Equatable, Sendable {
     public var releaseHogOnPauseEnabled: Bool
     public var volumeMode: VolumeMode
     public var bitrate: Int
+    public var eqEnabled: Bool
+    public var eqPresetName: String?
 
     public init(
         hogModeEnabled: Bool,
         releaseHogOnPauseEnabled: Bool,
         volumeMode: VolumeMode,
-        bitrate: Int
+        bitrate: Int,
+        eqEnabled: Bool = false,
+        eqPresetName: String? = nil
     ) {
         self.hogModeEnabled = hogModeEnabled
         self.releaseHogOnPauseEnabled = releaseHogOnPauseEnabled
         self.volumeMode = volumeMode
         self.bitrate = bitrate
+        self.eqEnabled = eqEnabled
+        self.eqPresetName = eqPresetName
     }
 
     public static let safeDefault = AudioProfile(
         hogModeEnabled: false,
         releaseHogOnPauseEnabled: false,
         volumeMode: .none,
-        bitrate: 3
+        bitrate: 3,
+        eqEnabled: false,
+        eqPresetName: nil
     )
 }
 
@@ -32,6 +40,8 @@ extension AudioProfile: Codable {
         case releaseHogOnPauseEnabled
         case volumeMode
         case bitrate
+        case eqEnabled
+        case eqPresetName
         // Legacy keys for migration only — never encoded.
         case forceMaxVolumeEnabled
         case applyReplayGainEnabled
@@ -49,6 +59,8 @@ extension AudioProfile: Codable {
             let rg = try c.decodeIfPresent(Bool.self, forKey: .applyReplayGainEnabled) ?? false
             self.volumeMode = forceMax ? .forceMax : (rg ? .replayGain : VolumeMode.none)
         }
+        self.eqEnabled = try c.decodeIfPresent(Bool.self, forKey: .eqEnabled) ?? false
+        self.eqPresetName = try c.decodeIfPresent(String.self, forKey: .eqPresetName)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -57,5 +69,7 @@ extension AudioProfile: Codable {
         try c.encode(releaseHogOnPauseEnabled, forKey: .releaseHogOnPauseEnabled)
         try c.encode(volumeMode, forKey: .volumeMode)
         try c.encode(bitrate, forKey: .bitrate)
+        try c.encode(eqEnabled, forKey: .eqEnabled)
+        try c.encodeIfPresent(eqPresetName, forKey: .eqPresetName)
     }
 }

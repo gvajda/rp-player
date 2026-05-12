@@ -71,4 +71,28 @@ final class AudioProfileMigrationTests: XCTestCase {
     func testSafeDefaultUsesNoneMode() {
         XCTAssertEqual(AudioProfile.safeDefault.volumeMode, VolumeMode.none)
     }
+
+    func testEqFieldsDefaultWhenAbsent() throws {
+        let json = """
+        { "hogModeEnabled": false, "releaseHogOnPauseEnabled": false, "volumeMode": "none", "bitrate": 3 }
+        """.data(using: .utf8)!
+        let profile = try JSONDecoder().decode(AudioProfile.self, from: json)
+        XCTAssertFalse(profile.eqEnabled)
+        XCTAssertNil(profile.eqPresetName)
+    }
+
+    func testEqFieldsRoundTrip() throws {
+        let profile = AudioProfile(
+            hogModeEnabled: true,
+            releaseHogOnPauseEnabled: true,
+            volumeMode: .replayGain,
+            bitrate: 4,
+            eqEnabled: true,
+            eqPresetName: "my-headphones"
+        )
+        let data = try JSONEncoder().encode(profile)
+        let decoded = try JSONDecoder().decode(AudioProfile.self, from: data)
+        XCTAssertTrue(decoded.eqEnabled)
+        XCTAssertEqual(decoded.eqPresetName, "my-headphones")
+    }
 }
