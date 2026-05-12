@@ -20,6 +20,10 @@ public enum ConfigPaths {
         applicationSupportRoot.appendingPathComponent("SongFileCache", isDirectory: true)
     }
 
+    public static var eqPresetsDirectory: URL {
+        applicationSupportRoot.appendingPathComponent("EqPresets", isDirectory: true)
+    }
+
     public static var logsDirectory: URL {
         applicationSupportRoot.appendingPathComponent("Logs", isDirectory: true)
     }
