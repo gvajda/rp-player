@@ -20,8 +20,11 @@ public enum EqPresetParser {
         let filterRegex = try! NSRegularExpression(pattern: filterPattern)
         let preampRegex = try! NSRegularExpression(pattern: preampPattern)
 
-        for (index, raw) in text.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
-            let line = String(raw).trimmingCharacters(in: .whitespaces)
+        // .components(separatedBy: .newlines) handles LF / CRLF / CR / NEL / LS / PS.
+        // String.split(separator: "\n") fails on CRLF because "\r\n" is a single grapheme cluster.
+        let lines = text.components(separatedBy: .newlines)
+        for (index, raw) in lines.enumerated() {
+            let line = raw.trimmingCharacters(in: .whitespaces)
             if line.isEmpty { continue }
 
             let range = NSRange(line.startIndex..<line.endIndex, in: line)

@@ -108,4 +108,43 @@ final class EqPresetParserTests: XCTestCase {
         ).get()
         XCTAssertEqual(preset.name, "my-preset")
     }
+
+    func testParsesCRLFLineEndings() throws {
+        let text = "Preamp: -1.2 dB\r\nFilter 1: ON PK Fc 1000 Hz Gain 2 dB Q 1.0\r\n"
+        let preset = try EqPresetParser.parse(text: text, filename: "crlf").get()
+        XCTAssertEqual(preset.preampDb, -1.2, accuracy: 0.0001)
+        XCTAssertEqual(preset.bands.count, 1)
+    }
+
+    func testParsesLinesWithTrailingSpaces() throws {
+        let text = "Preamp: -1.2 dB \r\nFilter 1: ON LS Fc 83 Hz Gain 1.2 dB Q 0.820 \r\n"
+        let preset = try EqPresetParser.parse(text: text, filename: "trail").get()
+        XCTAssertEqual(preset.bands.count, 1)
+        XCTAssertEqual(preset.bands[0].type, .lowShelf)
+        XCTAssertEqual(preset.bands[0].fcHz, 83)
+    }
+
+    func testParsesCRLFFullPresetExample() throws {
+        let text = """
+        CH: 0 \r
+        TYPE: PEQ \r
+        Preamp: -1.2 dB \r
+        Xfeed: 1 1\r
+        Filter 1: ON LS Fc 83 Hz Gain 1.2 dB Q 0.820 \r
+        Filter 2: ON PK Fc 300 Hz Gain -1.6 dB Q 0.600 \r
+        Filter 3: ON PK Fc 950 Hz Gain -1.9 dB Q 1.800 \r
+        Filter 4: ON PK Fc 1900 Hz Gain 0.9 dB Q 0.800 \r
+        Filter 5: ON PK Fc 3400 Hz Gain -2.1 dB Q 2.100 \r
+        Filter 6: ON PK Fc 8000 Hz Gain -2.0 dB Q 1.420 \r
+        Filter 7: ON PK Fc 7400 Hz Gain -2.0 dB Q 5.000 \r
+        Filter 8: ON PK Fc 9100 Hz Gain -3.0 dB Q 6.000 \r
+        Filter 9: ON HS Fc 11500 Hz Gain -1.2 dB Q 0.710 \r
+        Filter 10: ON PK Fc 12000 Hz Gain -3.0 dB Q 4.000 \r
+        """
+        let preset = try EqPresetParser.parse(text: text, filename: "real").get()
+        XCTAssertEqual(preset.preampDb, -1.2, accuracy: 0.0001)
+        XCTAssertEqual(preset.bands.count, 10)
+        XCTAssertEqual(preset.bands.first?.type, .lowShelf)
+        XCTAssertEqual(preset.bands.last?.type, .peak)
+    }
 }
