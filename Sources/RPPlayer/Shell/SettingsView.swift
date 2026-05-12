@@ -27,7 +27,7 @@ struct SettingsView: View {
         .alert("Force Max Volume", isPresented: $showForceMaxConfirm) {
             Button("Cancel", role: .cancel) {}
             Button("Continue", role: .destructive) {
-                Task { await viewModel.setForceMaxVolumeEnabled(true) }
+                Task { await viewModel.setVolumeMode(.forceMax) }
             }
         } message: {
             Text(
@@ -110,6 +110,31 @@ struct SettingsView: View {
         }
     }
 
+    private var volumeRow: some View {
+        HStack(spacing: 8) {
+            Text("Volume")
+            Spacer(minLength: 8)
+            Picker("", selection: volumeModeBinding) {
+                Text("None").tag(VolumeMode.none)
+                Text("ReplayGain").tag(VolumeMode.replayGain)
+                Text("Force Max").tag(VolumeMode.forceMax)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
+            HoverInfoIcon(text: replayGainTooltip)
+            HoverInfoIcon(text: forceMaxTooltip)
+        }
+    }
+
+    private var replayGainTooltip: String {
+        "Applies per-track loudness normalization metadata embedded by Radio Paradise. Reduces peaks; small variation track-to-track."
+    }
+
+    private var forceMaxTooltip: String {
+        "Pins device to max volume + caps mpv at 100. Use external attenuation. Hearing damage warning. Bit-perfect when EQ is off."
+    }
+
     private var deviceSettingsSectionTitle: String {
         viewModel.currentDeviceName.map { "Output device settings — \($0)" }
             ?? "Output device settings"
@@ -126,25 +151,11 @@ struct SettingsView: View {
                 Text("320K MP3").tag(6)
                 Text("FLAC").tag(4)
             }
-            Toggle("Hog mode (bit-perfect)", isOn: hogModeBinding)
+            Toggle("Hog mode", isOn: hogModeBinding)
             Toggle("Release on Pause", isOn: releaseHogOnPauseBinding)
                 .padding(.leading, 20)
                 .disabled(!viewModel.hogModeEnabled)
-            Toggle("Force Max Volume (for external DACs)", isOn: forceMaxVolumeBinding)
-                .padding(.leading, 20)
-                .disabled(!viewModel.hogModeEnabled)
-            Toggle(isOn: applyReplayGainEffectiveBinding) {
-                HStack(spacing: 6) {
-                    Text("Apply ReplayGain")
-                    if !viewModel.forceMaxVolumeEnabled {
-                        HoverInfoIcon(
-                            text:
-                                "ReplayGain is a per-track loudness adjustment encoded in the file's metadata. With it ON, the audio engine attenuates each track to match a reference loudness so songs play at similar levels.\n\nNot available when Force Max Volume is ON"
-                        )
-                    }
-                }
-            }
-            .disabled(viewModel.forceMaxVolumeEnabled)
+            volumeRow
         }
     }
 
@@ -333,25 +344,19 @@ struct SettingsView: View {
         )
     }
 
-    private var forceMaxVolumeBinding: Binding<Bool> {
+    private var volumeModeBinding: Binding<VolumeMode> {
         Binding(
-            get: { viewModel.forceMaxVolumeEnabled },
+            get: { viewModel.volumeMode },
             set: { newValue in
-                if newValue && !viewModel.forceMaxVolumeEnabled {
-                    showForceMaxConfirm = true
-                } else {
-                    Task { await viewModel.setForceMaxVolumeEnabled(newValue) }
+                if newValue == .forceMax {
+                    guard viewModel.hogModeEnabled else { return }
+                    if viewModel.volumeMode != .forceMax {
+                        showForceMaxConfirm = true
+                        return
+                    }
                 }
+                Task { await viewModel.setVolumeMode(newValue) }
             }
-        )
-    }
-
-    // ReplayGain UI shows the *effective* state: forced OFF when force-max is on,
-    // but the user's stored preference is preserved underneath for restore on toggle-off.
-    private var applyReplayGainEffectiveBinding: Binding<Bool> {
-        Binding(
-            get: { viewModel.applyReplayGainEnabled && !viewModel.forceMaxVolumeEnabled },
-            set: { newValue in Task { await viewModel.setApplyReplayGainEnabled(newValue) } }
         )
     }
 
