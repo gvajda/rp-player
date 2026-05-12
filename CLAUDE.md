@@ -14,8 +14,8 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 
 ## Current state
 
-- Last merged: **PR 31** — `api/gapless` migration (released as v0.6.0). Replaces block-centric `api/play` (and `api/get_block` for Upcoming) with the new `api/gapless` endpoint that returns a flat song list where each song is its own self-contained file URL. `LivePlaybackCoordinator` rebuilt around `queue: [GaplessSong]`. UI sync grounded in mpv's `path` property — `syncQueueHeadFromMpv` resyncs queue head on every `MPV_EVENT_START_FILE` so display can never drift from audio. Songs always start from beginning (cue ignored). `engine.play` resets mpv `pause=false` to fix channel-change-while-paused stalls. Upcoming Program: one call per channel. Drops `GetBlock` / `BlockSongs` / `PlayAction`. PR 30 stall watchdog preserved. 371 tests passing.
-- **Next up:** TBD. Pending PR 31 smoke-test sign-off.
+- Last merged: **PR 34** — Volume mode picker. Replaces `forceMaxVolumeEnabled` + `applyReplayGainEnabled` bool pair on `AppSettings` + `AudioProfile` with a single `volumeMode: VolumeMode` enum (`none` / `replayGain` / `forceMax`); legacy JSON migrates on first decode (force-max wins on conflict). Settings UI replaces two toggles with a 3-Button row (Default / ReplayGain / Force Max) using the same `Button + StableButtonStyle` pattern as Appearance / Menu bar icon / Popover style — Force Max button uses `.disabled(!hogModeEnabled)` (SwiftUI segmented Picker's per-tag `.disabled` is a no-op for segmented style; only `Button` honors it). Hog ON→OFF transition demotes `.forceMax → .none`. Single ⓘ tooltip to the left of the buttons with all three sections. "(bit-perfect)" lingo stripped from Hog toggle and moved into the Force-Max tooltip ("Bit-perfect when EQ is off"). 421 tests passing.
+- **Next up:** Parametric EQ MVP (see `docs/superpowers/specs/2026-05-12-parametric-eq.md`). Per-device toggle + AutoEQ/REW/squig.link preset import/export. mpv `af` chain via `lavfi=[volume,equalizer,lowshelf,highshelf,...]`. Defer per-band UI to a follow-up PR.
 
 ## Deferred / tech debt
 
