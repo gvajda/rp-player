@@ -364,7 +364,10 @@ extension AppContainer {
                                 volumeMode: s.volumeMode,
                                 bitrate: s.bitrate,
                                 eqEnabled: existing.eqEnabled,
-                                eqPresetName: existing.eqPresetName
+                                eqPresetName: existing.eqPresetName,
+                                crossfeedEnabled: existing.crossfeedEnabled,
+                                crossfeedStrength: existing.crossfeedStrength,
+                                crossfeedRange: existing.crossfeedRange
                             )
                         }
                     }
@@ -409,7 +412,7 @@ extension AppContainer {
                 }
             }
             Task { [engine, eqPresetStore, store] in
-                await AppContainer.runEqBinder(
+                await AppContainer.runAudioFilterBinder(
                     store: store,
                     engine: engine,
                     eqPresetStore: eqPresetStore,
@@ -589,52 +592,68 @@ extension AppContainer {
         )
     }
 
-    internal static func runEqBinder(
+    internal static func runAudioFilterBinder(
         store: any ConfigStore,
         engine: any PlayerEngine,
         eqPresetStore: any EqPresetStore,
         initialProfile: AudioProfile
     ) async {
-        var lastEnabled = initialProfile.eqEnabled
-        var lastName = initialProfile.eqPresetName
-        await applyEqState(engine: engine, store: eqPresetStore, enabled: lastEnabled, name: lastName)
+        var last = AudioFilterKey(profile: initialProfile)
+        await applyAudioFilterState(engine: engine, store: eqPresetStore, key: last)
 
         for await snapshot in await store.changes {
             let uid = snapshot.outputDeviceUID
             let profile = uid.flatMap { snapshot.audioProfiles[$0] } ?? AudioProfile.safeDefault
-            if profile.eqEnabled != lastEnabled || profile.eqPresetName != lastName {
-                lastEnabled = profile.eqEnabled
-                lastName = profile.eqPresetName
-                await applyEqState(engine: engine, store: eqPresetStore, enabled: lastEnabled, name: lastName)
+            let next = AudioFilterKey(profile: profile)
+            if next != last {
+                last = next
+                await applyAudioFilterState(engine: engine, store: eqPresetStore, key: next)
             }
         }
     }
 
-    internal static func applyEqState(
+    internal static func applyAudioFilterState(
         engine: any PlayerEngine,
         store: any EqPresetStore,
-        enabled: Bool,
-        name: String?
+        key: AudioFilterKey
     ) async {
-        guard enabled, let name = name else {
-            try? await engine.setAudioFilterChain(nil)
-            return
-        }
-        do {
-            let raw = try await store.loadText(name: name)
-            switch EqPresetParser.parse(text: raw, filename: name) {
-            case .success(let preset):
-                let parts = EqChainBuilder.buildParts(preset)
-                if parts.isEmpty {
-                    try? await engine.setAudioFilterChain(nil)
-                } else {
-                    try? await engine.setAudioFilterChain("lavfi=[" + parts.joined(separator: ",") + "]")
+        var parts: [String] = []
+        if key.eqEnabled, let name = key.eqPresetName {
+            do {
+                let raw = try await store.loadText(name: name)
+                if case .success(let preset) = EqPresetParser.parse(text: raw, filename: name) {
+                    parts = EqChainBuilder.buildParts(preset)
                 }
-            case .failure:
-                try? await engine.setAudioFilterChain(nil)
+            } catch {
+                // File missing or unreadable → EQ contributes nothing. Crossfeed may still apply below.
             }
-        } catch {
+        }
+        if key.crossfeedEnabled {
+            parts.append(CrossfeedFilterBuilder.buildPart(
+                strength: key.crossfeedStrength,
+                range: key.crossfeedRange
+            ))
+        }
+        if parts.isEmpty {
             try? await engine.setAudioFilterChain(nil)
+        } else {
+            try? await engine.setAudioFilterChain("lavfi=[" + parts.joined(separator: ",") + "]")
+        }
+    }
+
+    internal struct AudioFilterKey: Equatable {
+        let eqEnabled: Bool
+        let eqPresetName: String?
+        let crossfeedEnabled: Bool
+        let crossfeedStrength: Double
+        let crossfeedRange: Double
+
+        init(profile: AudioProfile) {
+            self.eqEnabled = profile.eqEnabled
+            self.eqPresetName = profile.eqPresetName
+            self.crossfeedEnabled = profile.crossfeedEnabled
+            self.crossfeedStrength = profile.crossfeedStrength
+            self.crossfeedRange = profile.crossfeedRange
         }
     }
 

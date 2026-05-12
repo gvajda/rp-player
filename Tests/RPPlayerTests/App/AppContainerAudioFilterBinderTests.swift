@@ -2,7 +2,7 @@ import XCTest
 @testable import RPPlayer
 
 @MainActor
-final class AppContainerEqBinderTests: XCTestCase {
+final class AppContainerAudioFilterBinderTests: XCTestCase {
     private var tmpDir: URL!
 
     override func setUp() async throws {
@@ -36,7 +36,7 @@ final class AppContainerEqBinderTests: XCTestCase {
         let engine = MockPlayerEngine()
 
         let binderTask = Task {
-            await AppContainer.runEqBinder(
+            await AppContainer.runAudioFilterBinder(
                 store: configStore,
                 engine: engine,
                 eqPresetStore: eqStore,
@@ -96,7 +96,7 @@ final class AppContainerEqBinderTests: XCTestCase {
         let engine = MockPlayerEngine()
 
         let binderTask = Task {
-            await AppContainer.runEqBinder(
+            await AppContainer.runAudioFilterBinder(
                 store: configStore,
                 engine: engine,
                 eqPresetStore: eqStore,
