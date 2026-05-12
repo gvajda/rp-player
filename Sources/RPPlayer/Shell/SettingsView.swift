@@ -113,26 +113,22 @@ struct SettingsView: View {
     private var volumeRow: some View {
         HStack(spacing: 8) {
             Text("Volume")
+            HoverInfoIcon(text: volumeTooltip)
             Spacer(minLength: 8)
             Picker("", selection: volumeModeBinding) {
                 Text("None").tag(VolumeMode.none)
                 Text("ReplayGain").tag(VolumeMode.replayGain)
                 Text("Force Max").tag(VolumeMode.forceMax)
+                    .disabled(!viewModel.hogModeEnabled)
             }
             .pickerStyle(.segmented)
             .labelsHidden()
             .fixedSize()
-            HoverInfoIcon(text: replayGainTooltip)
-            HoverInfoIcon(text: forceMaxTooltip)
         }
     }
 
-    private var replayGainTooltip: String {
-        "Applies per-track loudness normalization metadata embedded by Radio Paradise. Reduces peaks; small variation track-to-track."
-    }
-
-    private var forceMaxTooltip: String {
-        "Pins device to max volume + caps mpv at 100. Use external attenuation. Hearing damage warning. Bit-perfect when EQ is off."
+    private var volumeTooltip: String {
+        "ReplayGain: Applies per-track loudness normalization metadata embedded by Radio Paradise. Reduces peaks; small variation track-to-track.\n\nForce-Max Volume: Pins device to max volume + caps mpv at 100. Use external attenuation. Hearing damage warning. Bit-perfect when EQ is off."
     }
 
     private var deviceSettingsSectionTitle: String {
