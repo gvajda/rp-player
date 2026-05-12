@@ -149,6 +149,7 @@ private func probeFilters() {
         ("lowshelf",  "lavfi=[lowshelf=f=100:t=q:w=0.7:g=0]"),
         ("highshelf", "lavfi=[highshelf=f=8000:t=q:w=0.7:g=0]"),
         ("volume",    "lavfi=[volume=0dB]"),
+        ("crossfeed", "lavfi=[crossfeed=strength=0.2:range=0.5]"),
     ]
     for (name, chain) in probes {
         let st = mpv_set_property_string(handle, "af", chain)
