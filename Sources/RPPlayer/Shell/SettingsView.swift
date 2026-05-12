@@ -238,40 +238,54 @@ struct SettingsView: View {
                 )
                 .labelsHidden()
             }
-            HStack {
-                Picker(
-                    "",
-                    selection: Binding<String?>(
-                        get: { viewModel.eqPresetName },
-                        set: { v in Task { await viewModel.setEqPresetName(v) } }
-                    )
-                ) {
-                    Text("(None)").tag(String?.none)
-                    ForEach(viewModel.availablePresets, id: \.self) { name in
-                        Text(name).tag(Optional(name))
+            if viewModel.eqEnabled {
+                HStack {
+                    Picker(
+                        "",
+                        selection: Binding<String?>(
+                            get: { viewModel.eqPresetName },
+                            set: { v in Task { await viewModel.setEqPresetName(v) } }
+                        )
+                    ) {
+                        Text("None (Bypass)").tag(String?.none)
+                        ForEach(viewModel.availablePresets, id: \.self) { name in
+                            Text(name).tag(Optional(name))
+                        }
                     }
-                }
-                .labelsHidden()
-                .frame(maxWidth: .infinity)
+                    .labelsHidden()
+                    .frame(maxWidth: .infinity)
 
-                Button {
-                    guard let name = viewModel.eqPresetName else { return }
-                    showEqDeleteConfirm(presetName: name)
-                } label: {
-                    Image(systemName: "trash")
-                }
-                .buttonStyle(.borderless)
-                .disabled(viewModel.eqPresetName == nil)
-                .help("Delete selected preset")
-            }
-            HStack {
-                Button("Import Preset…") { showEqImportPanel() }
-                Button("Export Preset…") { showEqExportPanel() }
+                    Button {
+                        guard let name = viewModel.eqPresetName else { return }
+                        showEqDeleteConfirm(presetName: name)
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .buttonStyle(.borderless)
                     .disabled(viewModel.eqPresetName == nil)
+                    .help("Delete selected preset")
+
+                    Button {
+                        showEqImportPanel()
+                    } label: {
+                        Image(systemName: "square.and.arrow.down")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Import preset (.txt)")
+
+                    Button {
+                        showEqExportPanel()
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(viewModel.eqPresetName == nil)
+                    .help("Export selected preset")
+                }
+                (Text("Create presets at ") + Text("[squig.link](https://squig.link)"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            (Text("Create presets at ") + Text("[squig.link](https://squig.link)"))
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
         .padding(.leading, 8)
         .onAppear {
