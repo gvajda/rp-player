@@ -313,6 +313,7 @@ extension AppContainer {
                     // at max, demote to .none. This prevents locking a non-max volume.
                     // Does NOT promote .none → .forceMax when the device happens to be at max.
                     let hogTurnedOn = settings.hogModeEnabled && !lastHog
+                    let hogTurnedOff = !settings.hogModeEnabled && lastHog
                     lastHog = settings.hogModeEnabled
                     if hogTurnedOn, let uid = settings.outputDeviceUID, !uid.isEmpty {
                         let v = await volumeController.currentVolume(deviceUID: uid)
@@ -324,6 +325,14 @@ extension AppContainer {
                             // handle engine.setForceMaxVolume + locking.
                             continue
                         }
+                    }
+                    // Hog ON → OFF transition: if forceMax is set, demote to .none. Without
+                    // hog the OS slider can override the device pin, so the UI's force-max
+                    // button is disabled in this state — keeping volumeMode at .forceMax
+                    // would leave a "filled but disabled" button stuck in a meaningless state.
+                    if hogTurnedOff, settings.volumeMode == .forceMax {
+                        try? await store.update { $0.volumeMode = .none }
+                        continue
                     }
                     let nowForceMax = settings.volumeMode == .forceMax
                     if nowForceMax != lastForceMax {

@@ -127,7 +127,7 @@ struct SettingsView: View {
         Button {
             Task { await viewModel.setVolumeMode(mode) }
         } label: {
-            Text(label).frame(minWidth: 56)
+            Text(label).frame(minWidth: 90)
         }
         .buttonStyle(StableButtonStyle(filled: viewModel.volumeMode == mode))
     }
@@ -138,7 +138,7 @@ struct SettingsView: View {
                 showForceMaxConfirm = true
             }
         } label: {
-            Text("Force Max").frame(minWidth: 56)
+            Text("Force Max").frame(minWidth: 90)
         }
         .buttonStyle(StableButtonStyle(filled: viewModel.volumeMode == .forceMax))
         .disabled(!viewModel.hogModeEnabled)
