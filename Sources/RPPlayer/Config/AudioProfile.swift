@@ -7,6 +7,9 @@ public struct AudioProfile: Equatable, Sendable {
     public var bitrate: Int
     public var eqEnabled: Bool
     public var eqPresetName: String?
+    public var crossfeedEnabled: Bool
+    public var crossfeedStrength: Double
+    public var crossfeedRange: Double
 
     public init(
         hogModeEnabled: Bool,
@@ -14,7 +17,10 @@ public struct AudioProfile: Equatable, Sendable {
         volumeMode: VolumeMode,
         bitrate: Int,
         eqEnabled: Bool = false,
-        eqPresetName: String? = nil
+        eqPresetName: String? = nil,
+        crossfeedEnabled: Bool = false,
+        crossfeedStrength: Double = 0.2,
+        crossfeedRange: Double = 0.5
     ) {
         self.hogModeEnabled = hogModeEnabled
         self.releaseHogOnPauseEnabled = releaseHogOnPauseEnabled
@@ -22,6 +28,9 @@ public struct AudioProfile: Equatable, Sendable {
         self.bitrate = bitrate
         self.eqEnabled = eqEnabled
         self.eqPresetName = eqPresetName
+        self.crossfeedEnabled = crossfeedEnabled
+        self.crossfeedStrength = crossfeedStrength
+        self.crossfeedRange = crossfeedRange
     }
 
     public static let safeDefault = AudioProfile(
@@ -30,7 +39,10 @@ public struct AudioProfile: Equatable, Sendable {
         volumeMode: .none,
         bitrate: 3,
         eqEnabled: false,
-        eqPresetName: nil
+        eqPresetName: nil,
+        crossfeedEnabled: false,
+        crossfeedStrength: 0.2,
+        crossfeedRange: 0.5
     )
 }
 
@@ -42,6 +54,9 @@ extension AudioProfile: Codable {
         case bitrate
         case eqEnabled
         case eqPresetName
+        case crossfeedEnabled
+        case crossfeedStrength
+        case crossfeedRange
         // Legacy keys for migration only — never encoded.
         case forceMaxVolumeEnabled
         case applyReplayGainEnabled
@@ -61,6 +76,9 @@ extension AudioProfile: Codable {
         }
         self.eqEnabled = try c.decodeIfPresent(Bool.self, forKey: .eqEnabled) ?? false
         self.eqPresetName = try c.decodeIfPresent(String.self, forKey: .eqPresetName)
+        self.crossfeedEnabled = try c.decodeIfPresent(Bool.self, forKey: .crossfeedEnabled) ?? false
+        self.crossfeedStrength = try c.decodeIfPresent(Double.self, forKey: .crossfeedStrength) ?? 0.2
+        self.crossfeedRange = try c.decodeIfPresent(Double.self, forKey: .crossfeedRange) ?? 0.5
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -71,5 +89,8 @@ extension AudioProfile: Codable {
         try c.encode(bitrate, forKey: .bitrate)
         try c.encode(eqEnabled, forKey: .eqEnabled)
         try c.encodeIfPresent(eqPresetName, forKey: .eqPresetName)
+        try c.encode(crossfeedEnabled, forKey: .crossfeedEnabled)
+        try c.encode(crossfeedStrength, forKey: .crossfeedStrength)
+        try c.encode(crossfeedRange, forKey: .crossfeedRange)
     }
 }
