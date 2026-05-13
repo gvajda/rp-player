@@ -14,8 +14,8 @@ final class AudioProfileCrossfeedMigrationTests: XCTestCase {
         """.data(using: .utf8)!
         let profile = try JSONDecoder().decode(AudioProfile.self, from: json)
         XCTAssertFalse(profile.crossfeedEnabled)
-        XCTAssertEqual(profile.crossfeedStrength, 0.2, accuracy: 1e-9)
-        XCTAssertEqual(profile.crossfeedRange, 0.5, accuracy: 1e-9)
+        XCTAssertEqual(profile.crossfeedStrength, 0.15, accuracy: 1e-9)
+        XCTAssertEqual(profile.crossfeedRange, 0.67, accuracy: 1e-9)
     }
 
     func testRoundTrip() throws {
@@ -51,8 +51,8 @@ final class AudioProfileCrossfeedMigrationTests: XCTestCase {
         XCTAssertTrue(profile.eqEnabled)
         XCTAssertEqual(profile.eqPresetName, "harman")
         XCTAssertFalse(profile.crossfeedEnabled)
-        XCTAssertEqual(profile.crossfeedStrength, 0.2, accuracy: 1e-9)
-        XCTAssertEqual(profile.crossfeedRange, 0.5, accuracy: 1e-9)
+        XCTAssertEqual(profile.crossfeedStrength, 0.15, accuracy: 1e-9)
+        XCTAssertEqual(profile.crossfeedRange, 0.67, accuracy: 1e-9)
         XCTAssertEqual(profile.volumeMode, .forceMax)
     }
 
@@ -70,7 +70,7 @@ final class AudioProfileCrossfeedMigrationTests: XCTestCase {
         let profile = try JSONDecoder().decode(AudioProfile.self, from: json)
         XCTAssertEqual(profile.volumeMode, .forceMax)
         XCTAssertFalse(profile.crossfeedEnabled)
-        XCTAssertEqual(profile.crossfeedStrength, 0.2, accuracy: 1e-9)
-        XCTAssertEqual(profile.crossfeedRange, 0.5, accuracy: 1e-9)
+        XCTAssertEqual(profile.crossfeedStrength, 0.15, accuracy: 1e-9)
+        XCTAssertEqual(profile.crossfeedRange, 0.67, accuracy: 1e-9)
     }
 }

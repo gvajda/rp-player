@@ -32,8 +32,8 @@ final class SettingsViewModel: ObservableObject {
     @Published public private(set) var availablePresets: [String] = []
     @Published public private(set) var parsedEqPreset: EqPreset?
     @Published public private(set) var crossfeedEnabled: Bool = false
-    @Published public private(set) var crossfeedStrength: Double = 0.2
-    @Published public private(set) var crossfeedRange: Double = 0.5
+    @Published public private(set) var crossfeedStrength: Double = 0.15
+    @Published public private(set) var crossfeedRange: Double = 0.67
 
     public enum ImportOutcome: Equatable, Sendable {
         case imported(name: String)
@@ -144,8 +144,8 @@ final class SettingsViewModel: ObservableObject {
                         Task { [weak self] in await self?.reloadParsedPreset() }
                     }
                     self.crossfeedEnabled = profile?.crossfeedEnabled ?? false
-                    self.crossfeedStrength = profile?.crossfeedStrength ?? 0.2
-                    self.crossfeedRange = profile?.crossfeedRange ?? 0.5
+                    self.crossfeedStrength = profile?.crossfeedStrength ?? 0.15
+                    self.crossfeedRange = profile?.crossfeedRange ?? 0.67
                 }
             }
         }

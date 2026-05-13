@@ -391,12 +391,16 @@ struct SettingsView: View {
 
     private var crossfeedTooltip: String {
         """
-        Crossfeed simulates a small amount of acoustic leakage between the left and right channels — only useful for headphones, where hard-panned stereo can feel unnaturally separated.
+        Crossfeed simulates a small amount of acoustic leakage between the left and right channels — only useful for headphones, where hard-panned stereo can feel unnaturally separated. Bauer-style implementation (BS2B).
 
-        Strength (0.0–1.0): how much signal crosses to the opposite ear. Default 0.20. Higher = stronger spatial blend.
-        Range (0.0–1.0): high-frequency rolloff of the crossfed signal. Default 0.50. Lower = darker / more natural at higher strengths.
+        Strength (0.0–1.0): feed level — how much signal crosses to the opposite ear at low frequencies. Default 0.15 (~4.5 dB). Higher = stronger spatial blend.
 
-        Bauer-style (BS2B). No effect on speaker output; safe to leave off for non-headphone devices.
+        Range (0.0–1.0): cut frequency — upper bound of the crossfeed band, approx (1 − range) × 2100 Hz. Default 0.67 (~700 Hz cut, classical BS2B). Lower range = wider band.
+
+        BS2B preset equivalents:
+          Default   (700 Hz, 4.5 dB) → str 0.15, rng 0.67
+          Chu Moy   (700 Hz, 6.0 dB) → str 0.22, rng 0.67
+          Jan Meier (650 Hz, 9.5 dB) → str 0.45, rng 0.69
         """
     }
 

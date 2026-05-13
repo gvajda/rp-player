@@ -10,6 +10,8 @@ Optimized for macOS 14+
 
 My goal was a tiny menu-bar [Radio Paradise](https://radioparadise.com/) player for macOS that actually plays the streams — bit-perfect to my DAC — and stays out of the way. The app drives the same `api/gapless` endpoint the official web player uses, so the channel order, song selection, and listener cursor match the web/mobile experience. Decoding goes through libmpv; output goes through CoreAudio in hog (exclusive) mode so other apps don't get to resample what reaches the DAC.
 
+⭐ NEW: Parametric EQ and Crossfeed support for headphone tweakery. If you know, you know.
+
 > [!IMPORTANT]
 > **Disclaimer:** This is not an official Radio Paradise product. The Radio Paradise name and logo are owned by Radio Paradise. All displayed metadata and audio streams come from the public Radio Paradise REST API.
 
@@ -117,7 +119,7 @@ The app installs a status item in the menu bar (no Dock icon, no main window). C
 
 - **Crossfeed** for headphones (per device):
   - Bauer-style stereo crossfeed (BS2B-derived) — softens hard-panned stereo so headphone listening feels less fatiguing without collapsing the soundstage.
-  - Two tunable parameters: **Strength** (0.0–1.0, default 0.2) and **Range** (0.0–1.0, default 0.5).
+  - Two tunable parameters: **Strength** (0.0–1.0, default 0.15) and **Range** (0.0–1.0, default 0.67).
   - Filter chain order is locked at **Preamp → EQ → Crossfeed** so EQ acts on the source signal and crossfeed operates on the equalized result.
 
 <p align="center"><img src=".screenshots/settings.png" alt="Settings window: bitrate, output device, hog mode toggle."/></p>

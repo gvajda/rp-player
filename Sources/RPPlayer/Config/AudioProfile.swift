@@ -19,8 +19,8 @@ public struct AudioProfile: Equatable, Sendable {
         eqEnabled: Bool = false,
         eqPresetName: String? = nil,
         crossfeedEnabled: Bool = false,
-        crossfeedStrength: Double = 0.2,
-        crossfeedRange: Double = 0.5
+        crossfeedStrength: Double = 0.15,
+        crossfeedRange: Double = 0.67
     ) {
         self.hogModeEnabled = hogModeEnabled
         self.releaseHogOnPauseEnabled = releaseHogOnPauseEnabled
@@ -41,8 +41,8 @@ public struct AudioProfile: Equatable, Sendable {
         eqEnabled: false,
         eqPresetName: nil,
         crossfeedEnabled: false,
-        crossfeedStrength: 0.2,
-        crossfeedRange: 0.5
+        crossfeedStrength: 0.15,
+        crossfeedRange: 0.67
     )
 }
 
@@ -77,8 +77,8 @@ extension AudioProfile: Codable {
         self.eqEnabled = try c.decodeIfPresent(Bool.self, forKey: .eqEnabled) ?? false
         self.eqPresetName = try c.decodeIfPresent(String.self, forKey: .eqPresetName)
         self.crossfeedEnabled = try c.decodeIfPresent(Bool.self, forKey: .crossfeedEnabled) ?? false
-        self.crossfeedStrength = try c.decodeIfPresent(Double.self, forKey: .crossfeedStrength) ?? 0.2
-        self.crossfeedRange = try c.decodeIfPresent(Double.self, forKey: .crossfeedRange) ?? 0.5
+        self.crossfeedStrength = try c.decodeIfPresent(Double.self, forKey: .crossfeedStrength) ?? 0.15
+        self.crossfeedRange = try c.decodeIfPresent(Double.self, forKey: .crossfeedRange) ?? 0.67
     }
 
     public func encode(to encoder: Encoder) throws {
