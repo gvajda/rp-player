@@ -34,8 +34,12 @@ public actor MpvPlayerEngine: PlayerEngine {
 
         // Force the null AO when running under XCTest so unit tests that exercise
         // play(url:) don't open the user's real audio device + speakers.
-        // ProcessInfo's XCTestConfigurationFilePath env var is set by xctest only.
+        // Two signals (belt-and-suspenders): the standard env var set by xctest,
+        // and an XCTest-framework-loaded probe. The latter is the most reliable
+        // because the XCTest framework only loads into the test runner process —
+        // the env-var check has been observed to miss under some SPM invocations.
         let underXCTest = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+            || NSClassFromString("XCTestCase") != nil
         var baseline: [(String, String)] = [
             ("vid", "no"),
             ("video", "no"),
@@ -65,6 +69,7 @@ public actor MpvPlayerEngine: PlayerEngine {
         ]
         if underXCTest {
             baseline.append(("ao", "null"))
+            fputs("[MpvPlayerEngine] XCTest detected — forcing ao=null (no real audio output)\n", stderr)
         }
         for (key, value) in baseline {
             let status = mpv_set_option_string(h, key, value)
