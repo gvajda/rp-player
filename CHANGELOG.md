@@ -6,14 +6,16 @@ Section labels: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`
 
 ## [Unreleased]
 
+## [v0.7.0] - 2026-05-13
+
 ### Added
 
-- Per-device crossfeed for headphone listening. Bauer-style (BS2B) via ffmpeg `crossfeed` filter, with two numeric stepper inputs (Strength + Range, each 0.00–1.00 in 0.05 increments) and a single hover-tooltip in Settings. Default OFF; tooltip explains use case and parameters. Composes with EQ orthogonally — chain order is locked as Preamp → EQ → Crossfeed inside the single `mpv af` filter chain. Diagnostic flag `RPSmoke --probe-filters` extended with a `crossfeed` assertion.
+- Per-device crossfeed for headphone listening. Bauer-style (BS2B) via ffmpeg `crossfeed` filter, with two numeric stepper inputs (Strength + Range, each 0.00–1.00 in 0.05 increments) and a single hover-tooltip in Settings. Default OFF; tooltip explains use case, the parameter→Hz/dB mapping, and lists BS2B preset equivalents (BS2B Default / Chu Moy / Jan Meier). Composes with EQ orthogonally — chain order is locked as Preamp → EQ → Crossfeed inside the single `mpv af` filter chain. Diagnostic flag `RPSmoke --probe-filters` extended with a `crossfeed` assertion.
 - Parametric EQ MVP. Per-device toggle plus preset library at `~/Library/Application Support/RP Player/EqPresets/`. Imports AutoEQ / Equalizer APO / REW `.txt` format (PK / LS / HS bands, up to 10, with Preamp). Strict parser — files with unsupported filter types, malformed lines, or more than 10 bands are rejected before save. Export writes the stored .txt verbatim. Delete prompts when other devices reference the preset and nil-outs their reference on confirm. Filter chain applied via libmpv `af` property using FFmpeg `lavfi=[volume,equalizer,lowshelf,highshelf,...]` graph. Diagnostic flag `RPSmoke --probe-filters` confirms the three filters are available in the vendored libmpv.
 
 ### Changed
 
-- `AudioProfile` gains three flat per-device crossfeed fields: `crossfeedEnabled: Bool` (default false), `crossfeedStrength: Double` (default 0.2), `crossfeedRange: Double` (default 0.5). Pre-PR-36 profiles migrate via `decodeIfPresent` defaults; the volume/hog binder's per-iteration write-back gains three `existing.crossfeed*` passthroughs so non-crossfeed settings changes don't silently wipe crossfeed state.
+- `AudioProfile` gains three flat per-device crossfeed fields: `crossfeedEnabled: Bool` (default false), `crossfeedStrength: Double` (default 0.15, ~Chu Moy 4.5 dB feed), `crossfeedRange: Double` (default 0.67, ~700 Hz cut — classical BS2B). Pre-PR-36 profiles migrate via `decodeIfPresent` defaults; the volume/hog binder's per-iteration write-back gains three `existing.crossfeed*` passthroughs so non-crossfeed settings changes don't silently wipe crossfeed state.
 - `EqChainBuilder.build(_:) -> String?` split into `buildParts(_:) -> [String]` (no `lavfi=[...]` wrapper). The single production caller now wraps inline alongside the new `CrossfeedFilterBuilder.buildPart(strength:range:)` fragment.
 - `AppContainer.runEqBinder` / `applyEqState` renamed to `runAudioFilterBinder` / `applyAudioFilterState`. The binder diffs a 5-tuple `AudioFilterKey` (eqEnabled / eqPresetName / crossfeedEnabled / crossfeedStrength / crossfeedRange) and emits a single `mpv af` write per change.
 - `AudioProfile` gains `eqEnabled: Bool` (default false) and `eqPresetName: String?` (default nil). Pre-PR-35 profiles migrate via `decodeIfPresent` defaults; the existing per-device binder write-back path preserves both fields across other settings changes.
