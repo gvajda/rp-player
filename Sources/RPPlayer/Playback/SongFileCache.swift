@@ -51,11 +51,14 @@ public actor LiveSongFileCache: SongFileCache {
             try? FileManager.default.setAttributes(
                 [.modificationDate: Date()], ofItemAtPath: fileURL.path
             )
+            logger.debug("SongFileCache hit event=\(song.eventId) songId=\(song.songId) file=\(filename)")
             return fileURL
         }
         if let existing = inFlight[filename] {
+            logger.debug("SongFileCache join-in-flight event=\(song.eventId) songId=\(song.songId) file=\(filename)")
             return await existing.value
         }
+        logger.debug("SongFileCache miss event=\(song.eventId) songId=\(song.songId) file=\(filename) kicking download")
         let task = Task { [weak self] () -> URL? in
             let result = await self?.downloadAndStore(song: song, fileURL: fileURL) ?? nil
             await self?.clearInFlight(filename: filename)
@@ -105,11 +108,18 @@ public actor LiveSongFileCache: SongFileCache {
             return nil
         }
         if Task.isCancelled { return nil }
+        let filename = fileURL.lastPathComponent
+        let startedAt = Date()
+        logger.debug("SongFileCache download START event=\(song.eventId) songId=\(song.songId) file=\(filename) url=\(url.absoluteString)")
         do {
             let (data, response) = try await session.data(from: url)
             // Skip disk write if cancelled mid-flight — avoids orphan files when the coordinator
             // tears down its downloaderTask between download start and completion.
-            if Task.isCancelled { return nil }
+            if Task.isCancelled {
+                logger.debug("SongFileCache download CANCELLED event=\(song.eventId) songId=\(song.songId) file=\(filename) after \(Int(Date().timeIntervalSince(startedAt) * 1000))ms")
+                return nil
+            }
+            let elapsedMs = Int(Date().timeIntervalSince(startedAt) * 1000)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                 logger.error("SongFileCache fetch failed: HTTP \((response as? HTTPURLResponse)?.statusCode ?? -1) for \(url.absoluteString)")
                 return nil
@@ -118,7 +128,9 @@ public actor LiveSongFileCache: SongFileCache {
                 logger.error("SongFileCache response was empty: \(url.absoluteString)")
                 return nil
             }
+            logger.debug("SongFileCache download RECEIVED event=\(song.eventId) songId=\(song.songId) file=\(filename) bytes=\(data.count) elapsed=\(elapsedMs)ms http=\(http.statusCode)")
             try data.write(to: fileURL, options: [.atomic])
+            logger.debug("SongFileCache download WROTE event=\(song.eventId) songId=\(song.songId) file=\(filename) bytes=\(data.count) totalElapsed=\(Int(Date().timeIntervalSince(startedAt) * 1000))ms")
             evictOldestIfNeeded()
             return fileURL
         } catch {
@@ -146,6 +158,7 @@ public actor LiveSongFileCache: SongFileCache {
 
         while aged.count > maxFiles, let oldest = aged.first {
             try? fm.removeItem(at: oldest.0)
+            logger.debug("SongFileCache LRU evict file=\(oldest.0.lastPathComponent)")
             aged.removeFirst()
         }
     }
