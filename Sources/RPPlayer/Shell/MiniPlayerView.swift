@@ -29,6 +29,7 @@ struct MiniPlayerView: View {
                 )
                 progressRow
                 transport
+                    .padding(.top, -6)
                 channelRow
             }
             .padding(12)
