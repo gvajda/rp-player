@@ -10,7 +10,7 @@ Section labels: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`
 
 ### Added
 
-- Loading indicator in the play/pause button while the first song downloads. After pressing play (or changing channels), the play/pause glyph is replaced with a small circular spinner inside the same outer circle, so the popover signals progress instead of looking frozen during the initial 0.5–3 s HTTP fetch. Covers initial play, channel change, and long-idle cache-miss recovery.
+- Loading indicator in the play/pause button while a song downloads. The play/pause glyph is replaced with a small circular spinner inside the same outer circle, so the popover signals progress instead of looking frozen during the 0.5–3 s HTTP fetch. Covers initial play, channel change, long-idle cache-miss recovery, and skip-forward when the next song hasn't finished downloading yet.
 
 ### Changed
 
@@ -19,6 +19,7 @@ Section labels: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`
 ### Fixed
 
 - Spinner staying up for ~10 s after audio started after a channel change. `play(channelId:)` used to emit `.playing` only after awaiting the queue[1] download + `engine.queueNext`, so on slow networks the spinner outlasted the actual playback start by the full duration of the second song's HTTP fetch. State emission now fires immediately after `engine.play` returns; queue[1] download still runs inline-after but no longer gates the UI transition out of `.loading`.
+- Skip-forward halting playback when queue[1] hadn't yet been queueNext'd into mpv's playlist. `skipForward` previously checked the in-memory queue and called `engine.advanceToQueued()`, but the inline queue[1] download + `engine.queueNext` runs AFTER `emitState(.playing)` — so a fast skip during the post-play download window hit an empty mpv playlist and stopped. New actor field `queueNextEventId: Int?` tracks what is actually queued in mpv (vs only in memory). When skipForward detects a mismatch, it emits `.loading`, awaits the download + `engine.queueNext`, then advances. Race-guards added to every queueNext site re-check `queue[1].eventId` after the actor-reentrant localFile await.
 
 ## [v0.7.0] - 2026-05-13
 

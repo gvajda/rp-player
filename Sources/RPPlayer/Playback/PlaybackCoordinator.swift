@@ -42,6 +42,12 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     // mpv may fire MPV_EVENT_START_FILE multiple times around state transitions (initial load + auto-advance + replace).
     // We trust mpv's `path` property as ground truth and dedupe START_FILE events by the song's eventId.
     private var lastStartedEventId: Int?
+    // eventId of the song currently queueNext'd in mpv's playlist (queue[1] under normal flow).
+    // Cleared on every clearPlaylist. Set after every successful engine.queueNext.
+    // Used by skipForward to detect "queue[1] is in memory but not yet pre-queued in mpv"
+    // (the inline localFile await after engine.play hasn't completed yet), so we can
+    // show the loading state during the wait instead of advancing to an empty playlist.
+    private var queueNextEventId: Int?
     private var currentPositionSeconds: Double = 0
     private var current: NowPlaying?
     private var continuations: [UUID: AsyncStream<NowPlaying>.Continuation] = [:]
@@ -196,7 +202,17 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             let nextUrl = await songFileCache.localFile(for: next)
                 ?? URL(string: next.gaplessUrl)
             if let nextUrl {
-                try? await engine.queueNext(url: nextUrl, startSeconds: nil)
+                // Race-guard: another action (skip / channel-change) may have run
+                // on this actor during the localFile await. queue[1] may no
+                // longer match `next`. Only queueNext if it still does.
+                if queue.count >= 2, queue[1].eventId == next.eventId {
+                    do {
+                        try await engine.queueNext(url: nextUrl, startSeconds: nil)
+                        queueNextEventId = next.eventId
+                    } catch {
+                        logger.warn("play: queueNext failed: \(error)")
+                    }
+                }
             }
         }
 
@@ -244,6 +260,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         if longIdle && songFileCache.cachedFile(for: queue[0]) == nil {
             logger.warn("resume: cache miss for queue[0]; falling back to refetch+restart")
             try? await engine.clearPlaylist()
+            queueNextEventId = nil
             queue = []
             currentResponse = nil
             lastStartedEventId = nil
@@ -296,6 +313,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     public func stop() async throws {
         logger.debug("stop()")
         try? await engine.clearPlaylist()
+        queueNextEventId = nil
         downloaderTask?.cancel()
         downloaderTask = nil
         await songFileCache.cancelInFlightDownloads()
@@ -308,6 +326,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         queue = []
         currentResponse = nil
         lastStartedEventId = nil
+        queueNextEventId = nil
         currentChannelId = nil
         currentPositionSeconds = 0
         pausedAt = nil
@@ -339,6 +358,36 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             }
         }
         if queue.count >= 2 {
+            // If queue[1] hasn't actually been queueNext'd in mpv yet (the inline
+            // localFile await in play()/sync handler is still in flight), advancing
+            // would jump to an empty playlist. Wait for the download + queueNext,
+            // surfacing the loading state to the UI for the duration.
+            if queueNextEventId != queue[1].eventId {
+                logger.debug("skipForward: queue[1] not yet queued in mpv (queueNextEventId=\(queueNextEventId.map(String.init) ?? "nil"), queue[1].eventId=\(queue[1].eventId)); awaiting download")
+                emitState(.loading)
+                let next = queue[1]
+                let nextUrl = await songFileCache.localFile(for: next)
+                    ?? URL(string: next.gaplessUrl)
+                // Race-guard: skipForward may have been called again or the
+                // queue may have shifted during the await. Re-check.
+                guard queue.count >= 2, queue[1].eventId == next.eventId,
+                      let nextUrl else {
+                    emitState(.playing)
+                    return
+                }
+                // queueNextEventId may have been set by a concurrent path
+                // (syncQueueHeadFromMpv); skip the queueNext if so.
+                if queueNextEventId != next.eventId {
+                    do {
+                        try await engine.queueNext(url: nextUrl, startSeconds: nil)
+                        queueNextEventId = next.eventId
+                    } catch {
+                        emitState(.playing)
+                        throw PlaybackCoordinatorError.engineError(message: String(describing: error))
+                    }
+                }
+                emitState(.playing)
+            }
             logger.debug("skipForward: advancing to queued entry on engine")
             do {
                 try await engine.advanceToQueued()
@@ -349,27 +398,32 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             return
         }
         // Queue is shallow — synchronous refetch + restart.
+        emitState(.loading)
         let bitrate = await bitrateProvider()
         let response: GaplessResponse
         do {
             response = try await api.gapless(channel: channelId, bitrate: bitrate, numSongs: 20)
         } catch {
+            emitState(.playing)
             errorsContinuation?.yield("Cannot skip — try again.")
             return
         }
         guard !response.songs.isEmpty else {
+            emitState(.playing)
             errorsContinuation?.yield("Cannot skip — no upcoming songs.")
             return
         }
         // Drop the skipped song; jump to the new response's first song.
         queue = response.songs
         currentResponse = response
+        queueNextEventId = nil
         let head = queue[0]
         // Always start from the beginning; ignore cue.
         currentPositionSeconds = 0
         let resolvedHeadUrl = await songFileCache.localFile(for: head)
             ?? URL(string: head.gaplessUrl)
         guard let url = resolvedHeadUrl else {
+            emitState(.playing)
             errorsContinuation?.yield("Cannot skip — invalid url.")
             return
         }
@@ -378,19 +432,26 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         do {
             try await engine.play(url: url, startSeconds: startSeconds)
         } catch {
+            emitState(.stopped)
             errorsContinuation?.yield("Cannot skip — engine play failed.")
             return
         }
+        emitNowPlaying(forSongAt: 0)
+        emitState(.playing)
         if queue.count >= 2 {
             let next = queue[1]
             let nextUrl = await songFileCache.localFile(for: next)
                 ?? URL(string: next.gaplessUrl)
-            if let nextUrl {
-                try? await engine.queueNext(url: nextUrl, startSeconds: nil)
+            if let nextUrl, queue.count >= 2, queue[1].eventId == next.eventId {
+                do {
+                    try await engine.queueNext(url: nextUrl, startSeconds: nil)
+                    queueNextEventId = next.eventId
+                } catch {
+                    logger.warn("skipForward shallow-refetch: queueNext failed: \(error)")
+                }
             }
         }
         kickSequentialDownload()
-        emitNowPlaying(forSongAt: 0)
         // Telemetry driven from syncQueueHeadFromMpv when mpv fires .fileStarted.
         if queue.count < 3 {
             kickRefetch()
@@ -401,6 +462,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         refetchTask?.cancel()
         refetchTask = nil
         try? await engine.clearPlaylist()
+        queueNextEventId = nil
         downloaderTask?.cancel()
         downloaderTask = nil
         await songFileCache.cancelInFlightDownloads()
@@ -445,6 +507,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         self.currentResponse = response
         emitNowPlaying(forSongAt: 0)
         try? await engine.clearPlaylist()
+        queueNextEventId = nil
         // Bitrate change minted new gaplessUrls. Cancel any in-flight downloader
         // walk so old-bitrate downloads stop stealing bandwidth from the new
         // bitrate's queue; on-disk old-bitrate files become orphans and the
@@ -456,8 +519,13 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             let next = self.queue[1]
             let nextUrl = await songFileCache.localFile(for: next)
                 ?? URL(string: next.gaplessUrl)
-            if let nextUrl {
-                try? await engine.queueNext(url: nextUrl, startSeconds: nil)
+            if let nextUrl, self.queue.count >= 2, self.queue[1].eventId == next.eventId {
+                do {
+                    try await engine.queueNext(url: nextUrl, startSeconds: nil)
+                    queueNextEventId = next.eventId
+                } catch {
+                    logger.warn("applyBitrateChange: queueNext failed: \(error)")
+                }
             }
         }
         if self.queue.count < 3 {
@@ -530,6 +598,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
                 logger.warn("fileEnded(.eof) without queued entry; recovering")
                 if queue.count >= 2 {
                     queue.removeFirst()
+                    queueNextEventId = nil
                     let head = queue[0]
                     let resolvedHeadUrl = await songFileCache.localFile(for: head)
                         ?? URL(string: head.gaplessUrl)
@@ -544,8 +613,13 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
                                 let next = queue[1]
                                 let nextUrl = await songFileCache.localFile(for: next)
                                     ?? URL(string: next.gaplessUrl)
-                                if let nextUrl {
-                                    try? await engine.queueNext(url: nextUrl, startSeconds: nil)
+                                if let nextUrl, queue.count >= 2, queue[1].eventId == next.eventId {
+                                    do {
+                                        try await engine.queueNext(url: nextUrl, startSeconds: nil)
+                                        queueNextEventId = next.eventId
+                                    } catch {
+                                        logger.warn("fileEnded recovery: queueNext failed: \(error)")
+                                    }
                                 }
                             }
                             if queue.count < 3 { kickRefetch() }
@@ -590,6 +664,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     private func handlePlaybackError(code: Int) async {
         logger.error("engine fileEnded with error code \(code)")
         try? await engine.clearPlaylist()
+        queueNextEventId = nil
         downloaderTask?.cancel()
         downloaderTask = nil
         await songFileCache.cancelInFlightDownloads()
@@ -666,14 +741,20 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             return
         }
         currentPositionSeconds = 0
+        queueNextEventId = nil
         emitNowPlaying(forSongAt: 0)
         // Telemetry driven from syncQueueHeadFromMpv when mpv fires .fileStarted.
         if queue.count >= 2 {
             let next = queue[1]
             let nextUrl = await songFileCache.localFile(for: next)
                 ?? URL(string: next.gaplessUrl)
-            if let nextUrl {
-                try? await engine.queueNext(url: nextUrl, startSeconds: nil)
+            if let nextUrl, queue.count >= 2, queue[1].eventId == next.eventId {
+                do {
+                    try await engine.queueNext(url: nextUrl, startSeconds: nil)
+                    queueNextEventId = next.eventId
+                } catch {
+                    logger.warn("handleSongPlaybackError: queueNext failed: \(error)")
+                }
             }
         }
         if queue.count < 3 {
@@ -750,12 +831,23 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             fireSongStartTelemetry(song: queue[0], channelId: channelId)
         }
         // Only re-issue queueNext on advance — initial sync is preceded by play()/handleSongPlaybackError/etc which already queued queue[1].
-        if isAdvance, queue.count >= 2 {
-            let next = queue[1]
-            let nextUrl = await songFileCache.localFile(for: next)
-                ?? URL(string: next.gaplessUrl)
-            if let nextUrl {
-                try? await engine.queueNext(url: nextUrl, startSeconds: nil)
+        if isAdvance {
+            // The old queueNext'd entry is now playing; mpv's playlist is empty
+            // until we re-queue. Clear before the await so a concurrent skip
+            // sees the right state.
+            queueNextEventId = nil
+            if queue.count >= 2 {
+                let next = queue[1]
+                let nextUrl = await songFileCache.localFile(for: next)
+                    ?? URL(string: next.gaplessUrl)
+                if let nextUrl, queue.count >= 2, queue[1].eventId == next.eventId {
+                    do {
+                        try await engine.queueNext(url: nextUrl, startSeconds: nil)
+                        queueNextEventId = next.eventId
+                    } catch {
+                        logger.warn("syncQueueHead: queueNext failed: \(error)")
+                    }
+                }
             }
         }
         kickSequentialDownload()
@@ -870,8 +962,14 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             let next = self.queue[1]
             let nextUrl = await songFileCache.localFile(for: next)
                 ?? URL(string: next.gaplessUrl)
-            if let nextUrl {
-                try? await self.engine.queueNext(url: nextUrl, startSeconds: nil)
+            if let nextUrl, self.queue.count >= 2, self.queue[1].eventId == next.eventId,
+               self.queueNextEventId != next.eventId {
+                do {
+                    try await self.engine.queueNext(url: nextUrl, startSeconds: nil)
+                    self.queueNextEventId = next.eventId
+                } catch {
+                    logger.warn("runRefetch: queueNext failed: \(error)")
+                }
             }
         }
         kickSequentialDownload()
