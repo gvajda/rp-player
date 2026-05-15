@@ -145,6 +145,8 @@ final class NowPlayingCenterController {
         case .paused:
             center.playbackState = .paused
             patchInfo([MPNowPlayingInfoPropertyPlaybackRate: 0.0])
+        case .loading:
+            break
         case .stopped:
             center.playbackState = .stopped
             center.nowPlayingInfo = nil

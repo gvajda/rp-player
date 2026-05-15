@@ -615,7 +615,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
             var seen: [PlaybackState] = []
             for await s in states {
                 seen.append(s)
-                if seen.count == 4 { return seen }
+                if seen.count == 5 { return seen }
             }
             return seen
         }
@@ -623,7 +623,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         try await coord.pause()
         try await coord.stop()
         let result = await task.value
-        XCTAssertEqual(result, [.stopped, .playing, .paused, .stopped])
+        XCTAssertEqual(result, [.stopped, .loading, .playing, .paused, .stopped])
     }
 
     func testPlayPrefetchesNextSongCover() async throws {

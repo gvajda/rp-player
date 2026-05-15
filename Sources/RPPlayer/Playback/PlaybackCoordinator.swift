@@ -2,6 +2,7 @@ import Foundation
 
 public enum PlaybackState: Sendable, Equatable {
     case stopped
+    case loading
     case playing
     case paused
 }
@@ -136,6 +137,16 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
 
     public func play(channelId: Int) async throws {
         logger.debug("play(channelId: \(channelId))")
+        emitState(.loading)
+        do {
+            try await playInternal(channelId: channelId)
+        } catch {
+            emitState(.stopped)
+            throw error
+        }
+    }
+
+    private func playInternal(channelId: Int) async throws {
         await ensureEventSubscription()
         let bitrate = await bitrateProvider()
         logger.debug("play resolved bitrate=\(bitrate)")
@@ -174,6 +185,12 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             throw PlaybackCoordinatorError.engineError(message: String(describing: error))
         }
 
+        // Emit state before awaiting queue[1] download so UI exits .loading
+        // the moment audio actually starts. The queue[1] download below can
+        // take many seconds on slow networks and used to gate the spinner.
+        emitNowPlaying(forSongAt: 0)
+        emitState(.playing)
+
         if queue.count >= 2 {
             let next = queue[1]
             let nextUrl = await songFileCache.localFile(for: next)
@@ -183,8 +200,6 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             }
         }
 
-        emitNowPlaying(forSongAt: 0)
-        emitState(.playing)
         // Telemetry + queueNext for queue[1] are driven from syncQueueHeadFromMpv when mpv fires .fileStarted.
         if queue.count < 3 {
             kickRefetch()

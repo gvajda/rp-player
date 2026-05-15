@@ -6,6 +6,20 @@ Section labels: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`
 
 ## [Unreleased]
 
+## [v0.7.1] - 2026-05-16
+
+### Added
+
+- Loading indicator in the play/pause button while the first song downloads. After pressing play (or changing channels), the play/pause glyph is replaced with a small circular spinner inside the same outer circle, so the popover signals progress instead of looking frozen during the initial 0.5–3 s HTTP fetch. Covers initial play, channel change, and long-idle cache-miss recovery.
+
+### Changed
+
+- `PlaybackCoordinator` gains a `.loading` state. Emitted at the top of `play(channelId:)` and reset to `.stopped` on throw. `MiniPlayerViewModel` adds an `isLoading` published flag; the errors stream clears it alongside `isPlaying`. `NowPlayingCenterController` and the AppContainer hog binder both treat `.loading` as a no-op.
+
+### Fixed
+
+- Spinner staying up for ~10 s after audio started after a channel change. `play(channelId:)` used to emit `.playing` only after awaiting the queue[1] download + `engine.queueNext`, so on slow networks the spinner outlasted the actual playback start by the full duration of the second song's HTTP fetch. State emission now fires immediately after `engine.play` returns; queue[1] download still runs inline-after but no longer gates the UI transition out of `.loading`.
+
 ## [v0.7.0] - 2026-05-13
 
 ### Added

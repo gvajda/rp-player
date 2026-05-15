@@ -152,11 +152,23 @@ struct MiniPlayerView: View {
             Button {
                 Task { await viewModel.togglePlayPause() }
             } label: {
-                Image(systemName: viewModel.isPlaying ? "pause.circle" : "play.circle")
-                    .font(.system(size: 44))
+                ZStack {
+                    if viewModel.isLoading {
+                        Image(systemName: "circle")
+                            .font(.system(size: 44))
+                        ProgressView()
+                            .controlSize(.small)
+                            .progressViewStyle(.circular)
+                    } else {
+                        Image(systemName: viewModel.isPlaying ? "pause.circle" : "play.circle")
+                            .font(.system(size: 44))
+                    }
+                }
+                .frame(width: 44, height: 44)
             }
             .buttonStyle(PressOpacityButtonStyle())
-            .accessibilityLabel(viewModel.isPlaying ? "Pause" : "Play")
+            .disabled(viewModel.isLoading)
+            .accessibilityLabel(viewModel.isLoading ? "Loading" : (viewModel.isPlaying ? "Pause" : "Play"))
 
             Button {
                 Task { await viewModel.skipForward() }

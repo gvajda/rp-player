@@ -387,6 +387,8 @@ extension AppContainer {
                             _ = await hogController.acquire(deviceUID: uid)
                         case .paused, .stopped:
                             await hogController.release()
+                        case .loading:
+                            break
                         }
                     }
                     if state == .playing, s.volumeMode == .forceMax {

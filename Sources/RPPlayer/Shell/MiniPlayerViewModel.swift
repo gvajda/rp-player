@@ -7,6 +7,7 @@ import SwiftUI
 final class MiniPlayerViewModel: ObservableObject {
     @Published private(set) var nowPlaying: NowPlaying?
     @Published private(set) var isPlaying: Bool = false
+    @Published private(set) var isLoading: Bool = false
     @Published private(set) var channels: [Channel] = []
     @Published private(set) var selectedChannelId: Int
     @Published private(set) var errorMessage: String?
@@ -160,6 +161,7 @@ final class MiniPlayerViewModel: ObservableObject {
                 guard let self else { return }
                 self.errorMessage = message
                 self.isPlaying = false
+                self.isLoading = false
                 self.nowPlaying = nil
                 self.ambientTopColor = nil
                 self.showPopoverIfNeeded()
@@ -171,8 +173,15 @@ final class MiniPlayerViewModel: ObservableObject {
             for await state in stateStream {
                 guard let self else { return }
                 switch state {
-                case .playing: isPlaying = true
-                case .paused, .stopped: isPlaying = false
+                case .loading:
+                    isLoading = true
+                    isPlaying = false
+                case .playing:
+                    isLoading = false
+                    isPlaying = true
+                case .paused, .stopped:
+                    isLoading = false
+                    isPlaying = false
                 }
             }
         }
