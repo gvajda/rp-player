@@ -29,4 +29,18 @@ final class HogModeControllerTests: XCTestCase {
         let ok = await controller.setSampleRate(44100, deviceUID: "definitely-not-a-real-uid-\(UUID().uuidString)")
         XCTAssertFalse(ok)
     }
+
+    func testAcquireWithUnknownUIDLeavesOriginalSampleRateNil() async {
+        let controller = HogModeController()
+        _ = await controller.acquire(deviceUID: "definitely-not-a-real-uid-\(UUID().uuidString)")
+        let stored = await controller.originalSampleRate
+        XCTAssertNil(stored)
+    }
+
+    func testReleaseWithoutAcquireDoesNotMutateOriginalSampleRate() async {
+        let controller = HogModeController()
+        await controller.release()
+        let stored = await controller.originalSampleRate
+        XCTAssertNil(stored)
+    }
 }
