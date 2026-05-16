@@ -6,6 +6,12 @@ Section labels: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`
 
 ## [Unreleased]
 
+## [v0.7.2] - 2026-05-17
+
+### Changed
+
+- Hog mode now enforces 44.1 kHz on the output device. When exclusive ownership is confirmed, `HogModeController` reads the device's current nominal sample rate, stores it, and sets it to 44100 Hz (with a 50 ms CoreAudio settle). On release, the original rate is restored. Devices configured at 48 kHz or another rate in Audio MIDI Setup are automatically corrected for the duration of playback and left as-found on release. No new setting needed — rate enforcement is automatic whenever hog mode is on.
+
 ## [v0.7.1] - 2026-05-16
 
 ### Added
