@@ -33,13 +33,13 @@ public actor HogModeController {
             target, &address, 0, nil, &size, &actual
         )
         guard getStatus == noErr, actual == getpid() else { return false }
-        hoggedDeviceID = target
-        originalSampleRate = savedRate
         // RP streams are always 44.1 kHz; enforce matching hardware rate to
         // prevent CoreAudio resampling when the device is configured otherwise.
         if !(await setSampleRateInternal(44100.0, deviceID: target, settle: true)) {
             fputs("[HogModeController] setSampleRate(44100) failed — playback may resample\n", stderr)
         }
+        hoggedDeviceID = target
+        originalSampleRate = savedRate
         return true
     }
 
