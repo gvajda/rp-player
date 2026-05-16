@@ -9,11 +9,11 @@ public actor HogModeController {
 
     public var isHogging: Bool { hoggedDeviceID != nil }
 
-    public func acquire(deviceUID: String) -> Bool {
+    public func acquire(deviceUID: String) async -> Bool {
         guard let target = deviceID(forUID: deviceUID) else { return false }
         if let current = hoggedDeviceID, current == target { return true }
         if hoggedDeviceID != nil {
-            releaseHog()
+            await releaseHog()
         }
         let savedRate = readSampleRate(deviceID: target)
         var address = AudioObjectPropertyAddress(
@@ -37,22 +37,22 @@ public actor HogModeController {
         originalSampleRate = savedRate
         // RP streams are always 44.1 kHz; enforce matching hardware rate to
         // prevent CoreAudio resampling when the device is configured otherwise.
-        if !setSampleRateInternal(44100.0, deviceID: target, settle: true) {
+        if !(await setSampleRateInternal(44100.0, deviceID: target, settle: true)) {
             fputs("[HogModeController] setSampleRate(44100) failed — playback may resample\n", stderr)
         }
         return true
     }
 
-    public func release() {
-        releaseHog()
+    public func release() async {
+        await releaseHog()
     }
 
-    public func setSampleRate(_ rate: Double, deviceUID: String) -> Bool {
+    public func setSampleRate(_ rate: Double, deviceUID: String) async -> Bool {
         guard let target = deviceID(forUID: deviceUID) else { return false }
-        return setSampleRateInternal(rate, deviceID: target, settle: true)
+        return await setSampleRateInternal(rate, deviceID: target, settle: true)
     }
 
-    private func releaseHog() {
+    private func releaseHog() async {
         guard let target = hoggedDeviceID else { return }
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioDevicePropertyHogMode,
@@ -67,7 +67,7 @@ public actor HogModeController {
         hoggedDeviceID = nil
         if let rate = originalSampleRate {
             // No settle sleep on restore — we are releasing, not about to open IO.
-            _ = setSampleRateInternal(rate, deviceID: target, settle: false)
+            _ = await setSampleRateInternal(rate, deviceID: target, settle: false)
             originalSampleRate = nil
         }
     }
@@ -85,7 +85,7 @@ public actor HogModeController {
         return rate
     }
 
-    private func setSampleRateInternal(_ rate: Double, deviceID: AudioDeviceID, settle: Bool) -> Bool {
+    private func setSampleRateInternal(_ rate: Double, deviceID: AudioDeviceID, settle: Bool) async -> Bool {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioDevicePropertyNominalSampleRate,
             mScope: kAudioObjectPropertyScopeGlobal,
@@ -99,7 +99,7 @@ public actor HogModeController {
         guard status == noErr else { return false }
         if settle {
             // CoreAudio quirk: hardware needs a brief settle window before subsequent IO opens.
-            Thread.sleep(forTimeInterval: 0.05)
+            try? await Task.sleep(nanoseconds: 50_000_000)
         }
         return true
     }
