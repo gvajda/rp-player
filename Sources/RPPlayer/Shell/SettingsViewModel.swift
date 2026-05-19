@@ -20,6 +20,19 @@ final class SettingsViewModel: ObservableObject {
     @Published private(set) var upcomingHiddenChannelIds: [Int]
     @Published private(set) var upcomingChannels: [Channel] = []
     @Published private(set) var devices: [AudioDevice] = []
+    @Published private(set) var deviceNameCache: [String: String] = [:]
+
+    var disconnectedDevice: AudioDevice? {
+        guard let uid = outputDeviceUID, !uid.isEmpty else { return nil }
+        if devices.contains(where: { $0.uid == uid }) { return nil }
+        let cached = deviceNameCache[uid] ?? "Unknown device"
+        return AudioDevice(
+            uid: uid,
+            name: "\(cached) (disconnected)",
+            transportType: .unknown
+        )
+    }
+
     @Published private(set) var isSignedIn: Bool = false
     @Published private(set) var currentUsername: String?
     @Published private(set) var currentDeviceName: String?
@@ -156,7 +169,11 @@ final class SettingsViewModel: ObservableObject {
                 if Task.isCancelled { return }
                 await MainActor.run {
                     self.devices = devices
+                    for d in devices {
+                        self.deviceNameCache[d.uid] = d.name
+                    }
                     self.currentDeviceName = devices.first(where: { $0.uid == self.outputDeviceUID })?.name
+                        ?? self.deviceNameCache[self.outputDeviceUID ?? ""]
                 }
             }
         }
