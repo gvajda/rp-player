@@ -297,7 +297,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
                       "expected engine.play for s2 after dropping s1. plays=\(plays)")
     }
 
-    /// 10. fileEnded(.error(-14)) clears all state + yields device-unavailable error.
+    /// 10. fileEnded(.error(-14)) clears all state; when no handler is set, yields generic error.
     func testEngineErrorCode14ClearsAllStateAndYieldsDeviceMessage() async throws {
         let api = MockRpApiClient()
         let response = makeGaplessResponse(songs: [
@@ -319,8 +319,8 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         await engine.fire(.fileEnded(reason: .error(code: -14)))
 
         let message = await errorTask.value
-        XCTAssertTrue(message?.contains("Audio device unavailable") ?? false,
-                      "expected device-unavailable error. got: \(message ?? "nil")")
+        XCTAssertTrue(message?.contains("Playback stopped unexpectedly") ?? false,
+                      "expected generic error when no handler is set. got: \(message ?? "nil")")
 
         try await Task.sleep(nanoseconds: 50_000_000)
         let np = await coord.nowPlaying

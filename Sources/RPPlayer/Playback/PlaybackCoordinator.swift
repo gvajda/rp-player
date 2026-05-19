@@ -678,17 +678,13 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         pausedAt = nil
         pausePositionMs = 0
         current = nil
-        let message = code == -14
-            ? "Audio device unavailable. Hog mode + Force Max Volume turned off so the next device you pick can't surprise you. Check System Settings → Sound → Output."
-            : "Playback stopped unexpectedly (error \(code))."
+        let nonDeviceMessage = "Playback stopped unexpectedly (error \(code))."
         emitState(.stopped)
-        errorsContinuation?.yield(message)
-        // Hearing-safety: when the chosen device went away (mpv code -14), drop
-        // hog mode AND force-max so picking a fallback device (e.g. built-in
-        // speakers) doesn't slam them at 100%. The handler is provided by
-        // AppContainer and writes the settings + releases hog.
         if code == -14, let handler = onDeviceUnavailable {
+            // Handler decides the user message (preserve-when-hog vs hearing-safety reset).
             await handler()
+        } else {
+            errorsContinuation?.yield(nonDeviceMessage)
         }
     }
 
