@@ -85,6 +85,21 @@ final class AppContainer {
     }
 }
 
+@MainActor
+final class DeviceReattachState {
+    var heldUID: String?
+    var reattachTask: Task<Void, Never>?
+    var lastKnownDeviceNames: [String: String] = [:]
+    // Late-bound by AppContainer.live() once MiniPlayerViewModel exists.
+    var onReattached: @MainActor () -> Void = { }
+
+    func cancelReattach() {
+        reattachTask?.cancel()
+        reattachTask = nil
+        heldUID = nil
+    }
+}
+
 extension AppContainer {
     static func live() throws -> AppContainer {
         let logger = AppLogger.fileBacked(category: "shell", directory: ConfigPaths.logsDirectory)
@@ -656,6 +671,65 @@ extension AppContainer {
             self.crossfeedEnabled = profile.crossfeedEnabled
             self.crossfeedStrength = profile.crossfeedStrength
             self.crossfeedRange = profile.crossfeedRange
+        }
+    }
+
+    @discardableResult
+    static func handleDeviceLost(
+        store: JSONConfigStore,
+        hogController: HogModeController,
+        knownDeviceNames: [String: String],
+        logger: any Logging
+    ) async -> (message: String?, preservedUID: String?) {
+        let s = await store.settings
+        guard let uid = s.outputDeviceUID, !uid.isEmpty else {
+            return (nil, nil)
+        }
+        if s.hogModeEnabled {
+            let name = knownDeviceNames[uid] ?? uid
+            logger.info("device '\(uid)' disappeared while hog mode on; preserving selection + waiting for reattach")
+            // release() clears the actor's bookkeeping unconditionally even when the
+            // CoreAudio call against the dead device fails.
+            await hogController.release()
+            return ("\(name) disconnected — waiting for it to come back.", uid)
+        } else {
+            logger.info("output device '\(uid)' disappeared at runtime; clearing hogModeEnabled + volumeMode + outputDeviceUID for safety")
+            try? await store.update {
+                $0.hogModeEnabled = false
+                $0.volumeMode = .none
+                $0.outputDeviceUID = nil
+            }
+            await hogController.release()
+            return (
+                "Audio device unavailable. Hog mode + Force Max Volume turned off so the next device you pick can't surprise you. Check System Settings → Sound → Output.",
+                nil
+            )
+        }
+    }
+
+    static func spawnReattachWatcher(
+        heldUID: String,
+        catalog: CoreAudioDeviceCatalog,
+        hogController: HogModeController,
+        volumeController: DeviceVolumeController,
+        store: JSONConfigStore,
+        logger: any Logging,
+        onReattached: @escaping @MainActor () -> Void
+    ) -> Task<Void, Never> {
+        Task { [catalog, hogController, volumeController, store, logger] in
+            let stream = await catalog.changes
+            for await devices in stream {
+                if Task.isCancelled { return }
+                guard devices.contains(where: { $0.uid == heldUID }) else { continue }
+                logger.info("held device '\(heldUID)' reappeared; re-acquiring hog")
+                _ = await hogController.acquire(deviceUID: heldUID)
+                let s = await store.settings
+                if s.volumeMode == .forceMax {
+                    _ = await volumeController.setVolumeMax(deviceUID: heldUID)
+                }
+                await MainActor.run { onReattached() }
+                return
+            }
         }
     }
 
