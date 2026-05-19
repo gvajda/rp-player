@@ -121,6 +121,8 @@ actor MockPlaybackCoordinator: PlaybackCoordinator {
         pending.forEach { $0.resume() }
     }
     func applyBitrateChange() async { calls.append(.applyBitrateChange) }
+    private(set) var emittedUserMessages: [String] = []
+    func emitUserMessage(_ message: String) async { emittedUserMessages.append(message) }
     func shutdown() async {
         calls.append(.shutdown)
         for c in continuations.values { c.finish() }

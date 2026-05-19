@@ -23,6 +23,7 @@ public protocol PlaybackCoordinator: Sendable {
     func changeChannel(to channelId: Int) async throws
     func applyBitrateChange() async
     func shutdown() async
+    func emitUserMessage(_ message: String) async
 }
 
 public actor LivePlaybackCoordinator: PlaybackCoordinator {
@@ -560,6 +561,10 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         stateContinuations.removeAll()
         errorsContinuation?.finish()
         errorsContinuation = nil
+    }
+
+    public func emitUserMessage(_ message: String) async {
+        errorsContinuation?.yield(message)
     }
 
     // Idempotent. Awaited from inside actor isolation, so by the time it returns
