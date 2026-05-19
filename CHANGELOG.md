@@ -6,6 +6,10 @@ Section labels: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`
 
 ## [Unreleased]
 
+### Added
+
+- Preserve output device selection + hog mode + Force Max Volume when the active device disconnects while hog mode is on; auto-re-acquire hog (and re-pin Force Max volume) when the same device reappears. Playback stays stopped — user clicks play to resume. Settings picker shows the held device as "DeviceName (disconnected)" while it's absent.
+
 ## [v0.7.2] - 2026-05-17
 
 ### Changed
