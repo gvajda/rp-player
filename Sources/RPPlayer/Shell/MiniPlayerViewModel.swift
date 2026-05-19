@@ -57,6 +57,11 @@ final class MiniPlayerViewModel: ObservableObject {
     var upcomingAction: @MainActor () -> Void = {}
     var openUpdatePanel: @MainActor () -> Void = {}
 
+    // Dismiss error banner when a held device reattaches (errors stream can't yield nil).
+    func clearErrorMessage() {
+        errorMessage = nil
+    }
+
     init(
         coordinator: any PlaybackCoordinator,
         api: any RpApiClient,
