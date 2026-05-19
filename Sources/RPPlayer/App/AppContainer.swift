@@ -216,6 +216,15 @@ extension AppContainer {
             Task { _ = await volumeController.setVolumeMax(deviceUID: uid) }
         }
 
+        let reattachState = DeviceReattachState()
+        let deviceCatalog = CoreAudioDeviceCatalog(lister: CoreAudioDeviceLister())
+
+        // Late-bound after coordinator construction to avoid forward-capture.
+        final class CoordinatorBox: @unchecked Sendable {
+            var value: (any PlaybackCoordinator)?
+        }
+        let coordinatorBox = CoordinatorBox()
+
         let coordinator = LivePlaybackCoordinator(
             api: api,
             engine: engine,
@@ -231,21 +240,36 @@ extension AppContainer {
             prefetchArt: { [cache] cover in
                 Task.detached { _ = await cache.image(for: cover) }
             },
-            onDeviceUnavailable: { [store, hogController, logger] in
-                // Hearing-safety reset when mpv reports MPV_ERROR_AO_INIT_FAILED:
-                // drop hog mode + force-max + the dead UID so the next device the
-                // user picks (often built-in speakers) doesn't blast at 100% and
-                // the Settings UI doesn't keep showing a device that's no longer
-                // present. Release hog explicitly too so we're not still holding
-                // the (now-gone) device.
+            onDeviceUnavailable: { [store, hogController, volumeController, logger, reattachState, deviceCatalog, coordinatorBox] in
                 guard let store else { return }
-                logger.info("device unavailable: clearing hogModeEnabled + volumeMode + outputDeviceUID for safety")
-                try? await store.update {
-                    $0.hogModeEnabled = false
-                    $0.volumeMode = .none
-                    $0.outputDeviceUID = nil
+                let names = await MainActor.run { reattachState.lastKnownDeviceNames }
+                let result = await AppContainer.handleDeviceLost(
+                    store: store,
+                    hogController: hogController,
+                    knownDeviceNames: names,
+                    logger: logger
+                )
+                if let msg = result.message {
+                    await coordinatorBox.value?.emitUserMessage(msg)
                 }
-                await hogController.release()
+                if let heldUID = result.preservedUID {
+                    await MainActor.run {
+                        reattachState.heldUID = heldUID
+                        reattachState.reattachTask?.cancel()
+                        reattachState.reattachTask = AppContainer.spawnReattachWatcher(
+                            heldUID: heldUID,
+                            catalog: deviceCatalog,
+                            hogController: hogController,
+                            volumeController: volumeController,
+                            store: store,
+                            logger: logger,
+                            onReattached: { [weak reattachState] in
+                                reattachState?.heldUID = nil
+                                reattachState?.reattachTask = nil
+                            }
+                        )
+                    }
+                }
             },
             prePlayHook: { [store, hogController] in
                 // Acquire hog BEFORE mpv opens the CoreAudio AO. Without this,
@@ -260,6 +284,8 @@ extension AppContainer {
                 _ = await hogController.acquire(deviceUID: uid)
             }
         )
+
+        coordinatorBox.value = coordinator
 
         // Bridge persistent audio settings → engine. The stream yields the
         // current snapshot first, so initial hog-mode + device UID get applied
@@ -438,7 +464,6 @@ extension AppContainer {
             }
         }
 
-        let deviceCatalog = CoreAudioDeviceCatalog(lister: CoreAudioDeviceLister())
         // Observe CoreAudio hot-plug events so the Settings device list stays
         // current AND so we can clear the saved UID when the user's selected
         // device disappears at runtime (e.g. USB DAC unplug). Without this, the
@@ -446,17 +471,46 @@ extension AppContainer {
         // until the user manually switches channels.
         Task { await deviceCatalog.startWatching() }
         if let store {
-            Task { [logger] in
+            Task { [logger, hogController, volumeController, reattachState, coordinator] in
                 let stream = await deviceCatalog.changes
                 for await devices in stream {
+                    // Populate the uid→name cache used by handleDeviceLost for friendly banner text.
+                    let nameMap = Dictionary(uniqueKeysWithValues: devices.map { ($0.uid, $0.name) })
+                    await MainActor.run {
+                        for (uid, name) in nameMap {
+                            reattachState.lastKnownDeviceNames[uid] = name
+                        }
+                    }
                     let s = await store.settings
                     guard let uid = s.outputDeviceUID, !uid.isEmpty else { continue }
                     if devices.contains(where: { $0.uid == uid }) { continue }
-                    logger.info("output device '\(uid)' disappeared at runtime; clearing hogModeEnabled + volumeMode + outputDeviceUID for safety")
-                    try? await store.update {
-                        $0.hogModeEnabled = false
-                        $0.volumeMode = .none
-                        $0.outputDeviceUID = nil
+                    let names = await MainActor.run { reattachState.lastKnownDeviceNames }
+                    let result = await AppContainer.handleDeviceLost(
+                        store: store,
+                        hogController: hogController,
+                        knownDeviceNames: names,
+                        logger: logger
+                    )
+                    if let msg = result.message {
+                        await coordinator.emitUserMessage(msg)
+                    }
+                    if let heldUID = result.preservedUID {
+                        await MainActor.run {
+                            reattachState.heldUID = heldUID
+                            reattachState.reattachTask?.cancel()
+                            reattachState.reattachTask = AppContainer.spawnReattachWatcher(
+                                heldUID: heldUID,
+                                catalog: deviceCatalog,
+                                hogController: hogController,
+                                volumeController: volumeController,
+                                store: store,
+                                logger: logger,
+                                onReattached: { [weak reattachState] in
+                                    reattachState?.heldUID = nil
+                                    reattachState?.reattachTask = nil
+                                }
+                            )
+                        }
                     }
                 }
             }
