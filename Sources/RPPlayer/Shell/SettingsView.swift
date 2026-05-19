@@ -146,6 +146,9 @@ struct SettingsView: View {
             HStack {
                 Picker("Output device", selection: deviceBinding) {
                     Text("Select an output device").tag(String?.none)
+                    if let disconnected = viewModel.disconnectedDevice {
+                        Text(deviceLabel(disconnected)).tag(Optional(disconnected.uid))
+                    }
                     ForEach(viewModel.devices, id: \.uid) { device in
                         Text(deviceLabel(device)).tag(Optional(device.uid))
                     }
