@@ -266,6 +266,7 @@ extension AppContainer {
                             onReattached: { [weak reattachState] in
                                 reattachState?.heldUID = nil
                                 reattachState?.reattachTask = nil
+                                reattachState?.onReattached()
                             }
                         )
                     }
@@ -287,13 +288,206 @@ extension AppContainer {
 
         coordinatorBox.value = coordinator
 
+        if let store {
+            // Release/re-acquire hog on pause/resume when the user opted in.
+            // Also pin device volume to max on every .playing transition when
+            // force-max is on, in case the user nudged the OS slider while paused.
+            Task { [hogController, volumeController, coordinator, store] in
+                let stream = await coordinator.stateUpdates
+                for await state in stream {
+                    let s = await store.settings
+                    guard let uid = s.outputDeviceUID, !uid.isEmpty else { continue }
+                    if s.hogModeEnabled, s.releaseHogOnPauseEnabled {
+                        switch state {
+                        case .playing:
+                            _ = await hogController.acquire(deviceUID: uid)
+                        case .paused, .stopped:
+                            await hogController.release()
+                        case .loading:
+                            break
+                        }
+                    }
+                    if state == .playing, s.volumeMode == .forceMax {
+                        _ = await volumeController.setVolumeMax(deviceUID: uid)
+                    }
+                }
+            }
+            Task { [logger, eqLogger] in
+                let stream = await store.changes
+                for await settings in stream {
+                    logger.setVerbose(settings.verboseLoggingEnabled)
+                    eqLogger.setVerbose(settings.verboseLoggingEnabled)
+                }
+            }
+            Task { @MainActor in
+                let stream = await store.changes
+                for await settings in stream {
+                    switch settings.appearance {
+                    case .system: NSApp.appearance = nil
+                    case .light:  NSApp.appearance = NSAppearance(named: .aqua)
+                    case .dark:   NSApp.appearance = NSAppearance(named: .darkAqua)
+                    }
+                }
+            }
+            Task { [engine, eqPresetStore, store] in
+                await AppContainer.runAudioFilterBinder(
+                    store: store,
+                    engine: engine,
+                    eqPresetStore: eqPresetStore,
+                    initialProfile: startupProfile
+                )
+            }
+        }
+
+        // Observe CoreAudio hot-plug events so the Settings device list stays
+        // current AND so we can clear the saved UID when the user's selected
+        // device disappears at runtime (e.g. USB DAC unplug). Without this, the
+        // UI keeps showing the now-gone device and a replug doesn't restore it
+        // until the user manually switches channels.
+        Task { await deviceCatalog.startWatching() }
+        if let store {
+            Task { [logger, hogController, volumeController, reattachState, coordinator] in
+                let stream = await deviceCatalog.changes
+                for await devices in stream {
+                    // Populate the uid→name cache used by handleDeviceLost for friendly banner text.
+                    let nameMap = Dictionary(uniqueKeysWithValues: devices.map { ($0.uid, $0.name) })
+                    await MainActor.run {
+                        for (uid, name) in nameMap {
+                            reattachState.lastKnownDeviceNames[uid] = name
+                        }
+                    }
+                    let s = await store.settings
+                    guard let uid = s.outputDeviceUID, !uid.isEmpty else { continue }
+                    if devices.contains(where: { $0.uid == uid }) { continue }
+                    let names = await MainActor.run { reattachState.lastKnownDeviceNames }
+                    let result = await AppContainer.handleDeviceLost(
+                        store: store,
+                        hogController: hogController,
+                        knownDeviceNames: names,
+                        logger: logger
+                    )
+                    if let msg = result.message {
+                        await coordinator.emitUserMessage(msg)
+                    }
+                    if let heldUID = result.preservedUID {
+                        await MainActor.run {
+                            reattachState.heldUID = heldUID
+                            reattachState.reattachTask?.cancel()
+                            reattachState.reattachTask = AppContainer.spawnReattachWatcher(
+                                heldUID: heldUID,
+                                catalog: deviceCatalog,
+                                hogController: hogController,
+                                volumeController: volumeController,
+                                store: store,
+                                logger: logger,
+                                onReattached: { [weak reattachState] in
+                                    reattachState?.heldUID = nil
+                                    reattachState?.reattachTask = nil
+                                    reattachState?.onReattached()
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // UNUserNotificationCenter.current() throws on unbundled processes
+        // (no main bundle proxy). PR 12 ships the .app; until then `swift run`
+        // gets a no-op service so the rest of the wiring still constructs.
+        let bundleId = Bundle.main.bundleIdentifier
+        logger.info("notification setup: Bundle.main.bundleIdentifier=\(bundleId ?? "nil")")
+        let notificationService: any NotificationService =
+            bundleId != nil
+                ? LiveNotificationService(center: UNUserNotificationCenter.current())
+                : NoopNotificationService()
+        logger.info("notification service: \(bundleId != nil ? "Live" : "Noop")")
+
+        let songRegistry = SongRegistry(capacity: 100)
+        let notificationCoordinator = NotificationCoordinator(
+            coordinator: coordinator,
+            cache: cache,
+            service: notificationService,
+            registry: songRegistry,
+            notificationsEnabled: { [store] in
+                guard let store else { return false }
+                return await store.settings.notificationsEnabled
+            },
+            channelTitle: { [api] channelId in
+                guard let channels = try? await api.listChannels() else { return nil }
+                return channels.first(where: { Int($0.chan) == channelId })?.title
+            },
+            cachedFileURL: { [cache] coverPath in
+                await cache.fileURL(for: coverPath)
+            }
+        )
+
+        let loginWindowController = LoginWindowController(keychainAuth: keychainAuth)
+
+        let updateChecker: any UpdateChecking
+        if let raw = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+           let version = SemVer.parse(raw) {
+            updateChecker = UpdateChecker(
+                currentVersion: version,
+                repoOwner: "gvajda",
+                repoName: "rp-player",
+                urlSession: .shared,
+                configStore: store ?? NoopConfigStore(),
+                logger: logger,
+                clock: { Date() }
+            )
+            logger.info("update checker: live (currentVersion=\(version.major).\(version.minor).\(version.patch))")
+        } else {
+            updateChecker = NoopUpdateChecker()
+            logger.info("update checker: noop (no CFBundleShortVersionString)")
+        }
+
+        let settingsViewModel = SettingsViewModel(
+            configStore: store ?? NoopConfigStore(),
+            deviceCatalog: deviceCatalog,
+            auth: keychainAuth,
+            openLoginWindow: { [loginWindowController] in loginWindowController.show() },
+            openApplicationData: {
+                try? FileManager.default.createDirectory(
+                    at: ConfigPaths.applicationSupportRoot, withIntermediateDirectories: true
+                )
+                NSWorkspace.shared.open(ConfigPaths.applicationSupportRoot)
+            },
+            listChannels: { [api] in try await api.listChannels() },
+            updateChecker: updateChecker,
+            eqPresetStore: eqPresetStore,
+            logger: eqLogger
+        )
+
+        let settingsWindowController = SettingsWindowController(viewModel: settingsViewModel)
+
+        let viewModel = MiniPlayerViewModel(
+            coordinator: coordinator,
+            api: api,
+            initialChannelId: initial.selectedChannelId,
+            albumArtCache: cache,
+            auth: keychainAuth,
+            configStore: store ?? NoopConfigStore(),
+            paletteExtractor: AmbientPaletteExtractor(),
+            openSettings: { [settingsWindowController] in settingsWindowController.show() },
+            persistChannelId: { id in
+                guard let store else { return }
+                try? await store.update { $0.selectedChannelId = id }
+            },
+            updateChecker: updateChecker
+        )
+
+        reattachState.onReattached = { [weak viewModel] in
+            viewModel?.clearErrorMessage()
+        }
+
         // Bridge persistent audio settings → engine. The stream yields the
         // current snapshot first, so initial hog-mode + device UID get applied
         // before the user ever opens the popover. Subsequent settings changes
         // propagate on every save. mpv applies these on next file-load, so
         // toggling mid-playback requires a stop/play to take effect.
         if let store {
-            Task { [engine, hogController, volumeController, coordinator, store] in
+            Task { [engine, hogController, volumeController, coordinator, store, reattachState, viewModel] in
                 let stream = await store.changes
                 var lastForceMax = startupProfile.volumeMode == .forceMax
                 var lastEffectiveRG = startupProfile.volumeMode == .replayGain
@@ -301,6 +495,14 @@ extension AppContainer {
                 var lastHog = startupProfile.hogModeEnabled
                 var lastBitrate = initial.bitrate
                 for await settings in stream {
+                    let currentHeld = await MainActor.run { reattachState.heldUID }
+                    if let held = currentHeld,
+                       (settings.outputDeviceUID != held || !settings.hogModeEnabled) {
+                        await MainActor.run {
+                            reattachState.cancelReattach()
+                            viewModel.clearErrorMessage()
+                        }
+                    }
                     // Device switch: load the saved profile for the new device (or safe
                     // defaults) and atomically overwrite the top-level fields before any
                     // controller write so no stale setting ever reaches the new device.
@@ -414,192 +616,7 @@ extension AppContainer {
                     }
                 }
             }
-            // Release/re-acquire hog on pause/resume when the user opted in.
-            // Also pin device volume to max on every .playing transition when
-            // force-max is on, in case the user nudged the OS slider while paused.
-            Task { [hogController, volumeController, coordinator, store] in
-                let stream = await coordinator.stateUpdates
-                for await state in stream {
-                    let s = await store.settings
-                    guard let uid = s.outputDeviceUID, !uid.isEmpty else { continue }
-                    if s.hogModeEnabled, s.releaseHogOnPauseEnabled {
-                        switch state {
-                        case .playing:
-                            _ = await hogController.acquire(deviceUID: uid)
-                        case .paused, .stopped:
-                            await hogController.release()
-                        case .loading:
-                            break
-                        }
-                    }
-                    if state == .playing, s.volumeMode == .forceMax {
-                        _ = await volumeController.setVolumeMax(deviceUID: uid)
-                    }
-                }
-            }
-            Task { [logger, eqLogger] in
-                let stream = await store.changes
-                for await settings in stream {
-                    logger.setVerbose(settings.verboseLoggingEnabled)
-                    eqLogger.setVerbose(settings.verboseLoggingEnabled)
-                }
-            }
-            Task { @MainActor in
-                let stream = await store.changes
-                for await settings in stream {
-                    switch settings.appearance {
-                    case .system: NSApp.appearance = nil
-                    case .light:  NSApp.appearance = NSAppearance(named: .aqua)
-                    case .dark:   NSApp.appearance = NSAppearance(named: .darkAqua)
-                    }
-                }
-            }
-            Task { [engine, eqPresetStore, store] in
-                await AppContainer.runAudioFilterBinder(
-                    store: store,
-                    engine: engine,
-                    eqPresetStore: eqPresetStore,
-                    initialProfile: startupProfile
-                )
-            }
         }
-
-        // Observe CoreAudio hot-plug events so the Settings device list stays
-        // current AND so we can clear the saved UID when the user's selected
-        // device disappears at runtime (e.g. USB DAC unplug). Without this, the
-        // UI keeps showing the now-gone device and a replug doesn't restore it
-        // until the user manually switches channels.
-        Task { await deviceCatalog.startWatching() }
-        if let store {
-            Task { [logger, hogController, volumeController, reattachState, coordinator] in
-                let stream = await deviceCatalog.changes
-                for await devices in stream {
-                    // Populate the uid→name cache used by handleDeviceLost for friendly banner text.
-                    let nameMap = Dictionary(uniqueKeysWithValues: devices.map { ($0.uid, $0.name) })
-                    await MainActor.run {
-                        for (uid, name) in nameMap {
-                            reattachState.lastKnownDeviceNames[uid] = name
-                        }
-                    }
-                    let s = await store.settings
-                    guard let uid = s.outputDeviceUID, !uid.isEmpty else { continue }
-                    if devices.contains(where: { $0.uid == uid }) { continue }
-                    let names = await MainActor.run { reattachState.lastKnownDeviceNames }
-                    let result = await AppContainer.handleDeviceLost(
-                        store: store,
-                        hogController: hogController,
-                        knownDeviceNames: names,
-                        logger: logger
-                    )
-                    if let msg = result.message {
-                        await coordinator.emitUserMessage(msg)
-                    }
-                    if let heldUID = result.preservedUID {
-                        await MainActor.run {
-                            reattachState.heldUID = heldUID
-                            reattachState.reattachTask?.cancel()
-                            reattachState.reattachTask = AppContainer.spawnReattachWatcher(
-                                heldUID: heldUID,
-                                catalog: deviceCatalog,
-                                hogController: hogController,
-                                volumeController: volumeController,
-                                store: store,
-                                logger: logger,
-                                onReattached: { [weak reattachState] in
-                                    reattachState?.heldUID = nil
-                                    reattachState?.reattachTask = nil
-                                }
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // UNUserNotificationCenter.current() throws on unbundled processes
-        // (no main bundle proxy). PR 12 ships the .app; until then `swift run`
-        // gets a no-op service so the rest of the wiring still constructs.
-        let bundleId = Bundle.main.bundleIdentifier
-        logger.info("notification setup: Bundle.main.bundleIdentifier=\(bundleId ?? "nil")")
-        let notificationService: any NotificationService =
-            bundleId != nil
-                ? LiveNotificationService(center: UNUserNotificationCenter.current())
-                : NoopNotificationService()
-        logger.info("notification service: \(bundleId != nil ? "Live" : "Noop")")
-
-        let songRegistry = SongRegistry(capacity: 100)
-        let notificationCoordinator = NotificationCoordinator(
-            coordinator: coordinator,
-            cache: cache,
-            service: notificationService,
-            registry: songRegistry,
-            notificationsEnabled: { [store] in
-                guard let store else { return false }
-                return await store.settings.notificationsEnabled
-            },
-            channelTitle: { [api] channelId in
-                guard let channels = try? await api.listChannels() else { return nil }
-                return channels.first(where: { Int($0.chan) == channelId })?.title
-            },
-            cachedFileURL: { [cache] coverPath in
-                await cache.fileURL(for: coverPath)
-            }
-        )
-
-        let loginWindowController = LoginWindowController(keychainAuth: keychainAuth)
-
-        let updateChecker: any UpdateChecking
-        if let raw = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
-           let version = SemVer.parse(raw) {
-            updateChecker = UpdateChecker(
-                currentVersion: version,
-                repoOwner: "gvajda",
-                repoName: "rp-player",
-                urlSession: .shared,
-                configStore: store ?? NoopConfigStore(),
-                logger: logger,
-                clock: { Date() }
-            )
-            logger.info("update checker: live (currentVersion=\(version.major).\(version.minor).\(version.patch))")
-        } else {
-            updateChecker = NoopUpdateChecker()
-            logger.info("update checker: noop (no CFBundleShortVersionString)")
-        }
-
-        let settingsViewModel = SettingsViewModel(
-            configStore: store ?? NoopConfigStore(),
-            deviceCatalog: deviceCatalog,
-            auth: keychainAuth,
-            openLoginWindow: { [loginWindowController] in loginWindowController.show() },
-            openApplicationData: {
-                try? FileManager.default.createDirectory(
-                    at: ConfigPaths.applicationSupportRoot, withIntermediateDirectories: true
-                )
-                NSWorkspace.shared.open(ConfigPaths.applicationSupportRoot)
-            },
-            listChannels: { [api] in try await api.listChannels() },
-            updateChecker: updateChecker,
-            eqPresetStore: eqPresetStore,
-            logger: eqLogger
-        )
-
-        let settingsWindowController = SettingsWindowController(viewModel: settingsViewModel)
-
-        let viewModel = MiniPlayerViewModel(
-            coordinator: coordinator,
-            api: api,
-            initialChannelId: initial.selectedChannelId,
-            albumArtCache: cache,
-            auth: keychainAuth,
-            configStore: store ?? NoopConfigStore(),
-            paletteExtractor: AmbientPaletteExtractor(),
-            openSettings: { [settingsWindowController] in settingsWindowController.show() },
-            persistChannelId: { id in
-                guard let store else { return }
-                try? await store.update { $0.selectedChannelId = id }
-            },
-            updateChecker: updateChecker
-        )
 
         let upcomingViewModel = UpcomingProgramViewModel(
             api: api,
