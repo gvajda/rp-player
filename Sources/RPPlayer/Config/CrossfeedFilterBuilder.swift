@@ -2,23 +2,22 @@
 import Foundation
 
 public enum CrossfeedFilterBuilder {
-    public static func buildPart(strength: Double, range: Double) -> String {
-        let s = format(clamp(strength))
-        let r = format(clamp(range))
-        return "crossfeed=strength=\(s):range=\(r)"
-    }
+    public static let fcutRange: ClosedRange<Int> = 300...2000
+    public static let feedDbRange: ClosedRange<Double> = 1.0...15.0
 
-    private static func clamp(_ v: Double) -> Double {
-        if v.isNaN { return 0 }
-        return min(1.0, max(0.0, v))
-    }
-
-    private static func format(_ v: Double) -> String {
-        if v.truncatingRemainder(dividingBy: 1) == 0 { return String(Int(v)) }
-        let s = String(format: "%.4f", v)
-        var trimmed = s
-        while trimmed.hasSuffix("0") { trimmed.removeLast() }
-        if trimmed.hasSuffix(".") { trimmed.removeLast() }
-        return trimmed
+    public static func buildPart(
+        profile: CrossfeedProfile,
+        fcut: Int,
+        feedDb: Double
+    ) -> String {
+        switch profile {
+        case .custom:
+            let f = min(fcutRange.upperBound, max(fcutRange.lowerBound, fcut))
+            let dbClamped = min(feedDbRange.upperBound, max(feedDbRange.lowerBound, feedDb))
+            let feedInt = Int((dbClamped * 10).rounded())
+            return "bs2b=fcut=\(f):feed=\(feedInt)"
+        case .bs2bDefault, .cmoy, .jmeier:
+            return "bs2b=profile=\(profile.rawValue)"
+        }
     }
 }
