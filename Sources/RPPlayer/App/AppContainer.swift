@@ -253,6 +253,9 @@ extension AppContainer {
                     await coordinatorBox.value?.emitUserMessage(msg)
                 }
                 if let heldUID = result.preservedUID {
+                    // Halt mpv so it can't keep playing through the OS fallback device
+                    // (macOS reroutes audio to default output the instant the held device disappears).
+                    try? await coordinatorBox.value?.stop()
                     await MainActor.run {
                         reattachState.heldUID = heldUID
                         reattachState.reattachTask?.cancel()
@@ -370,6 +373,9 @@ extension AppContainer {
                         await coordinator.emitUserMessage(msg)
                     }
                     if let heldUID = result.preservedUID {
+                        // Halt mpv so it can't keep playing through the OS fallback device
+                        // (macOS reroutes audio to default output the instant the held device disappears).
+                        try? await coordinator.stop()
                         await MainActor.run {
                             reattachState.heldUID = heldUID
                             reattachState.reattachTask?.cancel()
