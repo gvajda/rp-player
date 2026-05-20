@@ -118,8 +118,7 @@ The app installs a status item in the menu bar (no Dock icon, no main window). C
   - Applied via libmpv `af` chain (`volume` + `equalizer` + `lowshelf` + `highshelf`). Composes with hog mode, ReplayGain, and Crossfeed; bit-perfect path is preserved when EQ is off.
 
 - **Crossfeed** for headphones (per device):
-  - Bauer-style stereo crossfeed (BS2B-derived) — softens hard-panned stereo so headphone listening feels less fatiguing without collapsing the soundstage.
-  - Two tunable parameters: **Strength** (0.0–1.0, default 0.15) and **Range** (0.0–1.0, default 0.67).
+  - True BS2B (Bauer stereo-to-binaural) — proper ITD/group-delay modeling, the algorithm family used by hardware DACs like the Qudelix 5K. Choose from named profiles (**Default** 700 Hz / 4.5 dB, **Chu Moy** 700 Hz / 6.0 dB, **Jan Meier** 650 Hz / 9.5 dB) or **Custom** (set your own fcut 300–2000 Hz and feed 1.0–15.0 dB).
   - Filter chain order is locked at **Preamp → EQ → Crossfeed** so EQ acts on the source signal and crossfeed operates on the equalized result.
 
 <p align="center"><img src=".screenshots/settings.png" alt="Settings window: bitrate, output device, hog mode toggle."/></p>

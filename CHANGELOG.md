@@ -6,6 +6,15 @@ Section labels: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`
 
 ## [Unreleased]
 
+### Changed
+
+- Crossfeed now uses the FFmpeg `bs2b` filter (Bauer stereo-to-binaural) with proper ITD (inter-aural time difference) modeling. Profiles: **Default** (fcut 700 Hz, feed 4.5 dB), **Chu Moy** (700 Hz, 6.0 dB), **Jan Meier** (650 Hz, 9.5 dB), or **Custom** (fcut 300–2000 Hz, feed 1.0–15.0 dB). Replaces the previous `crossfeed` filter which lacked group-delay modeling and sounded notably worse than hardware-DAC implementations.
+- Vendored libmpv rebuilt from `gvajda/libmpv-darwin-build` fork with `--enable-libbs2b`. Adds `Vendor/libmpv/lib/libbs2b.dylib` (~50 KB, MIT) alongside existing dylibs. API version (`MPV_MAKE_VERSION(2, 1)` = 131073) unchanged.
+
+### Removed
+
+- `AudioProfile.crossfeedStrength` and `AudioProfile.crossfeedRange` (legacy `crossfeed` filter parameters). Old profiles migrate to Chu Moy defaults (`crossfeedProfile = .cmoy`, fcut 700 Hz, feed 6.0 dB) on first decode.
+
 ## [v0.7.2] - 2026-05-17
 
 ### Changed
