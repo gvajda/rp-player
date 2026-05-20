@@ -5,18 +5,27 @@ Self-contained libmpv runtime for RP Player. macOS universal binary
 
 ## Source
 
-- Tarball: `libmpv-libs_v0.6.3_macos-universal-audio-encodersgpl.tar.gz`
-- Origin: <https://github.com/media-kit/libmpv-darwin-build/releases/tag/v0.6.3>
+- Tarball: `libmpv-libs_develop_macos-universal-audio-encodersgpl.tar.gz`
+- Origin: forked from <https://github.com/media-kit/libmpv-darwin-build>
+  (built from `develop` branch with `--enable-libbs2b` added to the
+  `audio-encodersgpl` FFmpeg variant — see the fork at
+  <https://github.com/gvajda/libmpv-darwin-build>).
 - License: **GPL-2.0-or-later** — built with FFmpeg `--enable-gpl`. The MIT
   source license of RP Player is unchanged, but distributing the bundled
   `.app` triggers GPL terms (provide source on request, no proprietary
-  derivative-by-distribution).
+  derivative-by-distribution). `libbs2b` itself is MIT — no new license
+  conflict.
 
 This variant ships the full FFmpeg audio filter set (`volume`, `equalizer`,
-`lowshelf`, `highshelf`, `crossfeed`, `bass`, `treble`, `biquad`,
-`firequalizer`, …) which the parametric EQ (PR 35) and future crossfeed PR
-depend on. The previous `audio-default` flavour stripped all of these except
-`equalizer`, so EQ presets with shelves or preamp failed at filter init.
+`lowshelf`, `highshelf`, `crossfeed`, `bs2b`, `bass`, `treble`, `biquad`,
+`firequalizer`, `headphone`, …) which parametric EQ (PR 35), crossfeed
+(PR 36), and the BS2B crossfeed upgrade depend on. The previous
+`audio-default` flavour stripped all of these except `equalizer`, so EQ
+presets with shelves or preamp failed at filter init.
+
+`bs2b` is the Bauer stereo-to-binaural filter linked via `libbs2b.dylib`
+(also shipped in `lib/`, loaded indirectly via `libavfilter.dylib`'s
+`@rpath/libbs2b.dylib` dependency).
 
 ## Public header
 
@@ -37,6 +46,6 @@ keeping the same `client.h` or refreshing it from the matching mpv tag.
 `SHA256SUMS` lists the expected checksum for every file in this directory.
 Verify with:
 
-```
+```sh
 cd Vendor/libmpv && shasum -a 256 -c SHA256SUMS
 ```
