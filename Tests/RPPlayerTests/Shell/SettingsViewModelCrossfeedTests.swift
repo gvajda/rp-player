@@ -38,23 +38,21 @@ final class SettingsViewModelCrossfeedTests: XCTestCase {
         var settings = AppSettings.default
         settings.outputDeviceUID = "dev-A"
         settings.audioProfiles["dev-A"] = AudioProfile(
-            hogModeEnabled: false,
-            releaseHogOnPauseEnabled: false,
-            volumeMode: .none,
-            bitrate: 3,
-            eqEnabled: false,
-            eqPresetName: nil,
+            hogModeEnabled: false, releaseHogOnPauseEnabled: false,
+            volumeMode: .none, bitrate: 3,
             crossfeedEnabled: true,
-            crossfeedStrength: 0.35,
-            crossfeedRange: 0.65
+            crossfeedProfile: .jmeier,
+            crossfeedFcut: 650,
+            crossfeedFeedDb: 9.5
         )
         let vm = makeVM(settings)
         await vm.start()
 
         try await Task.sleep(nanoseconds: 50_000_000)
         XCTAssertTrue(vm.crossfeedEnabled)
-        XCTAssertEqual(vm.crossfeedStrength, 0.35, accuracy: 1e-9)
-        XCTAssertEqual(vm.crossfeedRange, 0.65, accuracy: 1e-9)
+        XCTAssertEqual(vm.crossfeedProfile, .jmeier)
+        XCTAssertEqual(vm.crossfeedFcut, 650)
+        XCTAssertEqual(vm.crossfeedFeedDb, 9.5, accuracy: 1e-9)
     }
 
     func testSetCrossfeedEnabledWritesProfile() async throws {
@@ -69,42 +67,56 @@ final class SettingsViewModelCrossfeedTests: XCTestCase {
         XCTAssertEqual(configStore.current.audioProfiles["dev-A"]?.crossfeedEnabled, true)
     }
 
-    func testSetCrossfeedStrengthWritesProfile() async throws {
+    func testSetCrossfeedProfileWritesProfile() async throws {
         var settings = AppSettings.default
         settings.outputDeviceUID = "dev-A"
         settings.audioProfiles["dev-A"] = .safeDefault
         let vm = makeVM(settings)
         await vm.start()
 
-        await vm.setCrossfeedStrength(0.45)
+        await vm.setCrossfeedProfile(.jmeier)
         try await Task.sleep(nanoseconds: 50_000_000)
-        XCTAssertEqual(configStore.current.audioProfiles["dev-A"]?.crossfeedStrength ?? 0, 0.45, accuracy: 1e-9)
+        XCTAssertEqual(configStore.current.audioProfiles["dev-A"]?.crossfeedProfile, .jmeier)
     }
 
-    func testSetCrossfeedRangeWritesProfile() async throws {
+    func testSetCrossfeedFcutClampsAndWritesProfile() async throws {
         var settings = AppSettings.default
         settings.outputDeviceUID = "dev-A"
         settings.audioProfiles["dev-A"] = .safeDefault
         let vm = makeVM(settings)
         await vm.start()
 
-        await vm.setCrossfeedRange(0.75)
+        await vm.setCrossfeedFcut(50)
         try await Task.sleep(nanoseconds: 50_000_000)
-        XCTAssertEqual(configStore.current.audioProfiles["dev-A"]?.crossfeedRange ?? 0, 0.75, accuracy: 1e-9)
+        XCTAssertEqual(configStore.current.audioProfiles["dev-A"]?.crossfeedFcut, 300)
+
+        await vm.setCrossfeedFcut(99_999)
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(configStore.current.audioProfiles["dev-A"]?.crossfeedFcut, 2000)
+
+        await vm.setCrossfeedFcut(850)
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(configStore.current.audioProfiles["dev-A"]?.crossfeedFcut, 850)
     }
 
-    func testSettersClampOutOfRangeInput() async throws {
+    func testSetCrossfeedFeedDbClampsAndWritesProfile() async throws {
         var settings = AppSettings.default
         settings.outputDeviceUID = "dev-A"
         settings.audioProfiles["dev-A"] = .safeDefault
         let vm = makeVM(settings)
         await vm.start()
 
-        await vm.setCrossfeedStrength(1.7)
-        await vm.setCrossfeedRange(-0.3)
+        await vm.setCrossfeedFeedDb(-3.0)
         try await Task.sleep(nanoseconds: 50_000_000)
-        XCTAssertEqual(configStore.current.audioProfiles["dev-A"]?.crossfeedStrength ?? -1, 1.0, accuracy: 1e-9)
-        XCTAssertEqual(configStore.current.audioProfiles["dev-A"]?.crossfeedRange ?? -1, 0.0, accuracy: 1e-9)
+        XCTAssertEqual(configStore.current.audioProfiles["dev-A"]?.crossfeedFeedDb ?? -1, 1.0, accuracy: 1e-9)
+
+        await vm.setCrossfeedFeedDb(99.0)
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(configStore.current.audioProfiles["dev-A"]?.crossfeedFeedDb ?? -1, 15.0, accuracy: 1e-9)
+
+        await vm.setCrossfeedFeedDb(7.2)
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(configStore.current.audioProfiles["dev-A"]?.crossfeedFeedDb ?? -1, 7.2, accuracy: 1e-9)
     }
 
     func testSettersAreNoOpWithoutSelectedDevice() async throws {
@@ -114,8 +126,9 @@ final class SettingsViewModelCrossfeedTests: XCTestCase {
         await vm.start()
 
         await vm.setCrossfeedEnabled(true)
-        await vm.setCrossfeedStrength(0.4)
-        await vm.setCrossfeedRange(0.6)
+        await vm.setCrossfeedProfile(.cmoy)
+        await vm.setCrossfeedFcut(850)
+        await vm.setCrossfeedFeedDb(7.2)
         try await Task.sleep(nanoseconds: 50_000_000)
         XCTAssertTrue(configStore.current.audioProfiles.isEmpty)
     }
