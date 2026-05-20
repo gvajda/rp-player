@@ -346,61 +346,88 @@ struct SettingsView: View {
     }
 
     private var crossfeedSection: some View {
-        HStack(spacing: 8) {
-            Text("Crossfeed")
-                .lineLimit(1)
-                .fixedSize()
-            HoverInfoIcon(text: crossfeedTooltip)
-            if viewModel.crossfeedEnabled {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text("Crossfeed")
+                    .lineLimit(1)
+                    .fixedSize()
+                HoverInfoIcon(text: crossfeedTooltip)
                 Spacer(minLength: 8)
-
-                Text("Strength")
-                ClampedNumericField(
-                    value: Binding(
-                        get: { viewModel.crossfeedStrength },
-                        set: { v in Task { await viewModel.setCrossfeedStrength(v) } }
-                    ),
-                    range: 0.0...1.0,
-                    step: 0.05,
-                    isEnabled: true
+                if viewModel.crossfeedEnabled {
+                    crossfeedProfileButtons
+                }
+                Toggle(
+                    "",
+                    isOn: Binding(
+                        get: { viewModel.crossfeedEnabled },
+                        set: { v in Task { await viewModel.setCrossfeedEnabled(v) } }
+                    )
                 )
-
-                Text("Range")
-                ClampedNumericField(
-                    value: Binding(
-                        get: { viewModel.crossfeedRange },
-                        set: { v in Task { await viewModel.setCrossfeedRange(v) } }
-                    ),
-                    range: 0.0...1.0,
-                    step: 0.05,
-                    isEnabled: true
-                )
-            } else {
-                Spacer(minLength: 8)
+                .labelsHidden()
             }
-            Toggle(
-                "",
-                isOn: Binding(
-                    get: { viewModel.crossfeedEnabled },
-                    set: { v in Task { await viewModel.setCrossfeedEnabled(v) } }
-                )
+            if viewModel.crossfeedEnabled, viewModel.crossfeedProfile == .custom {
+                crossfeedCustomFields
+            }
+        }
+    }
+
+    private var crossfeedProfileButtons: some View {
+        HStack(spacing: 4) {
+            ForEach(CrossfeedProfile.allCases, id: \.self) { profile in
+                Button(crossfeedProfileLabel(profile)) {
+                    Task { await viewModel.setCrossfeedProfile(profile) }
+                }
+                .buttonStyle(StableButtonStyle(filled: viewModel.crossfeedProfile == profile))
+            }
+        }
+    }
+
+    private var crossfeedCustomFields: some View {
+        HStack(spacing: 8) {
+            Text("fcut (Hz)")
+            ClampedNumericField(
+                value: Binding(
+                    get: { Double(viewModel.crossfeedFcut) },
+                    set: { v in Task { await viewModel.setCrossfeedFcut(Int(v.rounded())) } }
+                ),
+                range: Double(CrossfeedFilterBuilder.fcutRange.lowerBound)...Double(CrossfeedFilterBuilder.fcutRange.upperBound),
+                step: 50,
+                isEnabled: true
             )
-            .labelsHidden()
+            Text("feed (dB)")
+            ClampedNumericField(
+                value: Binding(
+                    get: { viewModel.crossfeedFeedDb },
+                    set: { v in Task { await viewModel.setCrossfeedFeedDb(v) } }
+                ),
+                range: CrossfeedFilterBuilder.feedDbRange,
+                step: 0.5,
+                isEnabled: true
+            )
+        }
+        .padding(.leading, 12)
+    }
+
+    private func crossfeedProfileLabel(_ profile: CrossfeedProfile) -> String {
+        switch profile {
+        case .bs2bDefault: return "Default"
+        case .cmoy:        return "Chu Moy"
+        case .jmeier:      return "Jan Meier"
+        case .custom:      return "Custom"
         }
     }
 
     private var crossfeedTooltip: String {
         """
-        Crossfeed simulates a small amount of acoustic leakage between the left and right channels — only useful for headphones, where hard-panned stereo can feel unnaturally separated. Bauer-style implementation (BS2B).
+        Crossfeed simulates the acoustic ITD/level leakage between ears that headphones can't produce naturally. Useful for hard-panned stereo masters. Now using FFmpeg's bs2b (Bauer stereo-to-binaural) — proper group-delay modeling, the same algorithm family hardware DACs like Qudelix 5K use.
 
-        Strength (0.0–1.0): feed level — how much signal crosses to the opposite ear at low frequencies. Default 0.15 (~4.5 dB). Higher = stronger spatial blend.
+        Profiles (presets from the BS2B library):
+          Default   – fcut 700 Hz, feed 4.5 dB
+          Chu Moy   – fcut 700 Hz, feed 6.0 dB (a touch stronger)
+          Jan Meier – fcut 650 Hz, feed 9.5 dB (the classic, more pronounced)
+          Custom    – pick your own fcut (300–2000 Hz) and feed (1.0–15.0 dB)
 
-        Range (0.0–1.0): cut frequency — upper bound of the crossfeed band, approx (1 − range) × 2100 Hz. Default 0.67 (~700 Hz cut, classical BS2B). Lower range = wider band.
-
-        BS2B preset equivalents:
-          Default   (700 Hz, 4.5 dB) → str 0.15, rng 0.67
-          Chu Moy   (700 Hz, 6.0 dB) → str 0.22, rng 0.67
-          Jan Meier (650 Hz, 9.5 dB) → str 0.45, rng 0.69
+        Lower fcut narrows the crossfeed to bass only; higher fcut widens it. Higher feed = stronger blend.
         """
     }
 
