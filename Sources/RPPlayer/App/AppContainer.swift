@@ -366,8 +366,9 @@ extension AppContainer {
                                 eqEnabled: existing.eqEnabled,
                                 eqPresetName: existing.eqPresetName,
                                 crossfeedEnabled: existing.crossfeedEnabled,
-                                crossfeedStrength: existing.crossfeedStrength,
-                                crossfeedRange: existing.crossfeedRange
+                                crossfeedProfile: existing.crossfeedProfile,
+                                crossfeedFcut: existing.crossfeedFcut,
+                                crossfeedFeedDb: existing.crossfeedFeedDb
                             )
                         }
                     }
@@ -632,8 +633,9 @@ extension AppContainer {
         }
         if key.crossfeedEnabled {
             parts.append(CrossfeedFilterBuilder.buildPart(
-                strength: key.crossfeedStrength,
-                range: key.crossfeedRange
+                profile: key.crossfeedProfile,
+                fcut: key.crossfeedFcut,
+                feedDb: key.crossfeedFeedDb
             ))
         }
         if parts.isEmpty {
@@ -647,15 +649,17 @@ extension AppContainer {
         let eqEnabled: Bool
         let eqPresetName: String?
         let crossfeedEnabled: Bool
-        let crossfeedStrength: Double
-        let crossfeedRange: Double
+        let crossfeedProfile: CrossfeedProfile
+        let crossfeedFcut: Int
+        let crossfeedFeedDb: Double
 
         init(profile: AudioProfile) {
             self.eqEnabled = profile.eqEnabled
             self.eqPresetName = profile.eqPresetName
             self.crossfeedEnabled = profile.crossfeedEnabled
-            self.crossfeedStrength = profile.crossfeedStrength
-            self.crossfeedRange = profile.crossfeedRange
+            self.crossfeedProfile = profile.crossfeedProfile
+            self.crossfeedFcut = profile.crossfeedFcut
+            self.crossfeedFeedDb = profile.crossfeedFeedDb
         }
     }
 
