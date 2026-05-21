@@ -42,15 +42,33 @@ final class EqPresetParserTests: XCTestCase {
         XCTAssertEqual(preset.bands.count, 1)
     }
 
-    func testOffFiltersSilentlySkippedNoWarning() throws {
+    func testOffFiltersKeptInOrderWithDisabledFlag() throws {
         let text = """
         Filter 1: ON PK Fc 100 Hz Gain 1 dB Q 1.0
         Filter 2: OFF PK Fc 200 Hz Gain 2 dB Q 1.0
         Filter 3: ON PK Fc 300 Hz Gain 3 dB Q 1.0
         """
         let preset = try EqPresetParser.parse(text: text, filename: "n").get()
-        XCTAssertEqual(preset.bands.count, 2)
-        XCTAssertEqual(preset.bands.map(\.fcHz), [100, 300])
+        XCTAssertEqual(preset.bands.count, 3)
+        XCTAssertEqual(preset.bands.map(\.fcHz), [100, 200, 300])
+        XCTAssertEqual(preset.bands.map(\.enabled), [true, false, true])
+    }
+
+    func testOffFilterPreservedAsDisabledBand() throws {
+        let text = """
+        Filter 1: ON PK Fc 100 Hz Gain 1 dB Q 1.0
+        Filter 2: OFF LS Fc 200 Hz Gain 2 dB Q 0.7
+        Filter 3: ON HS Fc 300 Hz Gain 3 dB Q 0.5
+        """
+        let preset = try EqPresetParser.parse(text: text, filename: "n").get()
+        XCTAssertEqual(preset.bands.count, 3)
+        XCTAssertEqual(preset.bands[0].enabled, true)
+        XCTAssertEqual(preset.bands[1].enabled, false)
+        XCTAssertEqual(preset.bands[1].type, .lowShelf)
+        XCTAssertEqual(preset.bands[1].fcHz, 200)
+        XCTAssertEqual(preset.bands[1].gainDb, 2)
+        XCTAssertEqual(preset.bands[1].q, 0.7, accuracy: 0.0001)
+        XCTAssertEqual(preset.bands[2].enabled, true)
     }
 
     func testRejectsUnsupportedFilterType() {

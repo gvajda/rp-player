@@ -54,7 +54,6 @@ public enum EqPresetParser {
                 }
                 let stateStr = String(line[stateR])
                 let typeStr = String(line[typeR])
-                if stateStr == "OFF" { continue }
                 let mapped: EqBandType?
                 switch typeStr {
                 case "PK": mapped = .peak
@@ -64,7 +63,11 @@ public enum EqPresetParser {
                     warnings.append("Dropped unsupported filter type \(typeStr) at line \(index + 1)")
                     continue
                 }
-                bands.append(EqBand(enabled: true, type: mapped!, fcHz: fc, gainDb: gain, q: q))
+                bands.append(EqBand(
+                    enabled: stateStr == "ON",
+                    type: mapped!,
+                    fcHz: fc, gainDb: gain, q: q
+                ))
             }
         }
 
