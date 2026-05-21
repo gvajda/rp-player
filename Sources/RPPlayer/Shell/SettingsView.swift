@@ -210,7 +210,23 @@ struct SettingsView: View {
 
     private var deviceSettingsSection: some View {
         Section(deviceSettingsSectionTitle) {
-            Picker("Bitrate", selection: bitrateBinding) {
+            bitrateRow
+            hogModeRow
+            Toggle("Release on Pause", isOn: releaseHogOnPauseBinding)
+                .padding(.leading, 20)
+                .disabled(!viewModel.hogModeEnabled)
+            volumeRow
+            eqSection
+            crossfeedSection
+        }
+    }
+
+    private var bitrateRow: some View {
+        HStack(spacing: 8) {
+            Text("Bitrate")
+            HoverInfoIcon(text: bitrateTooltip)
+            Spacer(minLength: 8)
+            Picker("", selection: bitrateBinding) {
                 Text("32K AAC").tag(0)
                 Text("64K AAC").tag(1)
                 Text("128K AAC").tag(2)
@@ -219,14 +235,26 @@ struct SettingsView: View {
                 Text("320K MP3").tag(6)
                 Text("FLAC").tag(4)
             }
-            Toggle("Hog mode", isOn: hogModeBinding)
-            Toggle("Release on Pause", isOn: releaseHogOnPauseBinding)
-                .padding(.leading, 20)
-                .disabled(!viewModel.hogModeEnabled)
-            volumeRow
-            eqSection
-            crossfeedSection
+            .labelsHidden()
         }
+    }
+
+    private var hogModeRow: some View {
+        HStack(spacing: 8) {
+            Text("Hog mode")
+            HoverInfoIcon(text: hogModeTooltip)
+            Spacer(minLength: 8)
+            Toggle("", isOn: hogModeBinding)
+                .labelsHidden()
+        }
+    }
+
+    private var bitrateTooltip: String {
+        "Applied on the next song"
+    }
+
+    private var hogModeTooltip: String {
+        "Exclusive audio device mode. RP Player takes sole ownership of the output device while playing, locks its sample rate to 44.1 kHz to match the Radio Paradise stream (avoids CoreAudio resampling), and prevents macOS from mixing other system sounds into playback. Other apps will lose audio output until RP Player pauses or quits."
     }
 
     private var eqSection: some View {
@@ -387,15 +415,19 @@ struct SettingsView: View {
 
     private var crossfeedCustomFields: some View {
         HStack(spacing: 8) {
+            Spacer(minLength: 0)
             Text("fcut (Hz)")
             ClampedNumericField(
                 value: Binding(
                     get: { Double(viewModel.crossfeedFcut) },
                     set: { v in Task { await viewModel.setCrossfeedFcut(Int(v.rounded())) } }
                 ),
-                range: Double(CrossfeedFilterBuilder.fcutRange.lowerBound)...Double(CrossfeedFilterBuilder.fcutRange.upperBound),
+                range: Double(
+                    CrossfeedFilterBuilder.fcutRange.lowerBound)...Double(
+                        CrossfeedFilterBuilder.fcutRange.upperBound),
                 step: 50,
-                isEnabled: true
+                isEnabled: true,
+                decimals: 0
             )
             Text("feed (dB)")
             ClampedNumericField(
@@ -407,28 +439,33 @@ struct SettingsView: View {
                 step: 0.5,
                 isEnabled: true
             )
+            // Invisible toggle anchor — opacity 0 (not .hidden, which can collapse layout for
+            // empty-label Toggles) reserves the same trailing width as the row above so the
+            // fields' right edge aligns with the Custom button's right edge.
+            Toggle("", isOn: .constant(false))
+                .labelsHidden()
+                .opacity(0)
+                .allowsHitTesting(false)
         }
-        .padding(.leading, 12)
+        .frame(maxWidth: .infinity)
     }
 
     private func crossfeedProfileLabel(_ profile: CrossfeedProfile) -> String {
         switch profile {
-        case .bs2bDefault: return "Default"
-        case .cmoy:        return "Chu Moy"
-        case .jmeier:      return "Jan Meier"
-        case .custom:      return "Custom"
+        case .cmoy: return "Chu Moy"
+        case .jmeier: return "Jan Meier"
+        case .custom: return "Custom"
         }
     }
 
     private var crossfeedTooltip: String {
         """
-        Crossfeed simulates the acoustic ITD/level leakage between ears that headphones can't produce naturally. Useful for hard-panned stereo masters. Now using FFmpeg's bs2b (Bauer stereo-to-binaural) — proper group-delay modeling, the same algorithm family hardware DACs like Qudelix 5K use.
+        Crossfeed simulates the acoustic leakage between ears that headphones can't produce naturally. Useful for hard-panned stereo masters.
 
-        Profiles (presets from the BS2B library):
-          Default   – fcut 700 Hz, feed 4.5 dB
-          Chu Moy   – fcut 700 Hz, feed 6.0 dB (a touch stronger)
-          Jan Meier – fcut 650 Hz, feed 9.5 dB (the classic, more pronounced)
-          Custom    – pick your own fcut (300–2000 Hz) and feed (1.0–15.0 dB)
+        Profiles:
+          Chu Moy   – fcut 700 Hz, feed 6.0 dB
+          Jan Meier – fcut 650 Hz, feed 9.5 dB (more pronounced)
+          Custom    – pick your own fcut (300–2000 Hz) and feed (1.0–15.0 dB); starts at 700 Hz / 4.5 dB (the bs2b library's named default).
 
         Lower fcut narrows the crossfeed to bass only; higher fcut widens it. Higher feed = stronger blend.
         """

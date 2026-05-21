@@ -16,7 +16,7 @@ public enum CrossfeedFilterBuilder {
             let dbClamped = min(feedDbRange.upperBound, max(feedDbRange.lowerBound, feedDb))
             let feedInt = Int((dbClamped * 10).rounded())
             return "bs2b=fcut=\(f):feed=\(feedInt)"
-        case .bs2bDefault, .cmoy, .jmeier:
+        case .cmoy, .jmeier:
             return "bs2b=profile=\(profile.rawValue)"
         }
     }

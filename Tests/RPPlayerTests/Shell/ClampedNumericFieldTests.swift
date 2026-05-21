@@ -31,4 +31,12 @@ final class ClampedNumericFieldTests: XCTestCase {
         XCTAssertEqual(ClampedNumericFieldLogic.format(0.0), "0.00")
         XCTAssertEqual(ClampedNumericFieldLogic.format(1.0), "1.00")
     }
+
+    func testFormatWithExplicitDecimals() {
+        XCTAssertEqual(ClampedNumericFieldLogic.format(700.0, decimals: 0), "700")
+        XCTAssertEqual(ClampedNumericFieldLogic.format(2000.4, decimals: 0), "2000")
+        XCTAssertEqual(ClampedNumericFieldLogic.format(6.0, decimals: 1), "6.0")
+        XCTAssertEqual(ClampedNumericFieldLogic.format(9.5, decimals: 3), "9.500")
+        XCTAssertEqual(ClampedNumericFieldLogic.format(1.234, decimals: -1), "1")
+    }
 }
