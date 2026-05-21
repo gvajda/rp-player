@@ -12,6 +12,7 @@ Section labels: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`
 - Hover-info tooltips on the **Bitrate** picker and **Hog mode** toggle in Settings (icon styled identically to the Volume/EQ/Crossfeed tooltips). Bitrate explains that the change applies on the next song. Hog mode explains exclusive device ownership, the automatic 44.1 kHz sample-rate lock, and the side-effect that other apps lose audio output until RP Player pauses or quits.
 - **EQ preset editor** — per-preset edit panel in Settings → Equalizer lets you create, edit, rename, and save presets without leaving the app. Grid layout with one row per band (Type / Frequency / Gain / Q + trash icon) plus an Add band button (capped at 10 bands). Filter-type dropdown covers Bypass / Peak / Low Shelf / High Shelf. Save updates the current preset; Save As writes a copy under a new name; Rename updates every `AudioProfile.eqPresetName` reference atomically.
 - **Live audio preview while editing.** Edits route through an in-memory `EqEditingOverride` channel so the lavfi chain reflects your in-flight draft in real time; the on-disk preset file stays untouched until you click Save or Save As. Preview survives across re-entry to the editor and is cleared on dismiss.
+- Confirmation alert when saving an EQ preset shared by multiple output devices.
 
 ### Changed
 

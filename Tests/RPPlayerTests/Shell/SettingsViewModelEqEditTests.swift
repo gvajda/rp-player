@@ -222,6 +222,47 @@ final class SettingsViewModelEqEditTests: XCTestCase {
         XCTAssertNil(snap)
     }
 
+    func testPresetReferenceCountCountsDevicesUsingName() async throws {
+        let eqStore = LiveEqPresetStore(directory: tmpDir)
+        try await savePresetFile(eqStore, name: "alpha")
+        let override = EqEditingOverride()
+        var initial = AppSettings.default
+        initial.outputDeviceUID = "dev-A"
+        initial.audioProfiles["dev-A"] = AudioProfile(
+            hogModeEnabled: false, releaseHogOnPauseEnabled: false,
+            volumeMode: .none, bitrate: 3,
+            eqEnabled: true, eqPresetName: "alpha"
+        )
+        initial.audioProfiles["dev-B"] = AudioProfile(
+            hogModeEnabled: false, releaseHogOnPauseEnabled: false,
+            volumeMode: .none, bitrate: 3,
+            eqEnabled: true, eqPresetName: "alpha"
+        )
+        initial.audioProfiles["dev-C"] = AudioProfile(
+            hogModeEnabled: false, releaseHogOnPauseEnabled: false,
+            volumeMode: .none, bitrate: 3,
+            eqEnabled: true, eqPresetName: "beta"
+        )
+        let configStore = StubConfigStore(initial: initial)
+        let vm = SettingsViewModel(
+            configStore: configStore,
+            deviceCatalog: StubAudioDeviceCatalog(initial: []),
+            auth: StubKeychainAuth(),
+            openLoginWindow: {},
+            openApplicationData: {},
+            eqPresetStore: eqStore,
+            eqEditingOverride: override
+        )
+        await vm.start()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let n = await vm.presetReferenceCount(name: "alpha")
+        XCTAssertEqual(n, 2)
+        let m = await vm.presetReferenceCount(name: "beta")
+        XCTAssertEqual(m, 1)
+        let z = await vm.presetReferenceCount(name: "missing")
+        XCTAssertEqual(z, 0)
+    }
+
     func testDebounceCoalescesRapidEdits() async throws {
         let eqStore = LiveEqPresetStore(directory: tmpDir)
         try await savePresetFile(eqStore, name: "alpha")

@@ -8,6 +8,7 @@ struct EqEditPanel: View {
     @State private var renameTarget = ""
     @State private var sheetError: String?
     @State private var saveAlert: String?
+    @State private var sharedSaveConfirm: Int?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -78,6 +79,26 @@ struct EqEditPanel: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(saveAlert ?? "")
+        }
+        .alert("Save shared preset?", isPresented: Binding(
+            get: { sharedSaveConfirm != nil },
+            set: { if !$0 { sharedSaveConfirm = nil } }
+        )) {
+            Button("Cancel", role: .cancel) { sharedSaveConfirm = nil }
+            Button("Save Anyway") {
+                sharedSaveConfirm = nil
+                Task {
+                    do {
+                        try await viewModel.saveEdit()
+                    } catch {
+                        saveAlert = "Failed to save preset: \(error)"
+                    }
+                }
+            }
+        } message: {
+            if let n = sharedSaveConfirm {
+                Text("This preset is used by \(n) audio devices. Saving will update it everywhere.")
+            }
         }
     }
 
@@ -229,10 +250,16 @@ struct EqEditPanel: View {
 
             Button("Save") {
                 Task {
-                    do {
-                        try await viewModel.saveEdit()
-                    } catch {
-                        saveAlert = "Failed to save preset: \(error)"
+                    guard let name = viewModel.editingOriginalName else { return }
+                    let count = await viewModel.presetReferenceCount(name: name)
+                    if count > 1 {
+                        sharedSaveConfirm = count
+                    } else {
+                        do {
+                            try await viewModel.saveEdit()
+                        } catch {
+                            saveAlert = "Failed to save preset: \(error)"
+                        }
                     }
                 }
             }

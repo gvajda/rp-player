@@ -515,6 +515,11 @@ final class SettingsViewModel: ObservableObject {
             .map(\.key)
     }
 
+    public func presetReferenceCount(name: String) async -> Int {
+        let settings = await configStore.settings
+        return settings.audioProfiles.values.filter { $0.eqPresetName == name }.count
+    }
+
     public func deletePresetConfirmed(name: String) async throws {
         logger?.info("deletePresetConfirmed name=\(name)")
         try await configStore.update { settings in
