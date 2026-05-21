@@ -7,7 +7,6 @@ struct SettingsView: View {
     @State private var showForceMaxConfirm = false
     @State private var eqImportAlert: EqImportAlert?
     @State private var eqDeleteAlert: EqDeleteAlert?
-    @State private var showEqDetails: Bool = false
 
     private struct EqImportAlert: Identifiable {
         let id = UUID()
@@ -286,17 +285,26 @@ struct SettingsView: View {
                         Image(systemName: "trash")
                     }
                     .buttonStyle(.borderless)
-                    .disabled(viewModel.eqPresetName == nil)
+                    .disabled(viewModel.eqPresetName == nil || viewModel.editingPreset != nil)
                     .help("Delete selected preset")
 
                     Button {
-                        showEqDetails.toggle()
+                        Task { await viewModel.beginNewPreset() }
                     } label: {
-                        Image(systemName: showEqDetails ? "eye.fill" : "eye")
+                        Image(systemName: "plus")
                     }
                     .buttonStyle(.borderless)
-                    .disabled(viewModel.parsedEqPreset == nil)
-                    .help("Show parsed preset values")
+                    .disabled(viewModel.editingPreset != nil)
+                    .help("Create new preset")
+
+                    Button {
+                        Task { await viewModel.beginEditCurrent() }
+                    } label: {
+                        Image(systemName: "pencil")
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(viewModel.eqPresetName == nil || viewModel.editingPreset != nil)
+                    .help("Edit selected preset")
 
                     Button {
                         showEqImportPanel()
@@ -304,6 +312,7 @@ struct SettingsView: View {
                         Image(systemName: "square.and.arrow.down")
                     }
                     .buttonStyle(.borderless)
+                    .disabled(viewModel.editingPreset != nil)
                     .help("Import preset (.txt)")
 
                     Button {
@@ -312,7 +321,7 @@ struct SettingsView: View {
                         Image(systemName: "square.and.arrow.up")
                     }
                     .buttonStyle(.borderless)
-                    .disabled(viewModel.eqPresetName == nil)
+                    .disabled(viewModel.eqPresetName == nil || viewModel.editingPreset != nil)
                     .help("Export selected preset")
                 } else {
                     Spacer(minLength: 8)
@@ -326,8 +335,8 @@ struct SettingsView: View {
                 )
                 .labelsHidden()
             }
-            if viewModel.eqEnabled, showEqDetails, let preset = viewModel.parsedEqPreset {
-                eqDetailsView(preset: preset)
+            if viewModel.eqEnabled, viewModel.editingPreset != nil {
+                EqEditPanel(viewModel: viewModel)
             }
         }
         .onAppear {
@@ -336,40 +345,6 @@ struct SettingsView: View {
                 await viewModel.reloadParsedPreset()
             }
         }
-    }
-
-    @ViewBuilder
-    private func eqDetailsView(preset: EqPreset) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(String(format: "Preamp · %+.1f dB", preset.preampDb))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
-            ForEach(Array(preset.bands.enumerated()), id: \.offset) { _, band in
-                Text(eqBandLine(band))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-            }
-        }
-        .padding(.leading, 4)
-        .padding(.top, 2)
-    }
-
-    private func eqBandLine(_ band: EqBand) -> String {
-        let type: String
-        switch band.type {
-        case .peak: type = "PK"
-        case .lowShelf: type = "LS"
-        case .highShelf: type = "HS"
-        }
-        let freq: String
-        if band.fcHz >= 1000 {
-            freq = String(format: "%.2f kHz", band.fcHz / 1000.0)
-        } else {
-            freq = String(format: "%.0f Hz", band.fcHz)
-        }
-        return String(format: "%@ · %@ · Q %.2f · %+.1f dB", type, freq, band.q, band.gainDb)
     }
 
     private var eqTooltip: String {
