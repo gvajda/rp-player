@@ -101,8 +101,7 @@ actor MockSongFileCache: SongFileCache {
     }
 }
 
-/// Thread-safe nonisolated map for sharing released-download URLs with
-/// cachedFile(for:), which must run outside the actor's isolation.
+// Thread-safe nonisolated [Int: URL] mirror so cachedFile(for:) (called outside actor isolation) can see URLs published by releaseInFlight.
 final class NonIsolatedURLMap: @unchecked Sendable {
     private let lock = NSLock()
     private var storage: [Int: URL] = [:]

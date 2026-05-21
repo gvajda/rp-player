@@ -961,11 +961,13 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         do {
             try await engine.queueNext(url: url, startSeconds: nil)
             queueNextEventId = next.eventId
-            let elapsedMs = deferredQueueNextAt.map { Int(clock().timeIntervalSince($0) * 1000) } ?? 0
-            logger.debug("recovery: deferred queueNext fired event=\(next.eventId) elapsedSinceDeferMs=\(elapsedMs)")
-            deferredQueueNextAt = nil
-            if currentState == .loading {
-                emitState(.playing)
+            if let deferredAt = deferredQueueNextAt {
+                let elapsedMs = Int(clock().timeIntervalSince(deferredAt) * 1000)
+                logger.debug("recovery: deferred queueNext fired event=\(next.eventId) elapsedSinceDeferMs=\(elapsedMs)")
+                deferredQueueNextAt = nil
+                if currentState == .loading {
+                    emitState(.playing)
+                }
             }
         } catch {
             logger.warn("recovery: deferred queueNext failed event=\(next.eventId): \(error)")
