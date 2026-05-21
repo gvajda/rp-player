@@ -609,6 +609,14 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
                 // mpv reached EOF without auto-advancing — refetch lagged. Recover.
                 logger.warn("fileEnded(.eof) without queued entry; recovering")
                 if queue.count >= 2 {
+                    let h = queue[1]
+                    let n = queue.count >= 3 ? queue[2] : nil
+                    let headCached = songFileCache.cachedFile(for: h) != nil ? "cached" : "miss"
+                    let nextDesc = n.map { (s: GaplessSong) -> String in
+                        let cached = songFileCache.cachedFile(for: s) != nil ? "cached" : "miss"
+                        return "event=\(s.eventId) (\(cached))"
+                    } ?? "none"
+                    logger.debug("recovery: head=event=\(h.eventId) (\(headCached)) next=\(nextDesc)")
                     queue.removeFirst()
                     queueNextEventId = nil
                     deferredQueueNextAt = nil
@@ -957,6 +965,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     }
 
     private func tryQueueNextIfPending(landed: GaplessSong) async {
+        logger.debug("downloader: landed event=\(landed.eventId), checking pending queueNext")
         guard queue.count >= 2 else { return }
         let next = queue[1]
         guard next.eventId == landed.eventId else { return }

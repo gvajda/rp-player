@@ -1556,6 +1556,91 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
 
         stateCollector.cancel()
     }
+
+    /// Task 4 log-assertion: recovery path must emit the expected diagnostic
+    /// lines in order — entry log, deferring (cache miss), downloader landed,
+    /// deferred queueNext fired.
+    func testRecoveryEmitsExpectedLogLinesForDeferredQueueNext() async throws {
+        let api = MockRpApiClient()
+        let response = makeGaplessResponse(songs: [
+            makeGaplessSong(songId: "A", eventId: 100, gaplessUrl: "https://example.com/A.flac"),
+            makeGaplessSong(songId: "B", eventId: 101, gaplessUrl: "https://example.com/B.flac"),
+            makeGaplessSong(songId: "C", eventId: 102, gaplessUrl: "https://example.com/C.flac"),
+        ])
+        await api.setGaplessResponses([response])
+        let engine = MockPlayerEngine()
+        let cache = MockSongFileCache()
+        let capture = RecordingLogger()
+        let coord = LivePlaybackCoordinator(
+            api: api, engine: engine, songFileCache: cache, logger: capture, bitrateProvider: { 4 }
+        )
+
+        await cache.markDownloaded([100, 101])
+        await cache.setInFlight([102])
+
+        try await coord.play(channelId: 0)
+
+        let aUrl = URL(string: "https://example.com/A.flac")!
+        let bUrl = URL(string: "https://example.com/B.flac")!
+        let cUrl = URL(string: "https://example.com/C.flac")!
+        _ = try await waitUntil({
+            let calls = await engine.recordedCalls()
+            return calls.contains(.play(url: aUrl, startSeconds: nil))
+                && calls.contains(.queueNext(url: bUrl, startSeconds: nil))
+        }, timeout: 2.0)
+
+        await engine.fire(.fileEnded(reason: .eof))
+
+        _ = try await waitUntil({
+            let calls = await engine.recordedCalls()
+            return calls.contains(.play(url: bUrl, startSeconds: nil))
+        }, timeout: 2.0)
+
+        // Wait for the defer log (proves we hit the cache-miss branch).
+        _ = try await waitUntil({
+            capture.entries().contains(where: { $0.contains("recovery: deferring queueNext (not cached) event=102") })
+        }, timeout: 1.0)
+
+        await cache.releaseInFlight(eventId: 102, url: cUrl)
+
+        _ = try await waitUntil({
+            let calls = await engine.recordedCalls()
+            return calls.contains(.queueNext(url: cUrl, startSeconds: nil))
+        }, timeout: 2.0)
+
+        _ = try await waitUntil({
+            capture.entries().contains(where: { $0.contains("recovery: deferred queueNext fired event=102 elapsedSinceDeferMs=") })
+        }, timeout: 1.0)
+
+        let entries = capture.entries()
+        func firstIndex(_ needle: String) -> Int? {
+            entries.firstIndex(where: { $0.contains(needle) })
+        }
+
+        // MockSongFileCache.cachedFile only reports hits for released in-flight downloads,
+        // not markDownloaded — so B reads as (miss). Same convention as production's
+        // cachedFile (fs-exists probe only).
+        guard let entryIdx = firstIndex("recovery: head=event=101 (miss) next=event=102 (miss)") else {
+            XCTFail("missing entry log; entries=\(entries)")
+            return
+        }
+        guard let deferIdx = firstIndex("recovery: deferring queueNext (not cached) event=102") else {
+            XCTFail("missing defer log; entries=\(entries)")
+            return
+        }
+        guard let landedIdx = firstIndex("downloader: landed event=102, checking pending queueNext") else {
+            XCTFail("missing downloader landed log; entries=\(entries)")
+            return
+        }
+        guard let firedIdx = firstIndex("recovery: deferred queueNext fired event=102 elapsedSinceDeferMs=") else {
+            XCTFail("missing deferred-fired log; entries=\(entries)")
+            return
+        }
+
+        XCTAssertLessThan(entryIdx, deferIdx, "entry log must precede defer log; entries=\(entries)")
+        XCTAssertLessThan(deferIdx, landedIdx, "defer log must precede downloader landed log; entries=\(entries)")
+        XCTAssertLessThan(landedIdx, firedIdx, "downloader landed log must precede deferred-fired log; entries=\(entries)")
+    }
 }
 
 private actor StateBox {
