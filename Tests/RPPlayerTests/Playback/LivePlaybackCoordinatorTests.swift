@@ -1372,18 +1372,32 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
             }
         }
 
+        // Mark C as in-flight BEFORE play() so kickSequentialDownload's
+        // background task for C parks on the continuation instead of racing
+        // past via passthrough. Mark A/B as already downloaded so the
+        // bootstrap downloader's localFile(A)/localFile(B) calls return
+        // synchronously and don't perturb ordering.
+        // setInFlight replaces the in-flight set; passing [102] leaves C as
+        // the only blocked song.
+        await cache.markDownloaded([100, 101])
+        await cache.setInFlight([102])
+
         try await coord.play(channelId: 0)
-        // Let bootstrap settle: engine.play(A), engine.queueNext(B).
-        try await Task.sleep(nanoseconds: 100_000_000)
+
+        // Poll for bootstrap markers instead of a fixed sleep: engine.play(A)
+        // and engine.queueNext(B) must both be recorded before we proceed.
+        let aUrl = URL(string: "https://example.com/A.flac")!
+        let bUrl = URL(string: "https://example.com/B.flac")!
+        let cUrl = URL(string: "https://example.com/C.flac")!
+        _ = try await waitUntil({
+            let calls = await engine.recordedCalls()
+            return calls.contains(.play(url: aUrl, startSeconds: nil))
+                && calls.contains(.queueNext(url: bUrl, startSeconds: nil))
+        }, timeout: 2.0)
 
         // Drop bootstrap states (.stopped, .loading, .playing) so subsequent
         // assertions only consider recovery-path emits.
         await statesBox.reset()
-
-        // Mark C as in-flight AFTER bootstrap (so kickSequentialDownload's
-        // background task for C parks harmlessly off-actor while the recovery
-        // path we're testing also tries to resolve C).
-        await cache.setInFlight([102])
 
         // Fire .fileEnded(.eof) for A → recovery removes A, plays B, then tries
         // to queueNext C. Current (buggy) code awaits localFile(for: C) which
@@ -1392,8 +1406,6 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
 
         // Poll until engine.play(B) has been recorded (recovery's pre-block step).
         // 2s budget: well under typical CI test timeout, well over actor scheduling.
-        let bUrl = URL(string: "https://example.com/B.flac")!
-        let cUrl = URL(string: "https://example.com/C.flac")!
         let playedB = try await waitUntil({
             let calls = await engine.recordedCalls()
             return calls.contains(.play(url: bUrl, startSeconds: nil))
