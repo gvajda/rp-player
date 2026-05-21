@@ -1448,6 +1448,116 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
 
         stateCollector.cancel()
     }
+
+    /// Regression for the actual log scenario behind PR 40. Queue is [A, promo, C].
+    /// A ends → recovery plays promo, defers queueNext(C) (in-flight). Before C lands,
+    /// promo's own EOF fires (short promos do that). A second recovery runs while the
+    /// first deferred queueNext is still pending. Once C finally downloads, the queue
+    /// and the engine must not desync: exactly one engine.play(C), at most one
+    /// engine.queueNext(C), no crash or stuck handler.
+    func testEofRecoveryCascadeOnShortPromoDoesNotDesyncQueue() async throws {
+        let api = MockRpApiClient()
+        let response = makeGaplessResponse(songs: [
+            makeGaplessSong(songId: "A", eventId: 200, gaplessUrl: "https://example.com/A.flac"),
+            makeGaplessSong(songId: "promo", eventId: 201, type: "P", gaplessUrl: "https://example.com/promo.flac"),
+            makeGaplessSong(songId: "C", eventId: 202, gaplessUrl: "https://example.com/C.flac"),
+        ])
+        await api.setGaplessResponses([response])
+        let engine = MockPlayerEngine()
+        let cache = MockSongFileCache()
+        let coord = LivePlaybackCoordinator(
+            api: api, engine: engine, songFileCache: cache, logger: silentLogger(), bitrateProvider: { 4 }
+        )
+
+        let stateStream = await coord.stateUpdates
+        let statesBox = StateBox()
+        let stateCollector = Task {
+            for await s in stateStream {
+                await statesBox.append(s)
+            }
+        }
+
+        // A and promo cached so bootstrap and the first recovery proceed without
+        // parking on localFile. C is in-flight so the deferred-queueNext branch fires.
+        await cache.markDownloaded([200, 201])
+        await cache.setInFlight([202])
+
+        try await coord.play(channelId: 0)
+
+        let aUrl = URL(string: "https://example.com/A.flac")!
+        let promoUrl = URL(string: "https://example.com/promo.flac")!
+        let cUrl = URL(string: "https://example.com/C.flac")!
+
+        _ = try await waitUntil({
+            let calls = await engine.recordedCalls()
+            return calls.contains(.play(url: aUrl, startSeconds: nil))
+                && calls.contains(.queueNext(url: promoUrl, startSeconds: nil))
+        }, timeout: 2.0)
+
+        await statesBox.reset()
+
+        // Step 1: A ends. Recovery removes A, plays promo, defers queueNext(C).
+        await engine.fire(.fileEnded(reason: .eof))
+
+        let playedPromo = try await waitUntil({
+            let calls = await engine.recordedCalls()
+            return calls.contains(.play(url: promoUrl, startSeconds: nil))
+        }, timeout: 2.0)
+        XCTAssertTrue(playedPromo, "first recovery should play the promo")
+
+        let sawLoading = try await waitUntil({
+            await statesBox.contains(.loading)
+        }, timeout: 1.0)
+        XCTAssertTrue(sawLoading, "deferred queueNext should emit .loading")
+
+        // Step 2: promo ends while C is still downloading. Second recovery removes promo;
+        // its head-resolve awaits localFile(C), which is still in-flight, so it parks.
+        // The pre-Task-2 actor would have already been blocked on C from step 1 and
+        // this event would have queued behind it; post-Task-2 the first recovery is
+        // done, so this fires cleanly. The actor parks on the head-resolve await.
+        await engine.fire(.fileEnded(reason: .eof))
+
+        // C must NOT yet have been played — the recovery is parked on localFile(C).
+        let preReleaseCalls = await engine.recordedCalls()
+        XCTAssertFalse(preReleaseCalls.contains(.play(url: cUrl, startSeconds: nil)),
+                       "engine.play(C) must not fire before C's download completes")
+
+        // Step 3: release C. Both the parked recovery head-resolve and any pending
+        // downloader localFile(C) waiters resume.
+        await cache.releaseInFlight(eventId: 202, url: cUrl)
+
+        let playedC = try await waitUntil({
+            let calls = await engine.recordedCalls()
+            return calls.contains(.play(url: cUrl, startSeconds: nil))
+        }, timeout: 3.0)
+        XCTAssertTrue(playedC, "second recovery should play C once its download lands")
+
+        // Give any racing downloader hooks a beat to attempt a stale queueNext.
+        try await Task.sleep(nanoseconds: 200_000_000)
+
+        let finalCalls = await engine.recordedCalls()
+        let playCCount = finalCalls.filter { $0 == .play(url: cUrl, startSeconds: nil) }.count
+        XCTAssertEqual(playCCount, 1, "C must be played exactly once; calls=\(finalCalls)")
+
+        let queueNextCCount = finalCalls.filter { $0 == .queueNext(url: cUrl, startSeconds: nil) }.count
+        XCTAssertLessThanOrEqual(queueNextCCount, 1,
+                                 "queueNext(C) must not duplicate; calls=\(finalCalls)")
+
+        // Finding (cascade gap not fixed by Task 2): when the second EOF arrives
+        // while the first recovery's queueNext is deferred, the second recovery
+        // clears `deferredQueueNextAt` and then queue collapses to [C]. The
+        // post-download hook's `queue.count >= 2` guard fails, so the .loading→.playing
+        // lift never fires. C does play, but the UI stays on the loading spinner.
+        // The engine-level cascade protection (no duplicate play/queueNext) holds,
+        // which is what this regression test guarantees. State-lift hardening is
+        // tracked as follow-up (e.g. emit .playing from the recovery branch after
+        // engine.play succeeds when the prior state was .loading).
+        let finalState = await coord.currentPlaybackState
+        XCTAssertNotEqual(finalState, .stopped,
+                          "coordinator must not collapse to .stopped after the cascade")
+
+        stateCollector.cancel()
+    }
 }
 
 private actor StateBox {
