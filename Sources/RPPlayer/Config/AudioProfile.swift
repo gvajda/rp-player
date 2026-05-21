@@ -78,9 +78,28 @@ extension AudioProfile: Codable {
         self.eqEnabled = try c.decodeIfPresent(Bool.self, forKey: .eqEnabled) ?? false
         self.eqPresetName = try c.decodeIfPresent(String.self, forKey: .eqPresetName)
         self.crossfeedEnabled = try c.decodeIfPresent(Bool.self, forKey: .crossfeedEnabled) ?? false
-        self.crossfeedProfile = try c.decodeIfPresent(CrossfeedProfile.self, forKey: .crossfeedProfile) ?? .cmoy
-        self.crossfeedFcut = try c.decodeIfPresent(Int.self, forKey: .crossfeedFcut) ?? 700
-        self.crossfeedFeedDb = try c.decodeIfPresent(Double.self, forKey: .crossfeedFeedDb) ?? 6.0
+        let storedFcut = try c.decodeIfPresent(Int.self, forKey: .crossfeedFcut)
+        let storedFeedDb = try c.decodeIfPresent(Double.self, forKey: .crossfeedFeedDb)
+        if let raw = try c.decodeIfPresent(String.self, forKey: .crossfeedProfile) {
+            if let profile = CrossfeedProfile(rawValue: raw) {
+                self.crossfeedProfile = profile
+                self.crossfeedFcut = storedFcut ?? 700
+                self.crossfeedFeedDb = storedFeedDb ?? 6.0
+            } else if raw == "default" {
+                // Legacy: bs2bDefault button removed; seed Custom with bs2b's named-default values.
+                self.crossfeedProfile = .custom
+                self.crossfeedFcut = 700
+                self.crossfeedFeedDb = 4.5
+            } else {
+                self.crossfeedProfile = .cmoy
+                self.crossfeedFcut = storedFcut ?? 700
+                self.crossfeedFeedDb = storedFeedDb ?? 6.0
+            }
+        } else {
+            self.crossfeedProfile = .cmoy
+            self.crossfeedFcut = storedFcut ?? 700
+            self.crossfeedFeedDb = storedFeedDb ?? 6.0
+        }
     }
 
     public func encode(to encoder: Encoder) throws {

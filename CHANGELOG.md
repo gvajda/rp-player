@@ -6,18 +6,26 @@ Section labels: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`
 
 ## [Unreleased]
 
+### Added
+
+- Hover-info tooltips on the **Bitrate** picker and **Hog mode** toggle in Settings (icon styled identically to the Volume/EQ/Crossfeed tooltips). Bitrate explains that the change applies on the next song. Hog mode explains exclusive device ownership, the automatic 44.1 kHz sample-rate lock, and the side-effect that other apps lose audio output until RP Player pauses or quits.
+
 ### Changed
 
-- Crossfeed now uses the FFmpeg `bs2b` filter (Bauer stereo-to-binaural) with proper ITD (inter-aural time difference) modeling. Profiles: **Default** (fcut 700 Hz, feed 4.5 dB), **Chu Moy** (700 Hz, 6.0 dB), **Jan Meier** (650 Hz, 9.5 dB), or **Custom** (fcut 300–2000 Hz, feed 1.0–15.0 dB). Replaces the previous `crossfeed` filter which lacked group-delay modeling and sounded notably worse than hardware-DAC implementations.
+- Crossfeed now uses the FFmpeg `bs2b` filter (Bauer stereo-to-binaural) with proper ITD (inter-aural time difference) modeling. Profiles: **Chu Moy** (700 Hz, 6.0 dB), **Jan Meier** (650 Hz, 9.5 dB), or **Custom** (fcut 300–2000 Hz, feed 1.0–15.0 dB). Replaces the previous `crossfeed` filter which lacked group-delay modeling and sounded notably worse than hardware-DAC implementations.
 - Vendored libmpv rebuilt from `gvajda/libmpv-darwin-build` fork with `--enable-libbs2b`. Adds `Vendor/libmpv/lib/libbs2b.dylib` (~50 KB, MIT) alongside existing dylibs. API version (`MPV_MAKE_VERSION(2, 1)` = 131073) unchanged.
+- Crossfeed Custom-mode fcut/feed input row is now right-aligned in the device settings section. The row's right edge sits at the Custom button's right edge in the row above (full-width `HStack` with leading `Spacer(minLength: 0)` and an `opacity(0)` toggle anchor reserving the trailing column). `ClampedNumericField` widened from 56×18 to 72×22 with explicit 12 pt font so wider values like `1650` or `12.00` render inside the bezel instead of overflowing below it. The fcut field now renders without decimals (`decimals: 0`) since Hz is an integer-valued setting.
+- Crossfeed tooltip rewritten — drops the bs2b/Qudelix-5K hardware reference, lists only the three remaining profiles, and notes that Custom seeds at 700 Hz / 4.5 dB (the bs2b library's named-default values).
 
 ### Removed
 
 - `AudioProfile.crossfeedStrength` and `AudioProfile.crossfeedRange` (legacy `crossfeed` filter parameters). Old profiles migrate to Chu Moy defaults (`crossfeedProfile = .cmoy`, fcut 700 Hz, feed 6.0 dB) on first decode.
+- **Default** crossfeed profile button (rendered fine but cluttered the row at four buttons). Custom now seeds with 700 Hz / 4.5 dB when entered from any other profile, so the prior Default-button starting point is one click away (Custom). The `CrossfeedProfile.bs2bDefault` enum case is gone; profiles previously stored as `"default"` on disk migrate to `.custom` with fcut 700 Hz / feed 4.5 dB seeded.
 
 ### Fixed
 
 - Cold-start audio filter chain failure (`AVFilterGraph: No such filter: 'volume' / 'bs2b'` errors at song start when EQ or crossfeed was enabled). The vendored `libmpv.dylib` and `libfftools-ffi.dylib` from the fork build shipped with poisoned `LC_RPATH` entries pointing at a stale nix-store path for the audio-default FFmpeg variant (no bs2b, only equalizer filter). When the host binary's own `@rpath` failed to resolve, dyld fell through to the baked-in nix-store rpath and silently loaded the wrong `libavfilter.dylib`. Fix: rewrote every `@rpath/lib<sibling>.dylib` reference across all 16 `Vendor/libmpv/lib/*.dylib` to `@loader_path/lib<sibling>.dylib` and re-signed each dylib ad-hoc. Sibling-dylib resolution now bypasses rpath search entirely.
+- Crossfeed Custom-mode numeric input rendering glitch where wider values (4-digit fcut like `1650`, 5-character feed like `12.00`) caused the rawText to render below the field's rounded-rect bezel instead of inside it. Root cause: the 56×18 frame from the prior `roundedBorder`-bezel fix was tuned for the original feed-only field (max 5 chars at small font); fcut Hz values pushed content past the inner padding and triggered a SwiftUI TextField vertical-baseline shift identical in symptom to the `roundedBorder` autosize bug fixed in `f526544`. Widened frame + pinned font removes the squeeze.
 
 ## [v0.7.2] - 2026-05-17
 

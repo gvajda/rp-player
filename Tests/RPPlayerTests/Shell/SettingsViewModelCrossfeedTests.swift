@@ -79,6 +79,44 @@ final class SettingsViewModelCrossfeedTests: XCTestCase {
         XCTAssertEqual(configStore.current.audioProfiles["dev-A"]?.crossfeedProfile, .jmeier)
     }
 
+    func testSwitchingIntoCustomSeedsFcutAndFeedDbWithBs2bDefaults() async throws {
+        var settings = AppSettings.default
+        settings.outputDeviceUID = "dev-A"
+        var p = AudioProfile.safeDefault
+        p.crossfeedProfile = .jmeier
+        p.crossfeedFcut = 650
+        p.crossfeedFeedDb = 9.5
+        settings.audioProfiles["dev-A"] = p
+        let vm = makeVM(settings)
+        await vm.start()
+
+        await vm.setCrossfeedProfile(.custom)
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let written = configStore.current.audioProfiles["dev-A"]
+        XCTAssertEqual(written?.crossfeedProfile, .custom)
+        XCTAssertEqual(written?.crossfeedFcut, 700)
+        XCTAssertEqual(written?.crossfeedFeedDb ?? -1, 4.5, accuracy: 1e-9)
+    }
+
+    func testSelectingCustomWhenAlreadyCustomPreservesUserValues() async throws {
+        var settings = AppSettings.default
+        settings.outputDeviceUID = "dev-A"
+        var p = AudioProfile.safeDefault
+        p.crossfeedProfile = .custom
+        p.crossfeedFcut = 1200
+        p.crossfeedFeedDb = 8.0
+        settings.audioProfiles["dev-A"] = p
+        let vm = makeVM(settings)
+        await vm.start()
+
+        await vm.setCrossfeedProfile(.custom)
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let written = configStore.current.audioProfiles["dev-A"]
+        XCTAssertEqual(written?.crossfeedProfile, .custom)
+        XCTAssertEqual(written?.crossfeedFcut, 1200)
+        XCTAssertEqual(written?.crossfeedFeedDb ?? -1, 8.0, accuracy: 1e-9)
+    }
+
     func testSetCrossfeedFcutClampsAndWritesProfile() async throws {
         var settings = AppSettings.default
         settings.outputDeviceUID = "dev-A"

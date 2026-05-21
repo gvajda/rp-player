@@ -5,10 +5,6 @@ import XCTest
 final class CrossfeedFilterBuilderTests: XCTestCase {
     func testNamedProfileEmitsProfileOnly() {
         XCTAssertEqual(
-            CrossfeedFilterBuilder.buildPart(profile: .bs2bDefault, fcut: 700, feedDb: 4.5),
-            "bs2b=profile=default"
-        )
-        XCTAssertEqual(
             CrossfeedFilterBuilder.buildPart(profile: .cmoy, fcut: 700, feedDb: 6.0),
             "bs2b=profile=cmoy"
         )

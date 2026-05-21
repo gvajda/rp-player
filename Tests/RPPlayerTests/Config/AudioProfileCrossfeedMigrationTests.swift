@@ -80,6 +80,25 @@ final class AudioProfileCrossfeedMigrationTests: XCTestCase {
         XCTAssertEqual(profile.crossfeedProfile, .cmoy)
     }
 
+    func testLegacyBs2bDefaultProfileMigratesToCustomWithSeedValues() throws {
+        let json = """
+        {
+            "hogModeEnabled": false,
+            "releaseHogOnPauseEnabled": true,
+            "volumeMode": "none",
+            "bitrate": 4,
+            "crossfeedEnabled": true,
+            "crossfeedProfile": "default",
+            "crossfeedFcut": 700,
+            "crossfeedFeedDb": 4.5
+        }
+        """.data(using: .utf8)!
+        let profile = try JSONDecoder().decode(AudioProfile.self, from: json)
+        XCTAssertEqual(profile.crossfeedProfile, .custom)
+        XCTAssertEqual(profile.crossfeedFcut, 700)
+        XCTAssertEqual(profile.crossfeedFeedDb, 4.5, accuracy: 1e-9)
+    }
+
     func testEncodedJsonOmitsLegacyStrengthRangeKeys() throws {
         let profile = AudioProfile(
             hogModeEnabled: false, releaseHogOnPauseEnabled: false,

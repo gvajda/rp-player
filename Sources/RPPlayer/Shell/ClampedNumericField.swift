@@ -18,7 +18,11 @@ internal enum ClampedNumericFieldLogic {
     }
 
     static func format(_ v: Double) -> String {
-        String(format: "%.2f", v)
+        format(v, decimals: 2)
+    }
+
+    static func format(_ v: Double, decimals: Int) -> String {
+        String(format: "%.\(max(0, decimals))f", v)
     }
 }
 
@@ -27,6 +31,8 @@ struct ClampedNumericField: View {
     let range: ClosedRange<Double>
     let step: Double
     let isEnabled: Bool
+    var decimals: Int = 2
+    var width: CGFloat = 72
 
     @State private var rawText: String = ""
     @State private var isInvalid: Bool = false
@@ -42,13 +48,15 @@ struct ClampedNumericField: View {
         HStack(alignment: .center, spacing: 2) {
             TextField("", text: $rawText)
                 .textFieldStyle(.plain)
+                .font(.system(size: 12))
                 .lineLimit(1)
+                .truncationMode(.middle)
                 .multilineTextAlignment(.center)
                 .focused($focused)
                 .disabled(!isEnabled)
                 .padding(.horizontal, 4)
-                .padding(.vertical, 2)
-                .frame(width: 56, height: 18)
+                .padding(.vertical, 3)
+                .frame(width: width, height: 22)
                 .background(
                     RoundedRectangle(cornerRadius: 4)
                         .fill(Color(nsColor: .textBackgroundColor))
@@ -71,13 +79,13 @@ struct ClampedNumericField: View {
                 }
                 .onChange(of: focused) { _, isFocused in
                     if !isFocused && isInvalid {
-                        rawText = ClampedNumericFieldLogic.format(value)
+                        rawText = ClampedNumericFieldLogic.format(value, decimals: decimals)
                         isInvalid = false
                     }
                 }
                 .onChange(of: value) { _, newValue in
                     if !focused {
-                        rawText = ClampedNumericFieldLogic.format(newValue)
+                        rawText = ClampedNumericFieldLogic.format(newValue, decimals: decimals)
                     }
                 }
 
@@ -88,6 +96,6 @@ struct ClampedNumericField: View {
         }
         .controlSize(.small)
         .alignmentGuide(.firstTextBaseline) { d in d[VerticalAlignment.center] }
-        .onAppear { rawText = ClampedNumericFieldLogic.format(value) }
+        .onAppear { rawText = ClampedNumericFieldLogic.format(value, decimals: decimals) }
     }
 }

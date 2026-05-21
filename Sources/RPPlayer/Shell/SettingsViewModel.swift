@@ -375,7 +375,12 @@ final class SettingsViewModel: ObservableObject {
         await update { s in
             guard let uid = s.outputDeviceUID else { return }
             var p = s.audioProfiles[uid] ?? .safeDefault
+            let enteringCustom = value == .custom && p.crossfeedProfile != .custom
             p.crossfeedProfile = value
+            if enteringCustom {
+                p.crossfeedFcut = 700
+                p.crossfeedFeedDb = 4.5
+            }
             s.audioProfiles[uid] = p
         }
     }
