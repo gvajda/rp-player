@@ -337,6 +337,7 @@ extension AppContainer {
                     store: store,
                     engine: engine,
                     eqPresetStore: eqPresetStore,
+                    override: EqEditingOverride(),
                     initialProfile: startupProfile
                 )
             }
@@ -691,18 +692,36 @@ extension AppContainer {
         store: any ConfigStore,
         engine: any PlayerEngine,
         eqPresetStore: any EqPresetStore,
+        override: EqEditingOverride,
         initialProfile: AudioProfile
     ) async {
-        var last = AudioFilterKey(profile: initialProfile)
-        await applyAudioFilterState(engine: engine, store: eqPresetStore, key: last)
+        let state = _BinderState(profile: initialProfile, override: await override.snapshot())
+        let (p0, o0) = await state.snapshot()
+        await applyAudioFilterState(engine: engine, store: eqPresetStore, profile: p0, override: o0)
 
-        for await snapshot in await store.changes {
-            let uid = snapshot.outputDeviceUID
-            let profile = uid.flatMap { snapshot.audioProfiles[$0] } ?? AudioProfile.safeDefault
-            let next = AudioFilterKey(profile: profile)
-            if next != last {
-                last = next
-                await applyAudioFilterState(engine: engine, store: eqPresetStore, key: next)
+        let configStream = await store.changes
+        let overrideStream = await override.changes
+
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask {
+                for await snapshot in configStream {
+                    let uid = snapshot.outputDeviceUID
+                    let next = uid.flatMap { snapshot.audioProfiles[$0] } ?? AudioProfile.safeDefault
+                    let changed = await state.updateProfile(next)
+                    if changed {
+                        let (p, o) = await state.snapshot()
+                        await applyAudioFilterState(engine: engine, store: eqPresetStore, profile: p, override: o)
+                    }
+                }
+            }
+            group.addTask {
+                for await preset in overrideStream {
+                    let changed = await state.updateOverride(preset)
+                    if changed {
+                        let (p, o) = await state.snapshot()
+                        await applyAudioFilterState(engine: engine, store: eqPresetStore, profile: p, override: o)
+                    }
+                }
             }
         }
     }
@@ -710,48 +729,35 @@ extension AppContainer {
     internal static func applyAudioFilterState(
         engine: any PlayerEngine,
         store: any EqPresetStore,
-        key: AudioFilterKey
+        profile: AudioProfile,
+        override: EqPreset?
     ) async {
         var parts: [String] = []
-        if key.eqEnabled, let name = key.eqPresetName {
-            do {
-                let raw = try await store.loadText(name: name)
-                if case .success(let preset) = EqPresetParser.parse(text: raw, filename: name) {
-                    parts = EqChainBuilder.buildParts(preset)
+        if profile.eqEnabled {
+            if let override {
+                parts = EqChainBuilder.buildParts(override)
+            } else if let name = profile.eqPresetName {
+                do {
+                    let raw = try await store.loadText(name: name)
+                    if case .success(let preset) = EqPresetParser.parse(text: raw, filename: name) {
+                        parts = EqChainBuilder.buildParts(preset)
+                    }
+                } catch {
+                    // File missing or unreadable → EQ contributes nothing. Crossfeed may still apply below.
                 }
-            } catch {
-                // File missing or unreadable → EQ contributes nothing. Crossfeed may still apply below.
             }
         }
-        if key.crossfeedEnabled {
+        if profile.crossfeedEnabled {
             parts.append(CrossfeedFilterBuilder.buildPart(
-                profile: key.crossfeedProfile,
-                fcut: key.crossfeedFcut,
-                feedDb: key.crossfeedFeedDb
+                profile: profile.crossfeedProfile,
+                fcut: profile.crossfeedFcut,
+                feedDb: profile.crossfeedFeedDb
             ))
         }
         if parts.isEmpty {
             try? await engine.setAudioFilterChain(nil)
         } else {
             try? await engine.setAudioFilterChain("lavfi=[" + parts.joined(separator: ",") + "]")
-        }
-    }
-
-    internal struct AudioFilterKey: Equatable {
-        let eqEnabled: Bool
-        let eqPresetName: String?
-        let crossfeedEnabled: Bool
-        let crossfeedProfile: CrossfeedProfile
-        let crossfeedFcut: Int
-        let crossfeedFeedDb: Double
-
-        init(profile: AudioProfile) {
-            self.eqEnabled = profile.eqEnabled
-            self.eqPresetName = profile.eqPresetName
-            self.crossfeedEnabled = profile.crossfeedEnabled
-            self.crossfeedProfile = profile.crossfeedProfile
-            self.crossfeedFcut = profile.crossfeedFcut
-            self.crossfeedFeedDb = profile.crossfeedFeedDb
         }
     }
 
@@ -829,6 +835,26 @@ extension AppContainer {
         let part = { (start: Int, len: Int) in String(s[start..<start+len]) }
         return "rp3_\(part(0,8))-\(part(8,4))-\(part(12,4))-\(part(16,4))-\(part(20,12))"
     }
+}
+
+private actor _BinderState {
+    var profile: AudioProfile
+    var override: EqPreset?
+    init(profile: AudioProfile, override: EqPreset?) {
+        self.profile = profile
+        self.override = override
+    }
+    func updateProfile(_ p: AudioProfile) -> Bool {
+        let changed = p != profile
+        profile = p
+        return changed
+    }
+    func updateOverride(_ o: EqPreset?) -> Bool {
+        let changed = o != override
+        override = o
+        return changed
+    }
+    func snapshot() -> (AudioProfile, EqPreset?) { (profile, override) }
 }
 
 // Fallback when JSONConfigStore fails to open so SettingsViewModel still constructs.

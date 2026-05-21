@@ -34,12 +34,14 @@ final class AppContainerAudioFilterBinderTests: XCTestCase {
         initialSettings.audioProfiles["dev-A"] = initialProfile
         let configStore = StubConfigStore(initial: initialSettings)
         let engine = MockPlayerEngine()
+        let override = EqEditingOverride()
 
         let binderTask = Task {
             await AppContainer.runAudioFilterBinder(
                 store: configStore,
                 engine: engine,
                 eqPresetStore: eqStore,
+                override: override,
                 initialProfile: initialProfile
             )
         }
@@ -85,12 +87,14 @@ final class AppContainerAudioFilterBinderTests: XCTestCase {
         initialSettings.audioProfiles["dev-A"] = initialProfile
         let configStore = StubConfigStore(initial: initialSettings)
         let engine = MockPlayerEngine()
+        let override = EqEditingOverride()
 
         let binderTask = Task {
             await AppContainer.runAudioFilterBinder(
                 store: configStore,
                 engine: engine,
                 eqPresetStore: eqStore,
+                override: override,
                 initialProfile: initialProfile
             )
         }
@@ -121,12 +125,14 @@ final class AppContainerAudioFilterBinderTests: XCTestCase {
         initialSettings.audioProfiles["dev-A"] = initialProfile
         let configStore = StubConfigStore(initial: initialSettings)
         let engine = MockPlayerEngine()
+        let override = EqEditingOverride()
 
         let binderTask = Task {
             await AppContainer.runAudioFilterBinder(
                 store: configStore,
                 engine: engine,
                 eqPresetStore: eqStore,
+                override: override,
                 initialProfile: initialProfile
             )
         }
@@ -159,12 +165,14 @@ final class AppContainerAudioFilterBinderTests: XCTestCase {
         initialSettings.audioProfiles["dev-A"] = initialProfile
         let configStore = StubConfigStore(initial: initialSettings)
         let engine = MockPlayerEngine()
+        let override = EqEditingOverride()
 
         let binderTask = Task {
             await AppContainer.runAudioFilterBinder(
                 store: configStore,
                 engine: engine,
                 eqPresetStore: eqStore,
+                override: override,
                 initialProfile: initialProfile
             )
         }
@@ -202,12 +210,14 @@ final class AppContainerAudioFilterBinderTests: XCTestCase {
         initialSettings.audioProfiles["dev-A"] = initialProfile
         let configStore = StubConfigStore(initial: initialSettings)
         let engine = MockPlayerEngine()
+        let override = EqEditingOverride()
 
         let binderTask = Task {
             await AppContainer.runAudioFilterBinder(
                 store: configStore,
                 engine: engine,
                 eqPresetStore: eqStore,
+                override: override,
                 initialProfile: initialProfile
             )
         }
@@ -237,12 +247,14 @@ final class AppContainerAudioFilterBinderTests: XCTestCase {
         initialSettings.audioProfiles["dev-A"] = initialProfile
         let configStore = StubConfigStore(initial: initialSettings)
         let engine = MockPlayerEngine()
+        let override = EqEditingOverride()
 
         let binderTask = Task {
             await AppContainer.runAudioFilterBinder(
                 store: configStore,
                 engine: engine,
                 eqPresetStore: eqStore,
+                override: override,
                 initialProfile: initialProfile
             )
         }
@@ -273,12 +285,14 @@ final class AppContainerAudioFilterBinderTests: XCTestCase {
         initialSettings.audioProfiles["dev-A"] = initialProfile
         let configStore = StubConfigStore(initial: initialSettings)
         let engine = MockPlayerEngine()
+        let override = EqEditingOverride()
 
         let binderTask = Task {
             await AppContainer.runAudioFilterBinder(
                 store: configStore,
                 engine: engine,
                 eqPresetStore: eqStore,
+                override: override,
                 initialProfile: initialProfile
             )
         }
@@ -307,5 +321,164 @@ final class AppContainerAudioFilterBinderTests: XCTestCase {
                 return false
             }
         }, timeout: 1.0)
+    }
+
+    func testOverridePresetTakesPrecedenceOverDiskFile() async throws {
+        let eqStore = LiveEqPresetStore(directory: tmpDir)
+        try await eqStore.save(
+            name: "disk-preset",
+            text: "Filter 1: ON PK Fc 1000 Hz Gain 6 dB Q 1.0\n",
+            overwrite: false
+        )
+        let override = EqEditingOverride()
+        let initialProfile = AudioProfile(
+            hogModeEnabled: false, releaseHogOnPauseEnabled: false,
+            volumeMode: .none, bitrate: 3,
+            eqEnabled: true, eqPresetName: "disk-preset"
+        )
+        var initialSettings = AppSettings.default
+        initialSettings.outputDeviceUID = "dev-A"
+        initialSettings.audioProfiles["dev-A"] = initialProfile
+        let configStore = StubConfigStore(initial: initialSettings)
+        let engine = MockPlayerEngine()
+
+        let task = Task {
+            await AppContainer.runAudioFilterBinder(
+                store: configStore,
+                engine: engine,
+                eqPresetStore: eqStore,
+                override: override,
+                initialProfile: initialProfile
+            )
+        }
+        defer { task.cancel() }
+
+        try await waitUntil({
+            let calls = await engine.recordedCalls()
+            return calls.contains { call in
+                if case .setAudioFilterChain(let chain) = call {
+                    return chain?.contains("equalizer") == true && chain?.contains("g=6") == true
+                }
+                return false
+            }
+        }, timeout: 1.0)
+
+        let editingPreset = EqPreset(
+            name: nil,
+            preampDb: 0,
+            bands: [EqBand(enabled: true, type: .peak, fcHz: 1000, gainDb: -12, q: 1)]
+        )
+        await override.set(editingPreset)
+        try await waitUntil({
+            let calls = await engine.recordedCalls()
+            return calls.contains { call in
+                if case .setAudioFilterChain(let chain) = call {
+                    return chain?.contains("g=-12") ?? false
+                }
+                return false
+            }
+        }, timeout: 1.0)
+    }
+
+    func testClearingOverrideRevertsToDiskPreset() async throws {
+        let eqStore = LiveEqPresetStore(directory: tmpDir)
+        try await eqStore.save(
+            name: "p",
+            text: "Filter 1: ON PK Fc 1000 Hz Gain 3 dB Q 1.0\n",
+            overwrite: false
+        )
+        let override = EqEditingOverride()
+        let initialProfile = AudioProfile(
+            hogModeEnabled: false, releaseHogOnPauseEnabled: false,
+            volumeMode: .none, bitrate: 3,
+            eqEnabled: true, eqPresetName: "p"
+        )
+        var initialSettings = AppSettings.default
+        initialSettings.outputDeviceUID = "dev-A"
+        initialSettings.audioProfiles["dev-A"] = initialProfile
+        let configStore = StubConfigStore(initial: initialSettings)
+        let engine = MockPlayerEngine()
+
+        await override.set(EqPreset(
+            name: nil, preampDb: 0,
+            bands: [EqBand(enabled: true, type: .peak, fcHz: 1000, gainDb: -6, q: 1)]
+        ))
+
+        let task = Task {
+            await AppContainer.runAudioFilterBinder(
+                store: configStore,
+                engine: engine,
+                eqPresetStore: eqStore,
+                override: override,
+                initialProfile: initialProfile
+            )
+        }
+        defer { task.cancel() }
+
+        try await waitUntil({
+            let calls = await engine.recordedCalls()
+            return calls.contains { call in
+                if case .setAudioFilterChain(let chain) = call { return chain?.contains("g=-6") ?? false }
+                return false
+            }
+        }, timeout: 1.0)
+
+        await override.set(nil)
+        try await waitUntil({
+            let calls = await engine.recordedCalls()
+            return calls.contains { call in
+                if case .setAudioFilterChain(let chain) = call { return chain?.contains("g=3") ?? false }
+                return false
+            }
+        }, timeout: 1.0)
+    }
+
+    func testOverrideIgnoredWhenEqDisabled() async throws {
+        let eqStore = LiveEqPresetStore(directory: tmpDir)
+        let override = EqEditingOverride()
+        let initialProfile = AudioProfile(
+            hogModeEnabled: false, releaseHogOnPauseEnabled: false,
+            volumeMode: .none, bitrate: 3,
+            eqEnabled: false, eqPresetName: nil
+        )
+        var initialSettings = AppSettings.default
+        initialSettings.outputDeviceUID = "dev-A"
+        initialSettings.audioProfiles["dev-A"] = initialProfile
+        let configStore = StubConfigStore(initial: initialSettings)
+        let engine = MockPlayerEngine()
+
+        let task = Task {
+            await AppContainer.runAudioFilterBinder(
+                store: configStore,
+                engine: engine,
+                eqPresetStore: eqStore,
+                override: override,
+                initialProfile: initialProfile
+            )
+        }
+        defer { task.cancel() }
+
+        try await waitUntil({
+            let calls = await engine.recordedCalls()
+            return calls.contains { call in
+                if case .setAudioFilterChain(let chain) = call { return chain == nil }
+                return false
+            }
+        }, timeout: 1.0)
+
+        let priorCount = await engine.recordedCalls().count
+        await override.set(EqPreset(
+            name: nil, preampDb: 0,
+            bands: [EqBand(enabled: true, type: .peak, fcHz: 1000, gainDb: 12, q: 1)]
+        ))
+        try await Task.sleep(nanoseconds: 200_000_000)
+        let afterCount = await engine.recordedCalls().count
+        // Override has no audible effect when EQ is off — the chain should not gain EQ parts
+        let recent = await engine.recordedCalls()
+        for call in recent.suffix(max(0, afterCount - priorCount)) {
+            if case .setAudioFilterChain(let chain) = call {
+                XCTAssertFalse(chain?.contains("equalizer") ?? false, "EQ part appeared while EQ disabled")
+            }
+        }
     }
 }
