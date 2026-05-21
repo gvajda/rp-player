@@ -30,7 +30,13 @@ actor MockSongFileCache: SongFileCache {
 
     func setMode(_ m: Mode) { mode = m }
     func setFailing(_ ids: Set<Int>) { failingEventIds = ids }
-    func markDownloaded(_ ids: Set<Int>) { downloadedEventIds.formUnion(ids) }
+    func markDownloaded(_ ids: Set<Int>) {
+        downloadedEventIds.formUnion(ids)
+        for id in ids {
+            // Mirror production: a downloaded song must also be visible via cachedFile (fs-exists probe).
+            releasedMirror.set(eventId: id, url: URL(string: "https://mock.cache/\(id)")!)
+        }
+    }
 
     /// Marks the given eventIds as "in-flight": `localFile(for:)` will await a
     /// continuation that the test releases via `releaseInFlight(eventId:url:)`.

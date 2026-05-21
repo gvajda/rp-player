@@ -1617,10 +1617,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
             entries.firstIndex(where: { $0.contains(needle) })
         }
 
-        // MockSongFileCache.cachedFile only reports hits for released in-flight downloads,
-        // not markDownloaded — so B reads as (miss). Same convention as production's
-        // cachedFile (fs-exists probe only).
-        guard let entryIdx = firstIndex("recovery: head=event=101 (miss) next=event=102 (miss)") else {
+        guard let entryIdx = firstIndex("recovery: head=event=101 (cached) next=event=102 (miss)") else {
             XCTFail("missing entry log; entries=\(entries)")
             return
         }
