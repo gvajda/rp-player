@@ -126,4 +126,78 @@ final class EqPresetStoreTests: XCTestCase {
         XCTAssertTrue(logger.lines.contains { $0.contains("EqPresetStore.save") && $0.contains("name=n") })
         XCTAssertTrue(logger.lines.contains { $0.contains("wrote=") })
     }
+
+    func testRenameMovesFile() async throws {
+        let store = makeStore()
+        try await store.save(name: "alpha", text: "v1", overwrite: false)
+        try await store.rename(from: "alpha", to: "beta")
+        let names = await store.list()
+        XCTAssertEqual(names, ["beta"])
+        let text = try await store.loadText(name: "beta")
+        XCTAssertEqual(text, "v1")
+    }
+
+    func testRenameSameNameIsNoOp() async throws {
+        let store = makeStore()
+        try await store.save(name: "n", text: "v", overwrite: false)
+        try await store.rename(from: "n", to: "n")
+        let text = try await store.loadText(name: "n")
+        XCTAssertEqual(text, "v")
+    }
+
+    func testRenameThrowsNotFound() async throws {
+        let store = makeStore()
+        do {
+            try await store.rename(from: "missing", to: "anything")
+            XCTFail("expected error")
+        } catch EqPresetStoreError.notFound {
+            // expected
+        }
+    }
+
+    func testRenameThrowsAlreadyExists() async throws {
+        let store = makeStore()
+        try await store.save(name: "a", text: "1", overwrite: false)
+        try await store.save(name: "b", text: "2", overwrite: false)
+        do {
+            try await store.rename(from: "a", to: "b")
+            XCTFail("expected error")
+        } catch EqPresetStoreError.alreadyExists {
+            // expected
+        }
+        let a = try await store.loadText(name: "a")
+        let b = try await store.loadText(name: "b")
+        XCTAssertEqual(a, "1")
+        XCTAssertEqual(b, "2")
+    }
+
+    func testRenameInvalidNameRejectedBothSides() async throws {
+        let store = makeStore()
+        try await store.save(name: "ok", text: "x", overwrite: false)
+        do {
+            try await store.rename(from: "ok", to: "bad/name")
+            XCTFail("expected error")
+        } catch EqPresetStoreError.invalidName {}
+        do {
+            try await store.rename(from: "bad/name", to: "ok2")
+            XCTFail("expected error")
+        } catch EqPresetStoreError.invalidName {}
+    }
+
+    func testSaveRejectsNameOverThirtyChars() async throws {
+        let store = makeStore()
+        let n31 = String(repeating: "a", count: 31)
+        do {
+            try await store.save(name: n31, text: "x", overwrite: false)
+            XCTFail("expected error")
+        } catch EqPresetStoreError.invalidName {}
+    }
+
+    func testSaveAllowsExactlyThirtyChars() async throws {
+        let store = makeStore()
+        let n30 = String(repeating: "a", count: 30)
+        try await store.save(name: n30, text: "x", overwrite: false)
+        let exists = await store.exists(name: n30)
+        XCTAssertTrue(exists)
+    }
 }

@@ -529,4 +529,5 @@ private final class NoopEqPresetStore: EqPresetStore {
     func loadText(name: String) async throws -> String { throw EqPresetStoreError.notFound }
     func save(name: String, text: String, overwrite: Bool) async throws { throw EqPresetStoreError.ioFailure("noop") }
     func delete(name: String) async throws { throw EqPresetStoreError.notFound }
+    func rename(from: String, to: String) async throws { throw EqPresetStoreError.notFound }
 }

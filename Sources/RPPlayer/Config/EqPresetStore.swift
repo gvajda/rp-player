@@ -13,6 +13,7 @@ public protocol EqPresetStore: Sendable {
     func loadText(name: String) async throws -> String
     func save(name: String, text: String, overwrite: Bool) async throws
     func delete(name: String) async throws
+    func rename(from: String, to: String) async throws
 }
 
 public actor LiveEqPresetStore: EqPresetStore {
@@ -107,12 +108,42 @@ public actor LiveEqPresetStore: EqPresetStore {
         }
     }
 
+    public func rename(from: String, to: String) async throws {
+        logger?.debug("EqPresetStore.rename from=\(from) to=\(to)")
+        guard validate(from) else {
+            logger?.warn("EqPresetStore.rename rejected from=\(from) reason=invalidName")
+            throw EqPresetStoreError.invalidName
+        }
+        guard validate(to) else {
+            logger?.warn("EqPresetStore.rename rejected to=\(to) reason=invalidName")
+            throw EqPresetStoreError.invalidName
+        }
+        let src = fileURL(for: from)
+        let dst = fileURL(for: to)
+        guard fm.fileExists(atPath: src.path) else {
+            logger?.warn("EqPresetStore.rename from=\(from) reason=notFound")
+            throw EqPresetStoreError.notFound
+        }
+        if from == to { return }
+        if fm.fileExists(atPath: dst.path) {
+            logger?.info("EqPresetStore.rename to=\(to) skipped reason=alreadyExists")
+            throw EqPresetStoreError.alreadyExists
+        }
+        do {
+            try fm.moveItem(at: src, to: dst)
+            logger?.info("EqPresetStore.rename from=\(from) to=\(to) moved")
+        } catch {
+            logger?.error("EqPresetStore.rename ioFailure=\(error)")
+            throw EqPresetStoreError.ioFailure("\(error)")
+        }
+    }
+
     private func fileURL(for name: String) -> URL {
         directory.appendingPathComponent("\(name).txt", isDirectory: false)
     }
 
     private func validate(_ name: String) -> Bool {
-        guard !name.isEmpty, name.count < 256 else { return false }
+        guard !name.isEmpty, name.count <= 30 else { return false }
         if name.hasPrefix(".") { return false }
         if name.contains("/") || name.contains("\0") { return false }
         return true
