@@ -31,7 +31,7 @@ final class EqPresetWriterTests: XCTestCase {
         XCTAssertEqual(reparsed, parsed)
     }
 
-    func testFilterNumberingCompactsOverDisabledBands() {
+    func testDisabledBandEmittedAsOff() {
         let preset = EqPreset(
             name: nil,
             preampDb: 0,
@@ -42,8 +42,24 @@ final class EqPresetWriterTests: XCTestCase {
             ]
         )
         let text = EqPresetWriter.write(preset)
-        XCTAssertTrue(text.contains("Filter 1: ON PK Fc 200 Hz"), "got:\n\(text)")
-        XCTAssertTrue(text.contains("Filter 2: ON PK Fc 300 Hz"), "got:\n\(text)")
-        XCTAssertFalse(text.contains("Filter 3:"))
+        XCTAssertTrue(text.contains("Filter 1: OFF PK Fc 100 Hz Gain 0 dB Q 1"), "got:\n\(text)")
+        XCTAssertTrue(text.contains("Filter 2: ON PK Fc 200 Hz Gain 0 dB Q 1"),  "got:\n\(text)")
+        XCTAssertTrue(text.contains("Filter 3: ON PK Fc 300 Hz Gain 0 dB Q 1"),  "got:\n\(text)")
+    }
+
+    func testRoundTripPreservesDisabledBand() throws {
+        let preset = EqPreset(
+            name: nil,
+            preampDb: -1,
+            bands: [
+                EqBand(enabled: true,  type: .peak,     fcHz: 100, gainDb: 1,   q: 1),
+                EqBand(enabled: false, type: .lowShelf, fcHz: 200, gainDb: 2,   q: 0.7),
+                EqBand(enabled: true,  type: .highShelf, fcHz: 300, gainDb: 0.5, q: 0.5),
+            ]
+        )
+        let written = EqPresetWriter.write(preset)
+        let reparsed = try EqPresetParser.parse(text: written, filename: "n").get()
+        XCTAssertEqual(reparsed.bands, preset.bands)
+        XCTAssertEqual(reparsed.preampDb, preset.preampDb, accuracy: 0.0001)
     }
 }

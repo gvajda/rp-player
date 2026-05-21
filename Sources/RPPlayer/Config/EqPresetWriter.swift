@@ -6,14 +6,15 @@ public enum EqPresetWriter {
         lines.append("CH: 0")
         lines.append("TYPE: PEQ")
         lines.append("Preamp: \(format(preset.preampDb)) dB")
-        for (i, b) in preset.bands.filter(\.enabled).enumerated() {
+        for (i, b) in preset.bands.enumerated() {
             let abbr: String
             switch b.type {
             case .peak: abbr = "PK"
             case .lowShelf: abbr = "LS"
             case .highShelf: abbr = "HS"
             }
-            lines.append("Filter \(i + 1): ON \(abbr) Fc \(format(b.fcHz)) Hz Gain \(format(b.gainDb)) dB Q \(format(b.q))")
+            let state = b.enabled ? "ON" : "OFF"
+            lines.append("Filter \(i + 1): \(state) \(abbr) Fc \(format(b.fcHz)) Hz Gain \(format(b.gainDb)) dB Q \(format(b.q))")
         }
         return lines.joined(separator: "\n") + "\n"
     }
