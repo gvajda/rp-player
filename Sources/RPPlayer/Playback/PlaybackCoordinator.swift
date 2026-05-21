@@ -639,6 +639,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
                             }
                             if queue.count < 3 { kickRefetch() }
                             kickSequentialDownload()
+                            // Cascade case: a prior recovery deferred queueNext and emitted .loading; this recovery cleared the defer flag and the queue collapsed to <2 before the queueNext branch could run, so tryQueueNextIfPending can't lift state. Lift here.
                             if currentState == .loading && deferredQueueNextAt == nil {
                                 emitState(.playing)
                             }
