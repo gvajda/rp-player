@@ -23,6 +23,10 @@ actor MockSongFileCache: SongFileCache {
     private var inFlightEventIds: Set<Int> = []
     private var inFlightWaiters: [Int: [CheckedContinuation<URL?, Never>]] = [:]
     private var releasedInFlightUrls: [Int: URL] = [:]
+    // Nonisolated mirror of released downloads so cachedFile(for:) can see them
+    // without violating actor isolation. Mirrors LiveSongFileCache, where
+    // cachedFile is a synchronous fs-exists probe.
+    private let releasedMirror = NonIsolatedURLMap()
 
     func setMode(_ m: Mode) { mode = m }
     func setFailing(_ ids: Set<Int>) { failingEventIds = ids }
@@ -40,6 +44,7 @@ actor MockSongFileCache: SongFileCache {
         inFlightEventIds.remove(eventId)
         releasedInFlightUrls[eventId] = url
         downloadedEventIds.insert(eventId)
+        releasedMirror.set(eventId: eventId, url: url)
         let waiters = inFlightWaiters.removeValue(forKey: eventId) ?? []
         for w in waiters { w.resume(returning: url) }
     }
@@ -69,11 +74,9 @@ actor MockSongFileCache: SongFileCache {
 
     nonisolated func cachedFile(for song: GaplessSong) -> URL? {
         if let override = cachedFileOverride { return override(song) }
-        // Cannot read actor state nonisolated — return nil here.
-        // Coordinator code that depends on cachedFile semantics falls into the
-        // awaited localFile path in tests, which is fine since the mock resolves
-        // immediately. Real LiveSongFileCache does a synchronous fs probe.
-        return nil
+        // Mirror released-in-flight downloads so post-download hooks (which run
+        // after localFile resolves) see a cache hit, like real LiveSongFileCache.
+        return releasedMirror.get(eventId: song.eventId)
     }
 
     func evict(_ song: GaplessSong) async {
@@ -95,5 +98,22 @@ actor MockSongFileCache: SongFileCache {
         // For .downloaded(URL) tests that need path-matching, drive the engine's
         // simulated currentPath() to match the URL the test passed into setMode.
         URL(string: song.gaplessUrl) ?? URL(fileURLWithPath: "/dev/null")
+    }
+}
+
+/// Thread-safe nonisolated map for sharing released-download URLs with
+/// cachedFile(for:), which must run outside the actor's isolation.
+final class NonIsolatedURLMap: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [Int: URL] = [:]
+
+    func set(eventId: Int, url: URL) {
+        lock.lock(); defer { lock.unlock() }
+        storage[eventId] = url
+    }
+
+    func get(eventId: Int) -> URL? {
+        lock.lock(); defer { lock.unlock() }
+        return storage[eventId]
     }
 }

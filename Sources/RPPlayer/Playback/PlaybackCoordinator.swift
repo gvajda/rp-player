@@ -49,6 +49,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     // (the inline localFile await after engine.play hasn't completed yet), so we can
     // show the loading state during the wait instead of advancing to an empty playlist.
     private var queueNextEventId: Int?
+    private var deferredQueueNextAt: Date?
     private var currentPositionSeconds: Double = 0
     private var current: NowPlaying?
     private var continuations: [UUID: AsyncStream<NowPlaying>.Continuation] = [:]
@@ -262,6 +263,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             logger.warn("resume: cache miss for queue[0]; falling back to refetch+restart")
             try? await engine.clearPlaylist()
             queueNextEventId = nil
+            deferredQueueNextAt = nil
             queue = []
             currentResponse = nil
             lastStartedEventId = nil
@@ -315,6 +317,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         logger.debug("stop()")
         try? await engine.clearPlaylist()
         queueNextEventId = nil
+        deferredQueueNextAt = nil
         downloaderTask?.cancel()
         downloaderTask = nil
         await songFileCache.cancelInFlightDownloads()
@@ -328,6 +331,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         currentResponse = nil
         lastStartedEventId = nil
         queueNextEventId = nil
+        deferredQueueNextAt = nil
         currentChannelId = nil
         currentPositionSeconds = 0
         pausedAt = nil
@@ -418,6 +422,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         queue = response.songs
         currentResponse = response
         queueNextEventId = nil
+        deferredQueueNextAt = nil
         let head = queue[0]
         // Always start from the beginning; ignore cue.
         currentPositionSeconds = 0
@@ -464,6 +469,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         refetchTask = nil
         try? await engine.clearPlaylist()
         queueNextEventId = nil
+        deferredQueueNextAt = nil
         downloaderTask?.cancel()
         downloaderTask = nil
         await songFileCache.cancelInFlightDownloads()
@@ -509,6 +515,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         emitNowPlaying(forSongAt: 0)
         try? await engine.clearPlaylist()
         queueNextEventId = nil
+        deferredQueueNextAt = nil
         // Bitrate change minted new gaplessUrls. Cancel any in-flight downloader
         // walk so old-bitrate downloads stop stealing bandwidth from the new
         // bitrate's queue; on-disk old-bitrate files become orphans and the
@@ -604,6 +611,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
                 if queue.count >= 2 {
                     queue.removeFirst()
                     queueNextEventId = nil
+                    deferredQueueNextAt = nil
                     let head = queue[0]
                     let resolvedHeadUrl = await songFileCache.localFile(for: head)
                         ?? URL(string: head.gaplessUrl)
@@ -616,15 +624,17 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
                             // Telemetry driven from syncQueueHeadFromMpv when mpv fires .fileStarted.
                             if queue.count >= 2 {
                                 let next = queue[1]
-                                let nextUrl = await songFileCache.localFile(for: next)
-                                    ?? URL(string: next.gaplessUrl)
-                                if let nextUrl, queue.count >= 2, queue[1].eventId == next.eventId {
+                                if let nextUrl = songFileCache.cachedFile(for: next) {
                                     do {
                                         try await engine.queueNext(url: nextUrl, startSeconds: nil)
                                         queueNextEventId = next.eventId
                                     } catch {
-                                        logger.warn("fileEnded recovery: queueNext failed: \(error)")
+                                        logger.warn("recovery: queueNext failed event=\(next.eventId): \(error)")
                                     }
+                                } else {
+                                    logger.debug("recovery: deferring queueNext (not cached) event=\(next.eventId)")
+                                    deferredQueueNextAt = clock()
+                                    emitState(.loading)
                                 }
                             }
                             if queue.count < 3 { kickRefetch() }
@@ -670,6 +680,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         logger.error("engine fileEnded with error code \(code)")
         try? await engine.clearPlaylist()
         queueNextEventId = nil
+        deferredQueueNextAt = nil
         downloaderTask?.cancel()
         downloaderTask = nil
         await songFileCache.cancelInFlightDownloads()
@@ -743,6 +754,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         }
         currentPositionSeconds = 0
         queueNextEventId = nil
+        deferredQueueNextAt = nil
         emitNowPlaying(forSongAt: 0)
         // Telemetry driven from syncQueueHeadFromMpv when mpv fires .fileStarted.
         if queue.count >= 2 {
@@ -837,6 +849,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             // until we re-queue. Clear before the await so a concurrent skip
             // sees the right state.
             queueNextEventId = nil
+            deferredQueueNextAt = nil
             if queue.count >= 2 {
                 let next = queue[1]
                 let nextUrl = await songFileCache.localFile(for: next)
@@ -926,14 +939,36 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         downloaderTask?.cancel()
         let snapshot = queue
         let cache = songFileCache
-        downloaderTask = Task {
+        downloaderTask = Task { [weak self] in
             // Cap at 2 ahead: queue[1] (typically already on disk from play()'s sync resolve,
             // fast-deduped via fs-exists) and queue[2] (the actual prefetch target).
             // Anything further is downloaded later as the queue head advances and this kicks again.
             for song in snapshot.dropFirst().prefix(2) {
                 if Task.isCancelled { return }
                 _ = await cache.localFile(for: song)
+                if Task.isCancelled { return }
+                await self?.tryQueueNextIfPending(landed: song)
             }
+        }
+    }
+
+    private func tryQueueNextIfPending(landed: GaplessSong) async {
+        guard queue.count >= 2 else { return }
+        let next = queue[1]
+        guard next.eventId == landed.eventId else { return }
+        guard queueNextEventId != next.eventId else { return }
+        guard let url = songFileCache.cachedFile(for: next) else { return }
+        do {
+            try await engine.queueNext(url: url, startSeconds: nil)
+            queueNextEventId = next.eventId
+            let elapsedMs = deferredQueueNextAt.map { Int(clock().timeIntervalSince($0) * 1000) } ?? 0
+            logger.debug("recovery: deferred queueNext fired event=\(next.eventId) elapsedSinceDeferMs=\(elapsedMs)")
+            deferredQueueNextAt = nil
+            if currentState == .loading {
+                emitState(.playing)
+            }
+        } catch {
+            logger.warn("recovery: deferred queueNext failed event=\(next.eventId): \(error)")
         }
     }
 
