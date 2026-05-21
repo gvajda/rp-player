@@ -45,8 +45,9 @@ final class SettingsViewModel: ObservableObject {
     @Published public private(set) var availablePresets: [String] = []
     @Published public private(set) var parsedEqPreset: EqPreset?
     @Published public private(set) var crossfeedEnabled: Bool = false
-    @Published public private(set) var crossfeedStrength: Double = 0.15
-    @Published public private(set) var crossfeedRange: Double = 0.67
+    @Published public private(set) var crossfeedProfile: CrossfeedProfile = .cmoy
+    @Published public private(set) var crossfeedFcut: Int = 700
+    @Published public private(set) var crossfeedFeedDb: Double = 6.0
 
     public enum ImportOutcome: Equatable, Sendable {
         case imported(name: String)
@@ -157,8 +158,9 @@ final class SettingsViewModel: ObservableObject {
                         Task { [weak self] in await self?.reloadParsedPreset() }
                     }
                     self.crossfeedEnabled = profile?.crossfeedEnabled ?? false
-                    self.crossfeedStrength = profile?.crossfeedStrength ?? 0.15
-                    self.crossfeedRange = profile?.crossfeedRange ?? 0.67
+                    self.crossfeedProfile = profile?.crossfeedProfile ?? .cmoy
+                    self.crossfeedFcut = profile?.crossfeedFcut ?? 700
+                    self.crossfeedFeedDb = profile?.crossfeedFeedDb ?? 6.0
                 }
             }
         }
@@ -385,24 +387,36 @@ final class SettingsViewModel: ObservableObject {
         }
     }
 
-    public func setCrossfeedStrength(_ value: Double) async {
-        let clamped = min(1.0, max(0.0, value))
-        logger?.debug("setCrossfeedStrength value=\(clamped)")
+    public func setCrossfeedProfile(_ value: CrossfeedProfile) async {
+        logger?.debug("setCrossfeedProfile value=\(value.rawValue)")
         await update { s in
             guard let uid = s.outputDeviceUID else { return }
             var p = s.audioProfiles[uid] ?? .safeDefault
-            p.crossfeedStrength = clamped
+            p.crossfeedProfile = value
             s.audioProfiles[uid] = p
         }
     }
 
-    public func setCrossfeedRange(_ value: Double) async {
-        let clamped = min(1.0, max(0.0, value))
-        logger?.debug("setCrossfeedRange value=\(clamped)")
+    public func setCrossfeedFcut(_ value: Int) async {
+        let clamped = min(CrossfeedFilterBuilder.fcutRange.upperBound,
+                          max(CrossfeedFilterBuilder.fcutRange.lowerBound, value))
+        logger?.debug("setCrossfeedFcut value=\(clamped)")
         await update { s in
             guard let uid = s.outputDeviceUID else { return }
             var p = s.audioProfiles[uid] ?? .safeDefault
-            p.crossfeedRange = clamped
+            p.crossfeedFcut = clamped
+            s.audioProfiles[uid] = p
+        }
+    }
+
+    public func setCrossfeedFeedDb(_ value: Double) async {
+        let clamped = min(CrossfeedFilterBuilder.feedDbRange.upperBound,
+                          max(CrossfeedFilterBuilder.feedDbRange.lowerBound, value))
+        logger?.debug("setCrossfeedFeedDb value=\(clamped)")
+        await update { s in
+            guard let uid = s.outputDeviceUID else { return }
+            var p = s.audioProfiles[uid] ?? .safeDefault
+            p.crossfeedFeedDb = clamped
             s.audioProfiles[uid] = p
         }
     }

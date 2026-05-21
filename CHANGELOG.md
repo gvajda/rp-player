@@ -10,6 +10,19 @@ Section labels: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`
 
 - Preserve output device selection + hog mode + Force Max Volume when the active device disconnects while hog mode is on; auto-re-acquire hog (and re-pin Force Max volume) when the same device reappears. Playback stays stopped — user clicks play to resume. Settings picker shows the held device as "DeviceName (disconnected)" while it's absent.
 
+### Changed
+
+- Crossfeed now uses the FFmpeg `bs2b` filter (Bauer stereo-to-binaural) with proper ITD (inter-aural time difference) modeling. Profiles: **Default** (fcut 700 Hz, feed 4.5 dB), **Chu Moy** (700 Hz, 6.0 dB), **Jan Meier** (650 Hz, 9.5 dB), or **Custom** (fcut 300–2000 Hz, feed 1.0–15.0 dB). Replaces the previous `crossfeed` filter which lacked group-delay modeling and sounded notably worse than hardware-DAC implementations.
+- Vendored libmpv rebuilt from `gvajda/libmpv-darwin-build` fork with `--enable-libbs2b`. Adds `Vendor/libmpv/lib/libbs2b.dylib` (~50 KB, MIT) alongside existing dylibs. API version (`MPV_MAKE_VERSION(2, 1)` = 131073) unchanged.
+
+### Removed
+
+- `AudioProfile.crossfeedStrength` and `AudioProfile.crossfeedRange` (legacy `crossfeed` filter parameters). Old profiles migrate to Chu Moy defaults (`crossfeedProfile = .cmoy`, fcut 700 Hz, feed 6.0 dB) on first decode.
+
+### Fixed
+
+- Cold-start audio filter chain failure (`AVFilterGraph: No such filter: 'volume' / 'bs2b'` errors at song start when EQ or crossfeed was enabled). The vendored `libmpv.dylib` and `libfftools-ffi.dylib` from the fork build shipped with poisoned `LC_RPATH` entries pointing at a stale nix-store path for the audio-default FFmpeg variant (no bs2b, only equalizer filter). When the host binary's own `@rpath` failed to resolve, dyld fell through to the baked-in nix-store rpath and silently loaded the wrong `libavfilter.dylib`. Fix: rewrote every `@rpath/lib<sibling>.dylib` reference across all 16 `Vendor/libmpv/lib/*.dylib` to `@loader_path/lib<sibling>.dylib` and re-signed each dylib ad-hoc. Sibling-dylib resolution now bypasses rpath search entirely.
+
 ## [v0.7.2] - 2026-05-17
 
 ### Changed

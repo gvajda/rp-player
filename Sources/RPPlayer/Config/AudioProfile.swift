@@ -8,8 +8,9 @@ public struct AudioProfile: Equatable, Sendable {
     public var eqEnabled: Bool
     public var eqPresetName: String?
     public var crossfeedEnabled: Bool
-    public var crossfeedStrength: Double
-    public var crossfeedRange: Double
+    public var crossfeedProfile: CrossfeedProfile
+    public var crossfeedFcut: Int
+    public var crossfeedFeedDb: Double
 
     public init(
         hogModeEnabled: Bool,
@@ -19,8 +20,9 @@ public struct AudioProfile: Equatable, Sendable {
         eqEnabled: Bool = false,
         eqPresetName: String? = nil,
         crossfeedEnabled: Bool = false,
-        crossfeedStrength: Double = 0.15,
-        crossfeedRange: Double = 0.67
+        crossfeedProfile: CrossfeedProfile = .cmoy,
+        crossfeedFcut: Int = 700,
+        crossfeedFeedDb: Double = 6.0
     ) {
         self.hogModeEnabled = hogModeEnabled
         self.releaseHogOnPauseEnabled = releaseHogOnPauseEnabled
@@ -29,20 +31,16 @@ public struct AudioProfile: Equatable, Sendable {
         self.eqEnabled = eqEnabled
         self.eqPresetName = eqPresetName
         self.crossfeedEnabled = crossfeedEnabled
-        self.crossfeedStrength = crossfeedStrength
-        self.crossfeedRange = crossfeedRange
+        self.crossfeedProfile = crossfeedProfile
+        self.crossfeedFcut = crossfeedFcut
+        self.crossfeedFeedDb = crossfeedFeedDb
     }
 
     public static let safeDefault = AudioProfile(
         hogModeEnabled: false,
         releaseHogOnPauseEnabled: false,
         volumeMode: .none,
-        bitrate: 3,
-        eqEnabled: false,
-        eqPresetName: nil,
-        crossfeedEnabled: false,
-        crossfeedStrength: 0.15,
-        crossfeedRange: 0.67
+        bitrate: 3
     )
 }
 
@@ -55,11 +53,14 @@ extension AudioProfile: Codable {
         case eqEnabled
         case eqPresetName
         case crossfeedEnabled
-        case crossfeedStrength
-        case crossfeedRange
+        case crossfeedProfile
+        case crossfeedFcut
+        case crossfeedFeedDb
         // Legacy keys for migration only — never encoded.
         case forceMaxVolumeEnabled
         case applyReplayGainEnabled
+        case crossfeedStrength
+        case crossfeedRange
     }
 
     public init(from decoder: Decoder) throws {
@@ -77,8 +78,9 @@ extension AudioProfile: Codable {
         self.eqEnabled = try c.decodeIfPresent(Bool.self, forKey: .eqEnabled) ?? false
         self.eqPresetName = try c.decodeIfPresent(String.self, forKey: .eqPresetName)
         self.crossfeedEnabled = try c.decodeIfPresent(Bool.self, forKey: .crossfeedEnabled) ?? false
-        self.crossfeedStrength = try c.decodeIfPresent(Double.self, forKey: .crossfeedStrength) ?? 0.15
-        self.crossfeedRange = try c.decodeIfPresent(Double.self, forKey: .crossfeedRange) ?? 0.67
+        self.crossfeedProfile = try c.decodeIfPresent(CrossfeedProfile.self, forKey: .crossfeedProfile) ?? .cmoy
+        self.crossfeedFcut = try c.decodeIfPresent(Int.self, forKey: .crossfeedFcut) ?? 700
+        self.crossfeedFeedDb = try c.decodeIfPresent(Double.self, forKey: .crossfeedFeedDb) ?? 6.0
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -90,7 +92,8 @@ extension AudioProfile: Codable {
         try c.encode(eqEnabled, forKey: .eqEnabled)
         try c.encodeIfPresent(eqPresetName, forKey: .eqPresetName)
         try c.encode(crossfeedEnabled, forKey: .crossfeedEnabled)
-        try c.encode(crossfeedStrength, forKey: .crossfeedStrength)
-        try c.encode(crossfeedRange, forKey: .crossfeedRange)
+        try c.encode(crossfeedProfile, forKey: .crossfeedProfile)
+        try c.encode(crossfeedFcut, forKey: .crossfeedFcut)
+        try c.encode(crossfeedFeedDb, forKey: .crossfeedFeedDb)
     }
 }

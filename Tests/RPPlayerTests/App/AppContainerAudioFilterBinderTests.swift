@@ -45,7 +45,6 @@ final class AppContainerAudioFilterBinderTests: XCTestCase {
         }
         defer { binderTask.cancel() }
 
-        // Initial state has eqEnabled=false → expect a setAudioFilterChain(nil) within a short window.
         try await waitUntil({
             let calls = await engine.recordedCalls()
             return calls.contains { call in
@@ -54,10 +53,7 @@ final class AppContainerAudioFilterBinderTests: XCTestCase {
             }
         }, timeout: 1.0)
 
-        // Toggle EQ on.
-        try await configStore.update {
-            $0.audioProfiles["dev-A"]?.eqEnabled = true
-        }
+        try await configStore.update { $0.audioProfiles["dev-A"]?.eqEnabled = true }
         try await waitUntil({
             let calls = await engine.recordedCalls()
             return calls.contains { call in
@@ -66,11 +62,7 @@ final class AppContainerAudioFilterBinderTests: XCTestCase {
             }
         }, timeout: 1.0)
 
-        // Toggle EQ off.
-        try await configStore.update {
-            $0.audioProfiles["dev-A"]?.eqEnabled = false
-        }
-        // After turning EQ off there must be at least 2 nil-chain records (initial + post-toggle).
+        try await configStore.update { $0.audioProfiles["dev-A"]?.eqEnabled = false }
         try await waitUntil({
             let calls = await engine.recordedCalls()
             let nils = calls.filter { call in
@@ -83,7 +75,6 @@ final class AppContainerAudioFilterBinderTests: XCTestCase {
 
     func testMissingPresetFileClearsChain() async throws {
         let eqStore = LiveEqPresetStore(directory: tmpDir)
-        // Profile says eqEnabled=true + eqPresetName="ghost" but file does not exist on disk.
         let initialProfile = AudioProfile(
             hogModeEnabled: false, releaseHogOnPauseEnabled: false,
             volumeMode: .none, bitrate: 3,
@@ -114,15 +105,16 @@ final class AppContainerAudioFilterBinderTests: XCTestCase {
         }, timeout: 1.0)
     }
 
-    func testCrossfeedOnlyEmitsCrossfeedChain() async throws {
+    func testCrossfeedNamedProfileEmitsBs2bChain() async throws {
         let eqStore = LiveEqPresetStore(directory: tmpDir)
         let initialProfile = AudioProfile(
             hogModeEnabled: false, releaseHogOnPauseEnabled: false,
             volumeMode: .none, bitrate: 3,
             eqEnabled: false, eqPresetName: nil,
             crossfeedEnabled: true,
-            crossfeedStrength: 0.35,
-            crossfeedRange: 0.55
+            crossfeedProfile: .cmoy,
+            crossfeedFcut: 700,
+            crossfeedFeedDb: 6.0
         )
         var initialSettings = AppSettings.default
         initialSettings.outputDeviceUID = "dev-A"
@@ -144,27 +136,23 @@ final class AppContainerAudioFilterBinderTests: XCTestCase {
             let calls = await engine.recordedCalls()
             return calls.contains { call in
                 if case .setAudioFilterChain(let chain) = call {
-                    return chain == "lavfi=[crossfeed=strength=0.35:range=0.55]"
+                    return chain == "lavfi=[bs2b=profile=cmoy]"
                 }
                 return false
             }
         }, timeout: 1.0)
     }
 
-    func testEqAndCrossfeedEmitCombinedChainInOrder() async throws {
+    func testCrossfeedCustomProfileEmitsFcutAndFeed() async throws {
         let eqStore = LiveEqPresetStore(directory: tmpDir)
-        try await eqStore.save(
-            name: "combo-preset",
-            text: "Filter 1: ON PK Fc 1000 Hz Gain 2 dB Q 1.0\n",
-            overwrite: false
-        )
         let initialProfile = AudioProfile(
             hogModeEnabled: false, releaseHogOnPauseEnabled: false,
             volumeMode: .none, bitrate: 3,
-            eqEnabled: true, eqPresetName: "combo-preset",
+            eqEnabled: false, eqPresetName: nil,
             crossfeedEnabled: true,
-            crossfeedStrength: 0.4,
-            crossfeedRange: 0.5
+            crossfeedProfile: .custom,
+            crossfeedFcut: 850,
+            crossfeedFeedDb: 7.5
         )
         var initialSettings = AppSettings.default
         initialSettings.outputDeviceUID = "dev-A"
@@ -184,8 +172,51 @@ final class AppContainerAudioFilterBinderTests: XCTestCase {
 
         try await waitUntil({
             let calls = await engine.recordedCalls()
-            // Expected order: preamp (volume) → EQ band → crossfeed.
-            let expected = "lavfi=[volume=volume=0dB,equalizer=f=1000:t=q:w=1:g=2,crossfeed=strength=0.4:range=0.5]"
+            return calls.contains { call in
+                if case .setAudioFilterChain(let chain) = call {
+                    return chain == "lavfi=[bs2b=fcut=850:feed=75]"
+                }
+                return false
+            }
+        }, timeout: 1.0)
+    }
+
+    func testEqAndCrossfeedEmitCombinedChainInOrder() async throws {
+        let eqStore = LiveEqPresetStore(directory: tmpDir)
+        try await eqStore.save(
+            name: "combo-preset",
+            text: "Filter 1: ON PK Fc 1000 Hz Gain 2 dB Q 1.0\n",
+            overwrite: false
+        )
+        let initialProfile = AudioProfile(
+            hogModeEnabled: false, releaseHogOnPauseEnabled: false,
+            volumeMode: .none, bitrate: 3,
+            eqEnabled: true, eqPresetName: "combo-preset",
+            crossfeedEnabled: true,
+            crossfeedProfile: .jmeier,
+            crossfeedFcut: 650,
+            crossfeedFeedDb: 9.5
+        )
+        var initialSettings = AppSettings.default
+        initialSettings.outputDeviceUID = "dev-A"
+        initialSettings.audioProfiles["dev-A"] = initialProfile
+        let configStore = StubConfigStore(initial: initialSettings)
+        let engine = MockPlayerEngine()
+
+        let binderTask = Task {
+            await AppContainer.runAudioFilterBinder(
+                store: configStore,
+                engine: engine,
+                eqPresetStore: eqStore,
+                initialProfile: initialProfile
+            )
+        }
+        defer { binderTask.cancel() }
+
+        try await waitUntil({
+            let calls = await engine.recordedCalls()
+            // Expected order: preamp (volume) → EQ band → bs2b.
+            let expected = "lavfi=[volume=volume=0dB,equalizer=f=1000:t=q:w=1:g=2,bs2b=profile=jmeier]"
             return calls.contains { call in
                 if case .setAudioFilterChain(let chain) = call { return chain == expected }
                 return false
@@ -199,9 +230,7 @@ final class AppContainerAudioFilterBinderTests: XCTestCase {
             hogModeEnabled: false, releaseHogOnPauseEnabled: false,
             volumeMode: .none, bitrate: 3,
             eqEnabled: false, eqPresetName: nil,
-            crossfeedEnabled: false,
-            crossfeedStrength: 0.2,
-            crossfeedRange: 0.5
+            crossfeedEnabled: false
         )
         var initialSettings = AppSettings.default
         initialSettings.outputDeviceUID = "dev-A"
@@ -228,15 +257,16 @@ final class AppContainerAudioFilterBinderTests: XCTestCase {
         }, timeout: 1.0)
     }
 
-    func testStrengthChangeRewritesChain() async throws {
+    func testCrossfeedProfileChangeRewritesChain() async throws {
         let eqStore = LiveEqPresetStore(directory: tmpDir)
         let initialProfile = AudioProfile(
             hogModeEnabled: false, releaseHogOnPauseEnabled: false,
             volumeMode: .none, bitrate: 3,
             eqEnabled: false, eqPresetName: nil,
             crossfeedEnabled: true,
-            crossfeedStrength: 0.2,
-            crossfeedRange: 0.5
+            crossfeedProfile: .cmoy,
+            crossfeedFcut: 700,
+            crossfeedFeedDb: 6.0
         )
         var initialSettings = AppSettings.default
         initialSettings.outputDeviceUID = "dev-A"
@@ -258,21 +288,21 @@ final class AppContainerAudioFilterBinderTests: XCTestCase {
             let calls = await engine.recordedCalls()
             return calls.contains { call in
                 if case .setAudioFilterChain(let chain) = call {
-                    return chain == "lavfi=[crossfeed=strength=0.2:range=0.5]"
+                    return chain == "lavfi=[bs2b=profile=cmoy]"
                 }
                 return false
             }
         }, timeout: 1.0)
 
         try await configStore.update {
-            $0.audioProfiles["dev-A"]?.crossfeedStrength = 0.6
+            $0.audioProfiles["dev-A"]?.crossfeedProfile = .jmeier
         }
 
         try await waitUntil({
             let calls = await engine.recordedCalls()
             return calls.contains { call in
                 if case .setAudioFilterChain(let chain) = call {
-                    return chain == "lavfi=[crossfeed=strength=0.6:range=0.5]"
+                    return chain == "lavfi=[bs2b=profile=jmeier]"
                 }
                 return false
             }
