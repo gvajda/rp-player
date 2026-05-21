@@ -160,6 +160,7 @@ extension AppContainer {
         let api = LiveRpApiClient(cookieProvider: keychainAuth, playerId: playerId, logger: logger)
 
         let eqPresetStore: any EqPresetStore = LiveEqPresetStore(directory: ConfigPaths.eqPresetsDirectory, logger: eqLogger)
+        let eqEditingOverride = EqEditingOverride()
 
         let imageBaseURL = URL(string: "https://img.radioparadise.com/")!
         let cache: any AlbumArtCache
@@ -332,12 +333,12 @@ extension AppContainer {
                     }
                 }
             }
-            Task { [engine, eqPresetStore, store] in
+            Task { [engine, eqPresetStore, eqEditingOverride, store] in
                 await AppContainer.runAudioFilterBinder(
                     store: store,
                     engine: engine,
                     eqPresetStore: eqPresetStore,
-                    override: EqEditingOverride(),
+                    override: eqEditingOverride,
                     initialProfile: startupProfile
                 )
             }
@@ -463,6 +464,7 @@ extension AppContainer {
             listChannels: { [api] in try await api.listChannels() },
             updateChecker: updateChecker,
             eqPresetStore: eqPresetStore,
+            eqEditingOverride: eqEditingOverride,
             logger: eqLogger
         )
 
