@@ -1532,8 +1532,12 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         }, timeout: 3.0)
         XCTAssertTrue(playedC, "second recovery should play C once its download lands")
 
-        // Give any racing downloader hooks a beat to attempt a stale queueNext.
-        try await Task.sleep(nanoseconds: 200_000_000)
+        // Recovery must lift coordinator state out of .loading once playback resumes.
+        // This also gives any racing downloader hooks a beat to attempt a stale queueNext.
+        let liftedToPlaying = try await waitUntil({
+            await coord.currentPlaybackState == .playing
+        }, timeout: 1.0)
+        XCTAssertTrue(liftedToPlaying, "cascade recovery must lift state from .loading to .playing")
 
         let finalCalls = await engine.recordedCalls()
         let playCCount = finalCalls.filter { $0 == .play(url: cUrl, startSeconds: nil) }.count
@@ -1543,18 +1547,12 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         XCTAssertLessThanOrEqual(queueNextCCount, 1,
                                  "queueNext(C) must not duplicate; calls=\(finalCalls)")
 
-        // Finding (cascade gap not fixed by Task 2): when the second EOF arrives
-        // while the first recovery's queueNext is deferred, the second recovery
-        // clears `deferredQueueNextAt` and then queue collapses to [C]. The
-        // post-download hook's `queue.count >= 2` guard fails, so the .loading→.playing
-        // lift never fires. C does play, but the UI stays on the loading spinner.
-        // The engine-level cascade protection (no duplicate play/queueNext) holds,
-        // which is what this regression test guarantees. State-lift hardening is
-        // tracked as follow-up (e.g. emit .playing from the recovery branch after
-        // engine.play succeeds when the prior state was .loading).
         let finalState = await coord.currentPlaybackState
-        XCTAssertNotEqual(finalState, .stopped,
-                          "coordinator must not collapse to .stopped after the cascade")
+        XCTAssertEqual(finalState, .playing,
+                       "coordinator must reach .playing after cascade recovery completes")
+        let observedPlaying = await statesBox.contains(.playing)
+        XCTAssertTrue(observedPlaying,
+                      "state stream must observe .playing after cascade recovery")
 
         stateCollector.cancel()
     }

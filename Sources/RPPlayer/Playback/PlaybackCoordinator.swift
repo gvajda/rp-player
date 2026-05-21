@@ -639,6 +639,9 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
                             }
                             if queue.count < 3 { kickRefetch() }
                             kickSequentialDownload()
+                            if currentState == .loading && deferredQueueNextAt == nil {
+                                emitState(.playing)
+                            }
                             return
                         } catch {
                             await handlePlaybackError(code: -99)
