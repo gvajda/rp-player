@@ -114,8 +114,10 @@ The app installs a status item in the menu bar (no Dock icon, no main window). C
 - **Parametric EQ** (per device):
   - Import AutoEQ / Equalizer APO / REW `.txt` presets (peaking + low-shelf + high-shelf bands, up to 10, plus a Preamp). Strict parser — files with unsupported filter types or malformed lines are rejected.
   - Library is global; multiple devices can share a preset. Built-in import / export / delete; deleting a preset clears every device reference.
-  - Inline "show parsed values" view (eye icon) lists preamp + every band (type, frequency, Q, gain) so you can verify the imported curve at a glance.
+  - **Preset editor.** Open any preset in an inline edit panel (grid: Type / Frequency / Gain / Q + trash icon per row, plus Add band). Filter type dropdown covers Peak / Low Shelf / High Shelf and a Bypass option that round-trips as `OFF` in the on-disk `.txt`. Save updates the current preset; Save As writes a copy; Rename retargets every device that references the old name. Edits stream live to the audio filter chain while the panel is open — the disk file stays untouched until you click Save.
   - Applied via libmpv `af` chain (`volume` + `equalizer` + `lowshelf` + `highshelf`). Composes with hog mode, ReplayGain, and Crossfeed; bit-perfect path is preserved when EQ is off.
+
+<!-- screenshot: eq editor TBD -->
 
 - **Crossfeed** for headphones (per device):
   - True BS2B (Bauer stereo-to-binaural) — proper ITD/group-delay modeling. Choose from named profiles (**Chu Moy** 700 Hz / 6.0 dB, **Jan Meier** 650 Hz / 9.5 dB) or **Custom** (set your own fcut 300–2000 Hz and feed 1.0–15.0 dB; Custom seeds at 700 Hz / 4.5 dB).

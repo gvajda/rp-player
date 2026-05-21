@@ -10,6 +10,8 @@ Section labels: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`
 
 - Preserve output device selection + hog mode + Force Max Volume when the active device disconnects while hog mode is on; auto-re-acquire hog (and re-pin Force Max volume) when the same device reappears. Playback stays stopped — user clicks play to resume. Settings picker shows the held device as "DeviceName (disconnected)" while it's absent.
 - Hover-info tooltips on the **Bitrate** picker and **Hog mode** toggle in Settings (icon styled identically to the Volume/EQ/Crossfeed tooltips). Bitrate explains that the change applies on the next song. Hog mode explains exclusive device ownership, the automatic 44.1 kHz sample-rate lock, and the side-effect that other apps lose audio output until RP Player pauses or quits.
+- **EQ preset editor** — per-preset edit panel in Settings → Equalizer lets you create, edit, rename, and save presets without leaving the app. Grid layout with one row per band (Type / Frequency / Gain / Q + trash icon) plus an Add band button (capped at 10 bands). Filter-type dropdown covers Bypass / Peak / Low Shelf / High Shelf. Save updates the current preset; Save As writes a copy under a new name; Rename updates every `AudioProfile.eqPresetName` reference atomically.
+- **Live audio preview while editing.** Edits route through an in-memory `EqEditingOverride` channel so the lavfi chain reflects your in-flight draft in real time; the on-disk preset file stays untouched until you click Save or Save As. Preview survives across re-entry to the editor and is cleared on dismiss.
 
 ### Changed
 
@@ -17,11 +19,14 @@ Section labels: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`
 - Vendored libmpv rebuilt from `gvajda/libmpv-darwin-build` fork with `--enable-libbs2b`. Adds `Vendor/libmpv/lib/libbs2b.dylib` (~50 KB, MIT) alongside existing dylibs. API version (`MPV_MAKE_VERSION(2, 1)` = 131073) unchanged.
 - Crossfeed Custom-mode fcut/feed input row is now right-aligned in the device settings section. The row's right edge sits at the Custom button's right edge in the row above (full-width `HStack` with leading `Spacer(minLength: 0)` and an `opacity(0)` toggle anchor reserving the trailing column). `ClampedNumericField` widened from 56×18 to 72×22 with explicit 12 pt font so wider values like `1650` or `12.00` render inside the bezel instead of overflowing below it. The fcut field now renders without decimals (`decimals: 0`) since Hz is an integer-valued setting.
 - Crossfeed tooltip rewritten — drops the bs2b/Qudelix-5K hardware reference, lists only the three remaining profiles, and notes that Custom seeds at 700 Hz / 4.5 dB (the bs2b library's named-default values).
+- EQ parser and writer now round-trip `OFF` filter rows verbatim. Previously the parser silently skipped them on load and the writer renumbered remaining bands; OFF rows are now preserved as `EqBand.enabled = false` so they survive an edit-save cycle. Writer emits `Filter N: ON|OFF …` with sequential N over all bands (enabled + disabled).
+- EQ preset filenames are now capped at **30 characters** (was 255). The UI label length is the binding constraint; import filenames longer than the cap are truncated on first save with no warning.
 
 ### Removed
 
 - `AudioProfile.crossfeedStrength` and `AudioProfile.crossfeedRange` (legacy `crossfeed` filter parameters). Old profiles migrate to Chu Moy defaults (`crossfeedProfile = .cmoy`, fcut 700 Hz, feed 6.0 dB) on first decode.
 - **Default** crossfeed profile button (rendered fine but cluttered the row at four buttons). Custom now seeds with 700 Hz / 4.5 dB when entered from any other profile, so the prior Default-button starting point is one click away (Custom). The `CrossfeedProfile.bs2bDefault` enum case is gone; profiles previously stored as `"default"` on disk migrate to `.custom` with fcut 700 Hz / feed 4.5 dB seeded.
+- Read-only EQ preset details view (eye icon next to the preset picker). Replaced by the editable panel — preset details are now always editable when the panel is open.
 
 ### Fixed
 
