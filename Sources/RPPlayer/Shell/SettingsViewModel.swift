@@ -44,6 +44,10 @@ final class SettingsViewModel: ObservableObject {
     @Published public private(set) var eqPresetName: String?
     @Published public private(set) var availablePresets: [String] = []
     @Published public private(set) var parsedEqPreset: EqPreset?
+    @Published public private(set) var editingPreset: EqPreset?
+    @Published public private(set) var editingOriginalName: String?
+    @Published public private(set) var editingDirty: Bool = false
+    public var editingIsNew: Bool { editingOriginalName == nil }
     @Published public private(set) var crossfeedEnabled: Bool = false
     @Published public private(set) var crossfeedProfile: CrossfeedProfile = .cmoy
     @Published public private(set) var crossfeedFcut: Int = 700
@@ -77,6 +81,9 @@ final class SettingsViewModel: ObservableObject {
     private var deviceTask: Task<Void, Never>?
     private var updateStateTask: Task<Void, Never>?
     private var presetsRefreshTask: Task<Void, Never>?
+    private let eqEditingOverride: EqEditingOverride
+    private var editingPushTask: Task<Void, Never>?
+    private static let editingDebounceNs: UInt64 = 100_000_000
 
     init(
         configStore: any ConfigStore,
@@ -88,6 +95,7 @@ final class SettingsViewModel: ObservableObject {
         updateChecker: any UpdateChecking = NoopUpdateChecker(),
         currentVersionString: String = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "dev",
         eqPresetStore: any EqPresetStore = NoopEqPresetStore(),
+        eqEditingOverride: EqEditingOverride = EqEditingOverride(),
         logger: (any Logging)? = nil
     ) {
         self.configStore = configStore
@@ -99,6 +107,7 @@ final class SettingsViewModel: ObservableObject {
         self.updateChecker = updateChecker
         self.currentVersionString = currentVersionString
         self.eqPresetStore = eqPresetStore
+        self.eqEditingOverride = eqEditingOverride
         self.logger = logger
 
         let snapshot = AppSettings.default
@@ -467,7 +476,7 @@ final class SettingsViewModel: ObservableObject {
             logger?.error("importPresetFile read failed: \(error)")
             throw EqImportError.ioFailure("\(error)")
         }
-        let name = url.deletingPathExtension().lastPathComponent
+        let name = String(url.deletingPathExtension().lastPathComponent.prefix(30))
         switch EqPresetParser.parse(text: raw, filename: name) {
         case .failure(.warningsNotPermitted(let reasons)):
             logger?.warn("importPresetFile rejected reason=warningsNotPermitted reasons=\(reasons.joined(separator: " | "))")
@@ -520,6 +529,162 @@ final class SettingsViewModel: ObservableObject {
 
     private func update(_ mutate: @Sendable (inout AppSettings) -> Void) async {
         try? await configStore.update(mutate)
+    }
+
+    private func pushOverrideDebounced() {
+        editingPushTask?.cancel()
+        let preset = editingPreset
+        editingPushTask = Task { [weak self, override = eqEditingOverride] in
+            try? await Task.sleep(nanoseconds: Self.editingDebounceNs)
+            if Task.isCancelled { return }
+            await override.set(preset)
+            _ = self
+        }
+    }
+
+    private func defaultEditingBand() -> EqBand {
+        EqBand(enabled: true, type: .peak, fcHz: 1000, gainDb: 0, q: 1.0)
+    }
+
+    public func beginEditCurrent() async {
+        logger?.debug("beginEditCurrent")
+        guard let preset = parsedEqPreset, let name = eqPresetName else { return }
+        await MainActor.run {
+            self.editingPreset = preset
+            self.editingOriginalName = name
+            self.editingDirty = false
+        }
+        await eqEditingOverride.set(preset)
+    }
+
+    public func beginNewPreset() async {
+        logger?.debug("beginNewPreset")
+        let empty = EqPreset(name: nil, preampDb: 0, bands: [])
+        await MainActor.run {
+            self.editingPreset = empty
+            self.editingOriginalName = nil
+            self.editingDirty = false
+        }
+        await eqEditingOverride.set(empty)
+    }
+
+    public func cancelEdit() async {
+        logger?.debug("cancelEdit")
+        editingPushTask?.cancel()
+        editingPushTask = nil
+        await MainActor.run {
+            self.editingPreset = nil
+            self.editingOriginalName = nil
+            self.editingDirty = false
+        }
+        await eqEditingOverride.set(nil)
+    }
+
+    public func setEditingPreamp(_ db: Double) async {
+        await MainActor.run {
+            guard self.editingPreset != nil else { return }
+            let clamped = min(10.0, max(-30.0, db))
+            self.editingPreset?.preampDb = clamped
+            self.editingDirty = true
+        }
+        pushOverrideDebounced()
+    }
+
+    public func setEditingBand(at index: Int, _ band: EqBand) async {
+        await MainActor.run {
+            guard var preset = self.editingPreset, index >= 0, index < preset.bands.count else { return }
+            let clamped = EqBand(
+                enabled: band.enabled,
+                type: band.type,
+                fcHz: min(20000, max(20, band.fcHz)),
+                gainDb: min(24, max(-24, band.gainDb)),
+                q: min(10.0, max(0.1, band.q))
+            )
+            preset.bands[index] = clamped
+            self.editingPreset = preset
+            self.editingDirty = true
+        }
+        pushOverrideDebounced()
+    }
+
+    public func addEditingBand() async {
+        await MainActor.run {
+            guard var preset = self.editingPreset, preset.bands.count < EqPresetParser.maxBands else { return }
+            preset.bands.append(self.defaultEditingBand())
+            self.editingPreset = preset
+            self.editingDirty = true
+        }
+        pushOverrideDebounced()
+    }
+
+    public func removeEditingBand(at index: Int) async {
+        await MainActor.run {
+            guard var preset = self.editingPreset, index >= 0, index < preset.bands.count else { return }
+            preset.bands.remove(at: index)
+            self.editingPreset = preset
+            self.editingDirty = true
+        }
+        pushOverrideDebounced()
+    }
+
+    public func saveEdit() async throws {
+        guard let preset = editingPreset, let name = editingOriginalName else {
+            return
+        }
+        editingPushTask?.cancel(); editingPushTask = nil
+        let text = EqPresetWriter.write(preset)
+        try await eqPresetStore.save(name: name, text: text, overwrite: true)
+        await eqEditingOverride.set(nil)
+        await refreshPresets()
+        if eqPresetName == name { await reloadParsedPreset() }
+        await MainActor.run {
+            self.editingPreset = nil
+            self.editingOriginalName = nil
+            self.editingDirty = false
+        }
+    }
+
+    public func saveEditAs(name: String) async throws {
+        guard let preset = editingPreset else { return }
+        editingPushTask?.cancel(); editingPushTask = nil
+        let trimmed = String(name.prefix(30))
+        let text = EqPresetWriter.write(preset)
+        try await eqPresetStore.save(name: trimmed, text: text, overwrite: false)
+        await eqEditingOverride.set(nil)
+        await refreshPresets()
+        await setEqPresetName(trimmed)
+        await reloadParsedPreset()
+        await MainActor.run {
+            self.editingPreset = nil
+            self.editingOriginalName = nil
+            self.editingDirty = false
+        }
+    }
+
+    public func renamePreset(from: String, to: String) async throws {
+        let trimmed = String(to.prefix(30))
+        if trimmed == from { return }
+        try await configStore.update { settings in
+            for (uid, var profile) in settings.audioProfiles where profile.eqPresetName == from {
+                profile.eqPresetName = trimmed
+                settings.audioProfiles[uid] = profile
+            }
+        }
+        do {
+            try await eqPresetStore.rename(from: from, to: trimmed)
+        } catch {
+            try? await configStore.update { settings in
+                for (uid, var profile) in settings.audioProfiles where profile.eqPresetName == trimmed {
+                    profile.eqPresetName = from
+                    settings.audioProfiles[uid] = profile
+                }
+            }
+            throw error
+        }
+        await refreshPresets()
+        await MainActor.run {
+            if self.editingOriginalName == from { self.editingOriginalName = trimmed }
+        }
     }
 }
 
