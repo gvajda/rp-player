@@ -15,6 +15,10 @@ Section labels: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`
 
 - `AudioProfile.crossfeedStrength` and `AudioProfile.crossfeedRange` (legacy `crossfeed` filter parameters). Old profiles migrate to Chu Moy defaults (`crossfeedProfile = .cmoy`, fcut 700 Hz, feed 6.0 dB) on first decode.
 
+### Fixed
+
+- Cold-start audio filter chain failure (`AVFilterGraph: No such filter: 'volume' / 'bs2b'` errors at song start when EQ or crossfeed was enabled). The vendored `libmpv.dylib` and `libfftools-ffi.dylib` from the fork build shipped with poisoned `LC_RPATH` entries pointing at a stale nix-store path for the audio-default FFmpeg variant (no bs2b, only equalizer filter). When the host binary's own `@rpath` failed to resolve, dyld fell through to the baked-in nix-store rpath and silently loaded the wrong `libavfilter.dylib`. Fix: rewrote every `@rpath/lib<sibling>.dylib` reference across all 16 `Vendor/libmpv/lib/*.dylib` to `@loader_path/lib<sibling>.dylib` and re-signed each dylib ad-hoc. Sibling-dylib resolution now bypasses rpath search entirely.
+
 ## [v0.7.2] - 2026-05-17
 
 ### Changed
