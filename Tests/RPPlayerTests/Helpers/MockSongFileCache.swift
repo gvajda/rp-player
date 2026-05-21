@@ -20,14 +20,42 @@ actor MockSongFileCache: SongFileCache {
     private(set) var clearCalls: Int = 0
     private(set) var cancelInFlightCalls: Int = 0
     private var downloadedEventIds: Set<Int> = []
+    private var inFlightEventIds: Set<Int> = []
+    private var inFlightWaiters: [Int: [CheckedContinuation<URL?, Never>]] = [:]
+    private var releasedInFlightUrls: [Int: URL] = [:]
 
     func setMode(_ m: Mode) { mode = m }
     func setFailing(_ ids: Set<Int>) { failingEventIds = ids }
     func markDownloaded(_ ids: Set<Int>) { downloadedEventIds.formUnion(ids) }
 
+    /// Marks the given eventIds as "in-flight": `localFile(for:)` will await a
+    /// continuation that the test releases via `releaseInFlight(eventId:url:)`.
+    /// `cachedFile(for:)` continues to follow `cachedFileOverride` (nil by default),
+    /// so callers see a cache miss until release.
+    func setInFlight(_ ids: Set<Int>) { inFlightEventIds = ids }
+
+    /// Resumes any `localFile(for: eventId)` waiters with `url`, and seeds future
+    /// calls with the same URL. The eventId is also removed from the in-flight set.
+    func releaseInFlight(eventId: Int, url: URL) {
+        inFlightEventIds.remove(eventId)
+        releasedInFlightUrls[eventId] = url
+        downloadedEventIds.insert(eventId)
+        let waiters = inFlightWaiters.removeValue(forKey: eventId) ?? []
+        for w in waiters { w.resume(returning: url) }
+    }
+
     func localFile(for song: GaplessSong) async -> URL? {
         localFileCalls.append(song.eventId)
         if failingEventIds.contains(song.eventId) { return nil }
+        if inFlightEventIds.contains(song.eventId) {
+            return await withCheckedContinuation { (cont: CheckedContinuation<URL?, Never>) in
+                inFlightWaiters[song.eventId, default: []].append(cont)
+            }
+        }
+        if let released = releasedInFlightUrls[song.eventId] {
+            downloadedEventIds.insert(song.eventId)
+            return released
+        }
         downloadedEventIds.insert(song.eventId)
         switch mode {
         case .passthrough: return URL(string: song.gaplessUrl)

@@ -1342,4 +1342,105 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         let gaplessCalls = await api.calls.filter { if case .gapless = $0 { return true } else { return false } }.count
         XCTAssertEqual(gaplessCalls, 2, "expected exactly one bootstrap gapless + one long-idle refetch; got \(gaplessCalls)")
     }
+
+    /// PR 40 Task 1 (failing test): the .fileEnded(.eof) recovery branch must
+    /// not block the coordinator actor while queue[1]'s download is in flight.
+    /// Pre-fix behavior: `await songFileCache.localFile(for: next)` parks the
+    /// actor until bytes land, leaving the UI silent (no .loading emit) and
+    /// blocking any concurrent actor work. Post-fix: cache miss should defer
+    /// queueNext, emit .loading, and let a post-download hook fire queueNext.
+    func testEofRecoveryDoesNotBlockWhenNextDownloadInFlight() async throws {
+        let api = MockRpApiClient()
+        let response = makeGaplessResponse(songs: [
+            makeGaplessSong(songId: "A", eventId: 100, gaplessUrl: "https://example.com/A.flac"),
+            makeGaplessSong(songId: "B", eventId: 101, gaplessUrl: "https://example.com/B.flac"),
+            makeGaplessSong(songId: "C", eventId: 102, gaplessUrl: "https://example.com/C.flac"),
+        ])
+        await api.setGaplessResponses([response])
+        let engine = MockPlayerEngine()
+        let cache = MockSongFileCache()
+        let coord = LivePlaybackCoordinator(
+            api: api, engine: engine, songFileCache: cache, logger: silentLogger(), bitrateProvider: { 4 }
+        )
+
+        // Subscribe to state updates BEFORE play so we capture the full sequence.
+        let stateStream = await coord.stateUpdates
+        let statesBox = StateBox()
+        let stateCollector = Task {
+            for await s in stateStream {
+                await statesBox.append(s)
+            }
+        }
+
+        try await coord.play(channelId: 0)
+        // Let bootstrap settle: engine.play(A), engine.queueNext(B).
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        // Drop bootstrap states (.stopped, .loading, .playing) so subsequent
+        // assertions only consider recovery-path emits.
+        await statesBox.reset()
+
+        // Mark C as in-flight AFTER bootstrap (so kickSequentialDownload's
+        // background task for C parks harmlessly off-actor while the recovery
+        // path we're testing also tries to resolve C).
+        await cache.setInFlight([102])
+
+        // Fire .fileEnded(.eof) for A → recovery removes A, plays B, then tries
+        // to queueNext C. Current (buggy) code awaits localFile(for: C) which
+        // blocks the actor here.
+        await engine.fire(.fileEnded(reason: .eof))
+
+        // Poll until engine.play(B) has been recorded (recovery's pre-block step).
+        // 2s budget: well under typical CI test timeout, well over actor scheduling.
+        let bUrl = URL(string: "https://example.com/B.flac")!
+        let cUrl = URL(string: "https://example.com/C.flac")!
+        let playedB = try await waitUntil({
+            let calls = await engine.recordedCalls()
+            return calls.contains(.play(url: bUrl, startSeconds: nil))
+        }, timeout: 2.0)
+        XCTAssertTrue(playedB, "recovery should have called engine.play(B) after EOF on A")
+
+        // queueNext(C) must NOT be called yet — C's download is still in flight.
+        let callsAfterPlay = await engine.recordedCalls()
+        let queuedC = callsAfterPlay.contains(.queueNext(url: cUrl, startSeconds: nil))
+        XCTAssertFalse(queuedC,
+                       "queueNext(C) must be deferred while C's download is in flight; calls=\(callsAfterPlay)")
+
+        // State must have transitioned to .loading: recovery deferred queueNext,
+        // so the UI needs the loading spinner. Pre-fix this assertion fails because
+        // the recovery branch never calls emitState.
+        let sawLoading = try await waitUntil({
+            await statesBox.contains(.loading)
+        }, timeout: 1.0)
+        XCTAssertTrue(sawLoading,
+                      "recovery should emit .loading when next song's download is in flight")
+
+        // Release C's download. Post-fix: a post-download hook fires queueNext(C)
+        // and state returns to .playing. Pre-fix: the parked actor await finally
+        // returns and engine.queueNext(C) is called too, but state never returns
+        // to .loading→.playing cycle (no emit).
+        await cache.releaseInFlight(eventId: 102, url: cUrl)
+
+        let queuedAfterRelease = try await waitUntil({
+            let calls = await engine.recordedCalls()
+            return calls.contains(.queueNext(url: cUrl, startSeconds: nil))
+        }, timeout: 2.0)
+        XCTAssertTrue(queuedAfterRelease,
+                      "engine.queueNext(C) must fire after C's download completes")
+
+        let endedPlaying = try await waitUntil({
+            await coord.currentPlaybackState == .playing
+        }, timeout: 1.0)
+        XCTAssertTrue(endedPlaying,
+                      "coordinator state must return to .playing after deferred queueNext lands")
+
+        stateCollector.cancel()
+    }
+}
+
+private actor StateBox {
+    private(set) var states: [PlaybackState] = []
+    func append(_ s: PlaybackState) { states.append(s) }
+    func contains(_ s: PlaybackState) -> Bool { states.contains(s) }
+    func reset() { states.removeAll() }
 }
