@@ -1678,6 +1678,13 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
                 && calls.contains(.queueNext(url: bUrl, startSeconds: nil))
         }, timeout: 2.0)
 
+        // Initial fileStarted: A is playing. Seeds lastStartedEventId so the next
+        // fileStarted is treated as an advance. engine.currentPath() already returns aUrl
+        // (set by engine.play() inside coord.play). Sleep lets the coordinator actor
+        // process the event before we advance to B.
+        await engine.fire(.fileStarted)
+        try await Task.sleep(nanoseconds: 50_000_000)
+
         await statesBox.reset()
 
         // Simulate B starting (mpv advanced from A → B naturally). syncQueueHeadFromMpv

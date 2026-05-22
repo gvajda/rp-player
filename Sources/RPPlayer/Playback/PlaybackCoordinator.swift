@@ -863,17 +863,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             queueNextEventId = nil
             deferredQueueNextAt = nil
             if queue.count >= 2 {
-                let next = queue[1]
-                let nextUrl = await songFileCache.localFile(for: next)
-                    ?? URL(string: next.gaplessUrl)
-                if let nextUrl, queue.count >= 2, queue[1].eventId == next.eventId {
-                    do {
-                        try await engine.queueNext(url: nextUrl, startSeconds: nil)
-                        queueNextEventId = next.eventId
-                    } catch {
-                        logger.warn("syncQueueHead: queueNext failed: \(error)")
-                    }
-                }
+                _ = await tryQueueNextOrDefer(queue[1])
             }
         }
         kickSequentialDownload()
@@ -962,6 +952,28 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
                 await self?.tryQueueNextIfPending(landed: song)
             }
         }
+    }
+
+    // Resolves queue[1] (or any candidate "next" song) for engine.queueNext using
+    // a synchronous cache probe. Returns true on cache hit + successful queueNext.
+    // Returns false on cache miss (deferred — kickSequentialDownload's post-download
+    // hook tryQueueNextIfPending(landed:) will fire queueNext + lift state once
+    // the download lands) or on queueNext error.
+    private func tryQueueNextOrDefer(_ next: GaplessSong) async -> Bool {
+        if let url = songFileCache.cachedFile(for: next) {
+            do {
+                try await engine.queueNext(url: url, startSeconds: nil)
+                queueNextEventId = next.eventId
+                return true
+            } catch {
+                logger.warn("queueNext failed event=\(next.eventId): \(error)")
+                return false
+            }
+        }
+        logger.debug("deferring queueNext (not cached) event=\(next.eventId)")
+        deferredQueueNextAt = clock()
+        emitState(.loading)
+        return false
     }
 
     private func tryQueueNextIfPending(landed: GaplessSong) async {
