@@ -1988,6 +1988,89 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
 
         stateCollector.cancel()
     }
+
+    // MARK: - nextReady signal
+
+    func testNextReadyStartsFalse() async throws {
+        let api = MockRpApiClient()
+        let engine = MockPlayerEngine()
+        let cache = MockSongFileCache()
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, songFileCache: cache, logger: silentLogger(), bitrateProvider: { 4 }
+        )
+        let value = await coordinator.nextReady
+        XCTAssertFalse(value)
+    }
+
+    func testNextReadyTrueAfterPlayWithCachedQueueOne() async throws {
+        let api = MockRpApiClient()
+        let engine = MockPlayerEngine()
+        let cache = MockSongFileCache()
+        let head = makeGaplessSong(songId: "s0", eventId: 100, gaplessUrl: "https://s.example.com/100.flac")
+        let next = makeGaplessSong(songId: "s1", eventId: 101, gaplessUrl: "https://s.example.com/101.flac")
+        await cache.markDownloaded([head, next])
+        await api.setGaplessResponse(makeGaplessResponse(songs: [head, next]))
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, songFileCache: cache, logger: silentLogger(), bitrateProvider: { 4 }
+        )
+        try await coordinator.play(channelId: 0)
+        try await Task.sleep(nanoseconds: 100_000_000)
+        let value = await coordinator.nextReady
+        XCTAssertTrue(value, "nextReady should be true once queue[1] is queueNext'd in mpv")
+    }
+
+    func testNextReadyFalseWhenQueueOneDeferred() async throws {
+        let api = MockRpApiClient()
+        let engine = MockPlayerEngine()
+        let cache = MockSongFileCache() // empty cache → queue[1] defers
+        let head = makeGaplessSong(songId: "s0", eventId: 100, gaplessUrl: "https://s.example.com/100.flac")
+        let next = makeGaplessSong(songId: "s1", eventId: 101, gaplessUrl: "https://s.example.com/101.flac")
+        await cache.markDownloaded([head]) // only head cached; next defers
+        await api.setGaplessResponse(makeGaplessResponse(songs: [head, next]))
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, songFileCache: cache, logger: silentLogger(), bitrateProvider: { 4 }
+        )
+        try await coordinator.play(channelId: 0)
+        try await Task.sleep(nanoseconds: 100_000_000)
+        let value = await coordinator.nextReady
+        XCTAssertFalse(value, "nextReady should remain false while queue[1] download is deferred")
+    }
+
+    func testNextReadyFalseAfterStop() async throws {
+        let api = MockRpApiClient()
+        let engine = MockPlayerEngine()
+        let cache = MockSongFileCache()
+        let head = makeGaplessSong(songId: "s0", eventId: 100, gaplessUrl: "https://s.example.com/100.flac")
+        let next = makeGaplessSong(songId: "s1", eventId: 101, gaplessUrl: "https://s.example.com/101.flac")
+        await cache.markDownloaded([head, next])
+        await api.setGaplessResponse(makeGaplessResponse(songs: [head, next]))
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, songFileCache: cache, logger: silentLogger(), bitrateProvider: { 4 }
+        )
+        try await coordinator.play(channelId: 0)
+        try await Task.sleep(nanoseconds: 100_000_000)
+        try await coordinator.stop()
+        let value = await coordinator.nextReady
+        XCTAssertFalse(value)
+    }
+
+    func testNextReadyStreamReplaysCurrentValue() async throws {
+        let api = MockRpApiClient()
+        let engine = MockPlayerEngine()
+        let cache = MockSongFileCache()
+        let head = makeGaplessSong(songId: "s0", eventId: 100, gaplessUrl: "https://s.example.com/100.flac")
+        let next = makeGaplessSong(songId: "s1", eventId: 101, gaplessUrl: "https://s.example.com/101.flac")
+        await cache.markDownloaded([head, next])
+        await api.setGaplessResponse(makeGaplessResponse(songs: [head, next]))
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, songFileCache: cache, logger: silentLogger(), bitrateProvider: { 4 }
+        )
+        try await coordinator.play(channelId: 0)
+        try await Task.sleep(nanoseconds: 100_000_000)
+        var iter = await coordinator.nextReadyUpdates.makeAsyncIterator()
+        let first = await iter.next()
+        XCTAssertEqual(first, true, "new subscriber should immediately receive current nextReady value")
+    }
 }
 
 private actor StateBox {

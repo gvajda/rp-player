@@ -165,6 +165,13 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         for c in stateContinuations.values { c.yield(state) }
     }
 
+    private func updateNextReady() {
+        let value = queue.count >= 2 && queueNextEventId == queue[1].eventId
+        guard value != nextReadyValue else { return }
+        nextReadyValue = value
+        for c in nextReadyContinuations.values { c.yield(value) }
+    }
+
     public func play(channelId: Int) async throws {
         logger.debug("play(channelId: \(channelId))")
         emitState(.loading)
@@ -188,6 +195,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         currentChannelId = channelId
         refetchTask?.cancel()
         refetchTask = nil
+        updateNextReady()
 
         let head = queue[0]
         // Always start songs from the beginning; ignore server-provided cue. Better UX (full song) than mid-song tune-in; user can skip if not wanted.
@@ -278,6 +286,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             current = nil
             pausedAt = nil
             pausePositionMs = 0
+            updateNextReady()
             try await play(channelId: channelId)
             return
         }
@@ -311,6 +320,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             logger.info("resume: long idle (\(Int(pausedFor ?? 0))s), kicking background catch-up")
             if queue.count > 2 {
                 queue = Array(queue.prefix(2))
+                updateNextReady()
             }
             // Stop downloading the old tail. New tail starts after refetch resolves.
             downloaderTask?.cancel()
@@ -324,6 +334,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         logger.debug("stop()")
         try? await engine.clearPlaylist()
         queueNextEventId = nil
+        updateNextReady()
         deferredQueueNextAt = nil
         downloaderTask?.cancel()
         downloaderTask = nil
@@ -338,6 +349,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         currentResponse = nil
         lastStartedEventId = nil
         queueNextEventId = nil
+        updateNextReady()
         deferredQueueNextAt = nil
         currentChannelId = nil
         currentPositionSeconds = 0
@@ -393,6 +405,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
                     do {
                         try await engine.queueNext(url: nextUrl, startSeconds: nil)
                         queueNextEventId = next.eventId
+                        updateNextReady()
                     } catch {
                         emitState(.playing)
                         throw PlaybackCoordinatorError.engineError(message: String(describing: error))
@@ -429,6 +442,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         queue = response.songs
         currentResponse = response
         queueNextEventId = nil
+        updateNextReady()
         deferredQueueNextAt = nil
         let head = queue[0]
         // Always start from the beginning; ignore cue.
@@ -466,6 +480,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         refetchTask = nil
         try? await engine.clearPlaylist()
         queueNextEventId = nil
+        updateNextReady()
         deferredQueueNextAt = nil
         downloaderTask?.cancel()
         downloaderTask = nil
@@ -512,6 +527,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         emitNowPlaying(forSongAt: 0)
         try? await engine.clearPlaylist()
         queueNextEventId = nil
+        updateNextReady()
         deferredQueueNextAt = nil
         // Bitrate change minted new gaplessUrls. Cancel any in-flight downloader
         // walk so old-bitrate downloads stop stealing bandwidth from the new
@@ -608,6 +624,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
                     logger.debug("recovery: head=event=\(h.eventId) (\(headCached)) next=\(nextDesc)")
                     queue.removeFirst()
                     queueNextEventId = nil
+                    updateNextReady()
                     deferredQueueNextAt = nil
                     let head = queue[0]
                     let resolvedHeadUrl = await songFileCache.localFile(for: head)
@@ -625,6 +642,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
                                     do {
                                         try await engine.queueNext(url: nextUrl, startSeconds: nil)
                                         queueNextEventId = next.eventId
+                                        updateNextReady()
                                     } catch {
                                         logger.warn("recovery: queueNext failed event=\(next.eventId): \(error)")
                                     }
@@ -681,6 +699,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         logger.error("engine fileEnded with error code \(code)")
         try? await engine.clearPlaylist()
         queueNextEventId = nil
+        updateNextReady()
         deferredQueueNextAt = nil
         downloaderTask?.cancel()
         downloaderTask = nil
@@ -689,6 +708,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         refetchTask = nil
         currentChannelId = nil
         queue = []
+        updateNextReady()
         currentResponse = nil
         lastStartedEventId = nil
         currentPositionSeconds = 0
@@ -729,6 +749,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             return
         }
         let dropped = queue.removeFirst()
+        updateNextReady()
         logger.warn("dropping unplayable song event=\(dropped.eventId) url=\(dropped.gaplessUrl) code=\(code) attempt=\(consecutivePlaybackFailures)/\(Self.maxConsecutivePlaybackFailures)")
         guard !queue.isEmpty else {
             // Queue depleted — refetch fresh.
@@ -755,6 +776,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         }
         currentPositionSeconds = 0
         queueNextEventId = nil
+        updateNextReady()
         deferredQueueNextAt = nil
         emitNowPlaying(forSongAt: 0)
         // Telemetry driven from syncQueueHeadFromMpv when mpv fires .fileStarted.
@@ -840,6 +862,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             // until we re-queue. Clear before the await so a concurrent skip
             // sees the right state.
             queueNextEventId = nil
+            updateNextReady()
             deferredQueueNextAt = nil
             if queue.count >= 2 {
                 _ = await tryQueueNextOrDefer(queue[1])
@@ -943,6 +966,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             do {
                 try await engine.queueNext(url: url, startSeconds: nil)
                 queueNextEventId = next.eventId
+                updateNextReady()
                 return true
             } catch {
                 logger.warn("queueNext failed event=\(next.eventId): \(error)")
@@ -965,6 +989,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         do {
             try await engine.queueNext(url: url, startSeconds: nil)
             queueNextEventId = next.eventId
+            updateNextReady()
             if let deferredAt = deferredQueueNextAt {
                 let elapsedMs = Int(clock().timeIntervalSince(deferredAt) * 1000)
                 logger.debug("recovery: deferred queueNext fired event=\(next.eventId) elapsedSinceDeferMs=\(elapsedMs)")
@@ -1000,6 +1025,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         let hadShortQueue = self.queue.count < 2
         self.queue = self.queue + newSongs
         self.currentResponse = response
+        updateNextReady()
         if hadShortQueue, self.queue.count >= 2 {
             let next = self.queue[1]
             let nextUrl = await songFileCache.localFile(for: next)
@@ -1009,6 +1035,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
                 do {
                     try await self.engine.queueNext(url: nextUrl, startSeconds: nil)
                     self.queueNextEventId = next.eventId
+                    updateNextReady()
                 } catch {
                     logger.warn("runRefetch: queueNext failed: \(error)")
                 }
