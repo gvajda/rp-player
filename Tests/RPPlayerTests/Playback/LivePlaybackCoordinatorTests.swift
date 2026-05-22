@@ -1680,10 +1680,12 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
 
         // Initial fileStarted: A is playing. Seeds lastStartedEventId so the next
         // fileStarted is treated as an advance. engine.currentPath() already returns aUrl
-        // (set by engine.play() inside coord.play). Sleep lets the coordinator actor
-        // process the event before we advance to B.
+        // (set by engine.play() inside coord.play). The sleep yields enough actor time
+        // for the first event to be consumed and lastStartedEventId set before we
+        // mutate currentPath and fire the second event. 200ms is a comfortable margin
+        // over typical actor-scheduling latency without slowing the test meaningfully.
         await engine.fire(.fileStarted)
-        try await Task.sleep(nanoseconds: 50_000_000)
+        try await Task.sleep(nanoseconds: 200_000_000)
 
         await statesBox.reset()
 
