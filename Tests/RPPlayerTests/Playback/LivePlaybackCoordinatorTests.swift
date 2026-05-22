@@ -1838,6 +1838,65 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
 
         stateCollector.cancel()
     }
+
+    /// PR 41: play(channelId:) must defer queueNext when queue[1] is uncached at
+    /// the post-engine.play queueNext step.
+    ///
+    /// Uses cachedFileOverride (not setInFlight) to force cache miss without
+    /// parking the actor — pre-fix awaits on localFile(B) would hang the test
+    /// body forever since play() is itself awaited. With override, pre-fix's
+    /// localFile(B) returns the passthrough URL and queueNext(B) fires;
+    /// post-fix's cachedFile(B) returns nil and the helper defers. The
+    /// discriminator is queueNext(B) being absent post-fix.
+    func testPlayDefersQueueNextWhenNextUncached() async throws {
+        let api = MockRpApiClient()
+        let response = makeGaplessResponse(songs: [
+            makeGaplessSong(songId: "A", eventId: 800, gaplessUrl: "https://example.com/A.flac"),
+            makeGaplessSong(songId: "B", eventId: 801, gaplessUrl: "https://example.com/B.flac"),
+        ])
+        await api.setGaplessResponses([response])
+        let engine = MockPlayerEngine()
+        let cache = MockSongFileCache()
+        let coord = LivePlaybackCoordinator(
+            api: api, engine: engine, songFileCache: cache, logger: silentLogger(), bitrateProvider: { 4 }
+        )
+
+        let stateStream = await coord.stateUpdates
+        let statesBox = StateBox()
+        let stateCollector = Task {
+            for await s in stateStream { await statesBox.append(s) }
+        }
+
+        // Both downloaded so localFile resolves synchronously for either song.
+        await cache.markDownloaded([800, 801])
+        // Override: cachedFile reports a miss for B (event 801) but the cached
+        // URL for A. tryQueueNextOrDefer's synchronous probe for queue[1] thus
+        // sees a miss; pre-fix's localFile path still returns B's passthrough URL.
+        cache.cachedFileOverride = { song in
+            song.eventId == 801 ? nil : URL(string: song.gaplessUrl)
+        }
+
+        try await coord.play(channelId: 0)
+
+        let aUrl = URL(string: "https://example.com/A.flac")!
+        let bUrl = URL(string: "https://example.com/B.flac")!
+        _ = try await waitUntil({
+            await engine.recordedCalls().contains(.play(url: aUrl, startSeconds: nil))
+        }, timeout: 2.0)
+
+        // Pre-fix: localFile(B) returns passthrough URL, queueNext(B) fires.
+        // Post-fix: cachedFile(B) returns nil, helper defers, queueNext(B) NOT called.
+        // Give the actor a moment to run play()'s queue[1] block to completion.
+        // (200ms — wait-loading-first does not apply here because .loading is
+        // emitted at L148 before playInternal too, so it's not a discriminator.)
+        try await Task.sleep(nanoseconds: 200_000_000)
+        let callsAfter = await engine.recordedCalls()
+        let queuedB = callsAfter.contains(.queueNext(url: bUrl, startSeconds: nil))
+        XCTAssertFalse(queuedB,
+                       "play() must defer queueNext(B) when uncached; calls=\(callsAfter)")
+
+        stateCollector.cancel()
+    }
 }
 
 private actor StateBox {
