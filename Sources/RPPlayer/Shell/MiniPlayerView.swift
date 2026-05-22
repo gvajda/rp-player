@@ -190,15 +190,11 @@ struct MiniPlayerView: View {
             .frame(width: 38, height: 38)
             .accessibilityLabel("Stop")
         } else if showLoadingInSkipSlot {
-            ZStack {
-                Image(systemName: "circle")
-                    .font(.system(size: 22))
-                ProgressView()
-                    .controlSize(.small)
-                    .progressViewStyle(.circular)
-            }
-            .frame(width: 38, height: 38)
-            .accessibilityLabel("Loading next track")
+            ProgressView()
+                .controlSize(.small)
+                .progressViewStyle(.circular)
+                .frame(width: 38, height: 38)
+                .accessibilityLabel("Loading next track")
         } else {
             Button {
                 Task { await viewModel.skipForward() }
