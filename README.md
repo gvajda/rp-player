@@ -130,7 +130,7 @@ The app installs a status item in the menu bar (no Dock icon, no main window). C
 - **Mini player popover**
   - Album art at the top of the panel, edge-to-edge.
   - Title / artist / album, current rating (★ N), live elapsed/remaining and a progress bar that updates per second.
-  - Playback control: play–pause + skip-forward (skip jumps straight to the prefetched next song; if the queue ran thin it refetches first).
+  - Playback control: play–pause + a context-aware second slot. While playing, the second slot is **skip-forward** (jumps straight to the prefetched next song; if the queue ran thin it refetches first); if the next song hasn't been preloaded yet the slot shows a **loading spinner** so you can't trigger a stalled skip. While paused, the second slot becomes a **stop** button that clears the play queue, album art, and song info — same look as a fresh launch, channel selection preserved.
   - Channel picker centred under the controls; bitrate label to the right (verbatim from the API: "FLAC", "320k AAC", etc.).
   - Hamburger menu with: Settings, Open Song in Browser, Upcoming Program, Floating Window, About, Quit.
 
