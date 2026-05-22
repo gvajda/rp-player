@@ -33,7 +33,10 @@ struct EqEditPanel: View {
         .sheet(isPresented: $showSaveAsSheet) {
             nameSheet(
                 title: "Save preset as",
-                initialValue: saveAsName,
+                text: Binding(
+                    get: { saveAsName },
+                    set: { saveAsName = String($0.prefix(30)) }
+                ),
                 onConfirm: { name in
                     do {
                         try await viewModel.saveEditAs(name: name)
@@ -53,7 +56,10 @@ struct EqEditPanel: View {
         .sheet(isPresented: $showRenameSheet) {
             nameSheet(
                 title: "Rename preset",
-                initialValue: renameTarget,
+                text: Binding(
+                    get: { renameTarget },
+                    set: { renameTarget = String($0.prefix(30)) }
+                ),
                 onConfirm: { name in
                     guard let from = viewModel.editingOriginalName else {
                         showRenameSheet = false
@@ -275,28 +281,14 @@ struct EqEditPanel: View {
 
     private func nameSheet(
         title: String,
-        initialValue: String,
+        text: Binding<String>,
         onConfirm: @escaping @MainActor (String) async -> Void
     ) -> some View {
-        let binding = Binding<String>(
-            get: { saveAsName.isEmpty ? renameTarget : saveAsName },
-            set: { v in
-                let capped = String(v.prefix(30))
-                if showSaveAsSheet { saveAsName = capped } else { renameTarget = capped }
-            }
-        )
-        return VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 12) {
             Text(title).font(.headline)
-            TextField("Preset name", text: binding)
+            TextField("Preset name", text: text)
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 280)
-                .onAppear {
-                    if showSaveAsSheet {
-                        saveAsName = initialValue
-                    } else {
-                        renameTarget = initialValue
-                    }
-                }
             if let err = sheetError {
                 Text(err).foregroundStyle(.red).font(.caption)
             }
@@ -308,11 +300,11 @@ struct EqEditPanel: View {
                     sheetError = nil
                 }
                 Button("OK") {
-                    let name = showSaveAsSheet ? saveAsName : renameTarget
+                    let name = text.wrappedValue
                     Task { await onConfirm(name) }
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled((showSaveAsSheet ? saveAsName : renameTarget).isEmpty)
+                .disabled(text.wrappedValue.isEmpty)
             }
         }
         .padding(16)
