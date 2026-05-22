@@ -372,6 +372,7 @@ final class MiniPlayerViewModelTests: XCTestCase {
     func testPositionUpdateDerivesElapsedAndDuration() async throws {
         let np = NowPlaying.fixture()
         await coordinator.setNowPlaying(np)
+        await coordinator.fireState(.playing)
         await sut.start()
         try await Task.sleep(nanoseconds: 50_000_000)
 
@@ -385,6 +386,7 @@ final class MiniPlayerViewModelTests: XCTestCase {
     func testSongChangeResetsElapsed() async throws {
         let np1 = NowPlaying.fixture(songId: "1")
         await coordinator.setNowPlaying(np1)
+        await coordinator.fireState(.playing)
         await sut.start()
         try await Task.sleep(nanoseconds: 50_000_000)
         await coordinator.firePosition(100)
@@ -402,6 +404,7 @@ final class MiniPlayerViewModelTests: XCTestCase {
     func testElapsedClampedToDuration() async throws {
         let np = NowPlaying.fixture()
         await coordinator.setNowPlaying(np)
+        await coordinator.fireState(.playing)
         await sut.start()
         try await Task.sleep(nanoseconds: 50_000_000)
 
@@ -473,6 +476,7 @@ final class MiniPlayerViewModelTests: XCTestCase {
     func testRemainingSecondsForTooltipReflectsPosition() async throws {
         let np = NowPlaying.fixture()
         await coordinator.setNowPlaying(np)
+        await coordinator.fireState(.playing)
         await sut.start()
         try await Task.sleep(nanoseconds: 50_000_000)
 
@@ -523,6 +527,7 @@ final class MiniPlayerViewModelTests: XCTestCase {
     func testRemainingSecondsForTooltipClampedAtZero() async throws {
         let np = NowPlaying.fixture()
         await coordinator.setNowPlaying(np)
+        await coordinator.fireState(.playing)
         await sut.start()
         try await Task.sleep(nanoseconds: 50_000_000)
 

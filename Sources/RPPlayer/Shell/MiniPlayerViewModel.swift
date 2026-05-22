@@ -188,9 +188,21 @@ final class MiniPlayerViewModel: ObservableObject {
                 case .playing:
                     isLoading = false
                     isPlaying = true
-                case .paused, .stopped:
+                case .paused:
                     isLoading = false
                     isPlaying = false
+                case .stopped:
+                    isLoading = false
+                    isPlaying = false
+                    nowPlaying = nil
+                    currentArt = nil
+                    lastLoadedCoverPath = nil
+                    ambientTopColor = nil
+                    currentRating = nil
+                    currentBitrateLabel = nil
+                    songElapsedSeconds = 0
+                    songDurationSeconds = 0
+                    lastNotifiedSongId = ""
                 }
             }
         }
@@ -286,6 +298,15 @@ final class MiniPlayerViewModel: ObservableObject {
             try await coordinator.skipForward()
         } catch {
             errorMessage = "Skip failed: \(error.localizedDescription)"
+        }
+    }
+
+    func stopPlayback() async {
+        errorMessage = nil
+        do {
+            try await coordinator.stop()
+        } catch {
+            errorMessage = "Stop failed: \(error.localizedDescription)"
         }
     }
 
