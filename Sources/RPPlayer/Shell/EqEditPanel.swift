@@ -33,10 +33,7 @@ struct EqEditPanel: View {
         .sheet(isPresented: $showSaveAsSheet) {
             nameSheet(
                 title: "Save preset as",
-                text: Binding(
-                    get: { saveAsName },
-                    set: { saveAsName = String($0.prefix(30)) }
-                ),
+                text: $saveAsName,
                 onConfirm: { name in
                     do {
                         try await viewModel.saveEditAs(name: name)
@@ -56,10 +53,7 @@ struct EqEditPanel: View {
         .sheet(isPresented: $showRenameSheet) {
             nameSheet(
                 title: "Rename preset",
-                text: Binding(
-                    get: { renameTarget },
-                    set: { renameTarget = String($0.prefix(30)) }
-                ),
+                text: $renameTarget,
                 onConfirm: { name in
                     guard let from = viewModel.editingOriginalName else {
                         showRenameSheet = false
@@ -289,6 +283,11 @@ struct EqEditPanel: View {
             TextField("Preset name", text: text)
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 280)
+                .onChange(of: text.wrappedValue) { _, newValue in
+                    if newValue.count > 30 {
+                        text.wrappedValue = String(newValue.prefix(30))
+                    }
+                }
             if let err = sheetError {
                 Text(err).foregroundStyle(.red).font(.caption)
             }
