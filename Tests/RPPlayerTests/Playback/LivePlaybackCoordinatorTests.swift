@@ -1776,6 +1776,68 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
 
         stateCollector.cancel()
     }
+
+    /// PR 41: applyBitrateChange's post-refresh queueNext must defer when the new
+    /// queue[1] (refreshed at the new bitrate) is uncached.
+    func testApplyBitrateChangeDefersQueueNextWhenNextUncached() async throws {
+        let api = MockRpApiClient()
+        let initial = makeGaplessResponse(songs: [
+            makeGaplessSong(songId: "A", eventId: 500, gaplessUrl: "https://example.com/A-320.mp3"),
+            makeGaplessSong(songId: "B", eventId: 501, gaplessUrl: "https://example.com/B-320.mp3"),
+        ])
+        let refresh = makeGaplessResponse(songs: [
+            makeGaplessSong(songId: "A", eventId: 500, gaplessUrl: "https://example.com/A-flac.flac"),
+            makeGaplessSong(songId: "B", eventId: 501, gaplessUrl: "https://example.com/B-flac.flac"),
+        ])
+        await api.setGaplessResponses([initial, refresh])
+        let engine = MockPlayerEngine()
+        let cache = MockSongFileCache()
+        let coord = LivePlaybackCoordinator(
+            api: api, engine: engine, songFileCache: cache, logger: silentLogger(), bitrateProvider: { 4 }
+        )
+
+        let stateStream = await coord.stateUpdates
+        let statesBox = StateBox()
+        let stateCollector = Task {
+            for await s in stateStream { await statesBox.append(s) }
+        }
+
+        await cache.markDownloaded([500, 501])
+
+        try await coord.play(channelId: 0)
+
+        let aOld = URL(string: "https://example.com/A-320.mp3")!
+        _ = try await waitUntil({
+            let calls = await engine.recordedCalls()
+            return calls.contains(.play(url: aOld, startSeconds: nil))
+        }, timeout: 2.0)
+
+        // Override cachedFile to force a miss for event 501 (B). The mock's
+        // releasedMirror would otherwise return a URL because markDownloaded
+        // stored the eventId. Override is sync (nonisolated(unsafe) var).
+        cache.cachedFileOverride = { song in
+            song.eventId == 501 ? nil : URL(string: song.gaplessUrl)
+        }
+        await statesBox.reset()
+
+        await coord.applyBitrateChange()
+
+        // Wait for .loading first — once emitted, the defer path completed.
+        let sawLoading = try await waitUntil({
+            await statesBox.contains(.loading)
+        }, timeout: 1.0)
+        XCTAssertTrue(sawLoading,
+                      "applyBitrateChange must emit .loading when deferring queueNext")
+
+        // queueNext(B-flac) must NOT have fired — B is uncached, defer path took it.
+        let bNew = URL(string: "https://example.com/B-flac.flac")!
+        let callsAfter = await engine.recordedCalls()
+        let queuedB = callsAfter.contains(.queueNext(url: bNew, startSeconds: nil))
+        XCTAssertFalse(queuedB,
+                       "applyBitrateChange must defer queueNext(B-flac) when uncached; calls=\(callsAfter)")
+
+        stateCollector.cancel()
+    }
 }
 
 private actor StateBox {
