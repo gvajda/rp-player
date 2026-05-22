@@ -13,6 +13,8 @@ public protocol PlaybackCoordinator: Sendable {
     var positionUpdates: AsyncStream<Double> { get async }
     var stateUpdates: AsyncStream<PlaybackState> { get async }
     var currentPlaybackState: PlaybackState { get async }
+    var nextReady: Bool { get async }
+    var nextReadyUpdates: AsyncStream<Bool> { get async }
     var errors: AsyncStream<String> { get async }
 
     func play(channelId: Int) async throws
@@ -49,6 +51,8 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     // (the inline localFile await after engine.play hasn't completed yet), so we can
     // show the loading state during the wait instead of advancing to an empty playlist.
     private var queueNextEventId: Int?
+    private var nextReadyValue: Bool = false
+    private var nextReadyContinuations: [UUID: AsyncStream<Bool>.Continuation] = [:]
     private var deferredQueueNextAt: Date?
     private var currentPositionSeconds: Double = 0
     private var current: NowPlaying?
@@ -135,6 +139,24 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
                 Task { [weak self] in await self?.unregisterState(id: id) }
             }
         }
+    }
+
+    public var nextReady: Bool { nextReadyValue }
+
+    public var nextReadyUpdates: AsyncStream<Bool> {
+        let id = UUID()
+        return AsyncStream { continuation in
+            if self.isShutdown { continuation.finish(); return }
+            self.nextReadyContinuations[id] = continuation
+            continuation.yield(self.nextReadyValue)
+            continuation.onTermination = { [weak self] _ in
+                Task { [weak self] in await self?.unregisterNextReady(id: id) }
+            }
+        }
+    }
+
+    private func unregisterNextReady(id: UUID) {
+        nextReadyContinuations.removeValue(forKey: id)
     }
 
     private func emitState(_ state: PlaybackState) {
@@ -531,6 +553,8 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         positionContinuations.removeAll()
         for c in stateContinuations.values { c.finish() }
         stateContinuations.removeAll()
+        for c in nextReadyContinuations.values { c.finish() }
+        nextReadyContinuations.removeAll()
         errorsContinuation?.finish()
         errorsContinuation = nil
     }

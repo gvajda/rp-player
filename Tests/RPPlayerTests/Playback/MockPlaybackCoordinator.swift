@@ -18,6 +18,8 @@ actor MockPlaybackCoordinator: PlaybackCoordinator {
     private var continuations: [UUID: AsyncStream<NowPlaying>.Continuation] = [:]
     private var positionContinuations: [UUID: AsyncStream<Double>.Continuation] = [:]
     private var stateContinuations: [UUID: AsyncStream<PlaybackState>.Continuation] = [:]
+    private var nextReadyValue: Bool = false
+    private var nextReadyContinuations: [UUID: AsyncStream<Bool>.Continuation] = [:]
     private var lastPosition: Double = 0
     private var lastState: PlaybackState = .stopped
     private var nextError: Error?
@@ -87,6 +89,28 @@ actor MockPlaybackCoordinator: PlaybackCoordinator {
 
     var currentPlaybackState: PlaybackState { lastState }
 
+    var nextReady: Bool { nextReadyValue }
+
+    var nextReadyUpdates: AsyncStream<Bool> {
+        let id = UUID()
+        return AsyncStream { continuation in
+            self.nextReadyContinuations[id] = continuation
+            continuation.yield(self.nextReadyValue)
+            continuation.onTermination = { [weak self] _ in
+                Task { [weak self] in await self?.unregisterNextReady(id: id) }
+            }
+        }
+    }
+
+    private func unregisterNextReady(id: UUID) {
+        nextReadyContinuations.removeValue(forKey: id)
+    }
+
+    func fireNextReady(_ value: Bool) {
+        nextReadyValue = value
+        for c in nextReadyContinuations.values { c.yield(value) }
+    }
+
     private func unregister(id: UUID) { continuations.removeValue(forKey: id) }
     private func unregisterPosition(id: UUID) { positionContinuations.removeValue(forKey: id) }
     private func unregisterState(id: UUID) { stateContinuations.removeValue(forKey: id) }
@@ -131,6 +155,8 @@ actor MockPlaybackCoordinator: PlaybackCoordinator {
         positionContinuations.removeAll()
         for c in stateContinuations.values { c.finish() }
         stateContinuations.removeAll()
+        for c in nextReadyContinuations.values { c.finish() }
+        nextReadyContinuations.removeAll()
         errorsContinuation.finish()
     }
 }
