@@ -1638,6 +1638,69 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         XCTAssertLessThan(deferIdx, landedIdx, "defer log must precede downloader landed log; entries=\(entries)")
         XCTAssertLessThan(landedIdx, firedIdx, "downloader landed log must precede deferred-fired log; entries=\(entries)")
     }
+
+    /// PR 41: syncQueueHeadFromMpv (.fileStarted advance branch) must defer queueNext
+    /// via the synchronous cachedFile(for:) probe when queue[1] is not yet downloaded.
+    /// Pre-fix: blocking await songFileCache.localFile(for: queue[1]) parks the actor
+    /// and risks the same cascade PR 40 fixed in the .fileEnded(.eof) recovery branch.
+    func testSyncQueueHeadFromMpvDefersQueueNextOnAdvanceWhenNextUncached() async throws {
+        let api = MockRpApiClient()
+        let response = makeGaplessResponse(songs: [
+            makeGaplessSong(songId: "A", eventId: 300, gaplessUrl: "https://example.com/A.flac"),
+            makeGaplessSong(songId: "B", eventId: 301, gaplessUrl: "https://example.com/B.flac"),
+            makeGaplessSong(songId: "C", eventId: 302, gaplessUrl: "https://example.com/C.flac"),
+        ])
+        await api.setGaplessResponses([response])
+        let engine = MockPlayerEngine()
+        let cache = MockSongFileCache()
+        let coord = LivePlaybackCoordinator(
+            api: api, engine: engine, songFileCache: cache, logger: silentLogger(), bitrateProvider: { 4 }
+        )
+
+        let stateStream = await coord.stateUpdates
+        let statesBox = StateBox()
+        let stateCollector = Task {
+            for await s in stateStream { await statesBox.append(s) }
+        }
+
+        // A + B downloaded so bootstrap completes; C in-flight (uncached).
+        await cache.markDownloaded([300, 301])
+        await cache.setInFlight([302])
+
+        try await coord.play(channelId: 0)
+
+        let aUrl = URL(string: "https://example.com/A.flac")!
+        let bUrl = URL(string: "https://example.com/B.flac")!
+        let cUrl = URL(string: "https://example.com/C.flac")!
+        _ = try await waitUntil({
+            let calls = await engine.recordedCalls()
+            return calls.contains(.play(url: aUrl, startSeconds: nil))
+                && calls.contains(.queueNext(url: bUrl, startSeconds: nil))
+        }, timeout: 2.0)
+
+        await statesBox.reset()
+
+        // Simulate B starting (mpv advanced from A → B naturally). syncQueueHeadFromMpv
+        // runs, advances queue head, then tries to queueNext C. C is in-flight.
+        await engine.setSimulatedCurrentPath(bUrl)
+        await engine.fire(.fileStarted)
+
+        // queueNext(C) must NOT fire — C is uncached, must defer.
+        try await Task.sleep(nanoseconds: 200_000_000)
+        let callsAfterAdvance = await engine.recordedCalls()
+        let queuedC = callsAfterAdvance.contains(.queueNext(url: cUrl, startSeconds: nil))
+        XCTAssertFalse(queuedC,
+                       "syncQueueHeadFromMpv must defer queueNext(C) when C is uncached; calls=\(callsAfterAdvance)")
+
+        // State must transition to .loading: defer signals to UI that we're waiting on a download.
+        let sawLoading = try await waitUntil({
+            await statesBox.contains(.loading)
+        }, timeout: 1.0)
+        XCTAssertTrue(sawLoading,
+                      "syncQueueHeadFromMpv must emit .loading when deferring queueNext")
+
+        stateCollector.cancel()
+    }
 }
 
 private actor StateBox {
