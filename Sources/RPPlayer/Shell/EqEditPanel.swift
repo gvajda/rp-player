@@ -13,7 +13,9 @@ struct EqEditPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if let preset = viewModel.editingPreset {
+                footer(preset)
                 header(preset)
+                Divider()
                 preampRow(preset)
                 bandsGrid(preset)
                 Button {
@@ -23,10 +25,6 @@ struct EqEditPanel: View {
                 }
                 .buttonStyle(.borderless)
                 .disabled(preset.bands.count >= 10)
-
-                Divider()
-
-                footer(preset)
             }
         }
         .padding(.top, 4)
