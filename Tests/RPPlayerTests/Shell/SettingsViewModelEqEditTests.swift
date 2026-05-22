@@ -459,4 +459,46 @@ final class SettingsViewModelEqEditTests: XCTestCase {
         XCTAssertEqual(vm.editingPreset?.preampDb, -3)
         XCTAssertFalse(vm.editingDirty)
     }
+
+    func testResolvePendingSwitchSaveWritesOriginalThenSwaps() async throws {
+        let eqStore = LiveEqPresetStore(directory: tmpDir)
+        try await savePresetFile(eqStore, name: "alpha")
+        try await eqStore.save(name: "beta", text: "Preamp: -3 dB\nFilter 1: ON PK Fc 500 Hz Gain 2 dB Q 0.9\n", overwrite: false)
+        let override = EqEditingOverride()
+        let vm = makeVM(eqStore: eqStore, override: override)
+        await vm.start()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        await vm.refreshPresets()
+        await vm.reloadParsedPreset()
+        await vm.beginEditCurrent()
+        await vm.setEditingPreamp(-8)
+        await vm.requestPresetSwitch(to: "beta")
+
+        try await vm.resolvePendingSwitchSave()
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertNil(vm.pendingPresetSwitch)
+        XCTAssertEqual(vm.eqPresetName, "beta")
+        XCTAssertEqual(vm.editingOriginalName, "beta")
+        XCTAssertEqual(vm.editingPreset?.preampDb, -3)
+
+        // Original alpha was saved with the dirty preamp before switching.
+        let alphaText = try await eqStore.loadText(name: "alpha")
+        XCTAssertTrue(alphaText.contains("Preamp: -8") || alphaText.contains("Preamp: -8.0"))
+    }
+
+    func testResolvePendingSwitchSaveNewPresetIsNoop() async throws {
+        let eqStore = LiveEqPresetStore(directory: tmpDir)
+        let override = EqEditingOverride()
+        let vm = makeVM(eqStore: eqStore, override: override)
+        await vm.start()
+        await vm.beginNewPreset()
+        await vm.setEditingPreamp(-2)
+        vm._setPendingPresetSwitchForTesting(SettingsViewModel.PendingPresetSwitch(target: "anything"))
+
+        try await vm.resolvePendingSwitchSave()
+        XCTAssertNotNil(vm.pendingPresetSwitch)
+        XCTAssertNotNil(vm.editingPreset)
+        XCTAssertTrue(vm.editingIsNew)
+    }
 }
