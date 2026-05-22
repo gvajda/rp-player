@@ -501,4 +501,53 @@ final class SettingsViewModelEqEditTests: XCTestCase {
         XCTAssertNotNil(vm.editingPreset)
         XCTAssertTrue(vm.editingIsNew)
     }
+
+    func testResolvePendingSwitchSaveAsWritesNewNameThenSwapsToTarget() async throws {
+        let eqStore = LiveEqPresetStore(directory: tmpDir)
+        try await savePresetFile(eqStore, name: "alpha")
+        try await eqStore.save(name: "beta", text: "Preamp: -3 dB\nFilter 1: ON PK Fc 500 Hz Gain 2 dB Q 0.9\n", overwrite: false)
+        let override = EqEditingOverride()
+        let vm = makeVM(eqStore: eqStore, override: override)
+        await vm.start()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        await vm.refreshPresets()
+        await vm.reloadParsedPreset()
+        await vm.beginEditCurrent()
+        await vm.setEditingPreamp(-6)
+        await vm.requestPresetSwitch(to: "beta")
+
+        try await vm.resolvePendingSwitchSaveAs(name: "alpha-copy")
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertNil(vm.pendingPresetSwitch)
+        XCTAssertEqual(vm.eqPresetName, "beta")
+        XCTAssertEqual(vm.editingOriginalName, "beta")
+        XCTAssertEqual(vm.editingPreset?.preampDb, -3)
+        XCTAssertTrue(vm.availablePresets.contains("alpha-copy"))
+
+        let copyText = try await eqStore.loadText(name: "alpha-copy")
+        XCTAssertTrue(copyText.contains("Preamp: -6") || copyText.contains("Preamp: -6.0"))
+    }
+
+    func testResolvePendingSwitchSaveAsSwitchesToBypassIfTargetWasNil() async throws {
+        let eqStore = LiveEqPresetStore(directory: tmpDir)
+        try await savePresetFile(eqStore, name: "alpha")
+        let override = EqEditingOverride()
+        let vm = makeVM(eqStore: eqStore, override: override)
+        await vm.start()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        await vm.refreshPresets()
+        await vm.reloadParsedPreset()
+        await vm.beginEditCurrent()
+        await vm.setEditingPreamp(-4)
+        await vm.requestPresetSwitch(to: nil)
+
+        try await vm.resolvePendingSwitchSaveAs(name: "saved-copy")
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertNil(vm.pendingPresetSwitch)
+        XCTAssertNil(vm.eqPresetName)
+        XCTAssertNil(vm.editingPreset)
+        XCTAssertTrue(vm.availablePresets.contains("saved-copy"))
+    }
 }
