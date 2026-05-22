@@ -390,4 +390,48 @@ final class SettingsViewModelEqEditTests: XCTestCase {
         let pushed = await override.snapshot()
         XCTAssertNil(pushed)
     }
+
+    func testRequestPresetSwitchEditorDirtySetsPendingSwitch() async throws {
+        let eqStore = LiveEqPresetStore(directory: tmpDir)
+        try await savePresetFile(eqStore, name: "alpha")
+        try await eqStore.save(name: "beta", text: "Preamp: 0 dB\nFilter 1: ON PK Fc 1000 Hz Gain 1 dB Q 1.0\n", overwrite: false)
+        let override = EqEditingOverride()
+        let vm = makeVM(eqStore: eqStore, override: override)
+        await vm.start()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        await vm.refreshPresets()
+        await vm.reloadParsedPreset()
+        await vm.beginEditCurrent()
+        await vm.setEditingPreamp(-7)
+        XCTAssertTrue(vm.editingDirty)
+
+        await vm.requestPresetSwitch(to: "beta")
+
+        XCTAssertEqual(vm.pendingPresetSwitch, SettingsViewModel.PendingPresetSwitch(target: "beta"))
+        XCTAssertEqual(vm.eqPresetName, "alpha")             // not committed yet
+        XCTAssertEqual(vm.editingOriginalName, "alpha")
+        XCTAssertEqual(vm.editingPreset?.preampDb, -7)       // edits intact
+        XCTAssertTrue(vm.editingDirty)
+    }
+
+    func testRequestPresetSwitchWhilePendingActiveIsIgnored() async throws {
+        let eqStore = LiveEqPresetStore(directory: tmpDir)
+        try await savePresetFile(eqStore, name: "alpha")
+        try await eqStore.save(name: "beta", text: "Preamp: 0 dB\nFilter 1: ON PK Fc 1000 Hz Gain 1 dB Q 1.0\n", overwrite: false)
+        try await eqStore.save(name: "gamma", text: "Preamp: 0 dB\nFilter 1: ON PK Fc 2000 Hz Gain 1 dB Q 1.0\n", overwrite: false)
+        let override = EqEditingOverride()
+        let vm = makeVM(eqStore: eqStore, override: override)
+        await vm.start()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        await vm.refreshPresets()
+        await vm.reloadParsedPreset()
+        await vm.beginEditCurrent()
+        await vm.setEditingPreamp(-3)
+
+        await vm.requestPresetSwitch(to: "beta")
+        XCTAssertEqual(vm.pendingPresetSwitch?.target, "beta")
+
+        await vm.requestPresetSwitch(to: "gamma")
+        XCTAssertEqual(vm.pendingPresetSwitch?.target, "beta")  // unchanged
+    }
 }
