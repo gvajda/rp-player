@@ -1711,6 +1711,71 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
 
         stateCollector.cancel()
     }
+
+    /// PR 41: handleSongPlaybackError's recovery-play branch must defer queueNext
+    /// when the new queue[1] (after dropping the unplayable head) is uncached.
+    func testHandleSongPlaybackErrorDefersQueueNextWhenNextUncached() async throws {
+        let api = MockRpApiClient()
+        let response = makeGaplessResponse(songs: [
+            makeGaplessSong(songId: "A", eventId: 400, gaplessUrl: "https://example.com/A.flac"),
+            makeGaplessSong(songId: "B", eventId: 401, gaplessUrl: "https://example.com/B.flac"),
+            makeGaplessSong(songId: "C", eventId: 402, gaplessUrl: "https://example.com/C.flac"),
+        ])
+        await api.setGaplessResponses([response])
+        let engine = MockPlayerEngine()
+        let cache = MockSongFileCache()
+        let coord = LivePlaybackCoordinator(
+            api: api, engine: engine, songFileCache: cache, logger: silentLogger(), bitrateProvider: { 4 }
+        )
+
+        let stateStream = await coord.stateUpdates
+        let statesBox = StateBox()
+        let stateCollector = Task {
+            for await s in stateStream { await statesBox.append(s) }
+        }
+
+        // A + B downloaded (bootstrap plays A, queueNext B); C in-flight.
+        await cache.markDownloaded([400, 401])
+        await cache.setInFlight([402])
+
+        try await coord.play(channelId: 0)
+
+        let aUrl = URL(string: "https://example.com/A.flac")!
+        let bUrl = URL(string: "https://example.com/B.flac")!
+        let cUrl = URL(string: "https://example.com/C.flac")!
+        _ = try await waitUntil({
+            let calls = await engine.recordedCalls()
+            return calls.contains(.play(url: aUrl, startSeconds: nil))
+                && calls.contains(.queueNext(url: bUrl, startSeconds: nil))
+        }, timeout: 2.0)
+
+        await statesBox.reset()
+
+        // Code -13 = LOADING_FAILED, classified as unplayable. Routes to
+        // handleSongPlaybackError which drops A, plays B, tries queueNext(C).
+        await engine.fire(.fileEnded(reason: .error(code: -13)))
+
+        let playedB = try await waitUntil({
+            let calls = await engine.recordedCalls()
+            return calls.contains(.play(url: bUrl, startSeconds: nil))
+        }, timeout: 2.0)
+        XCTAssertTrue(playedB, "recovery must play B after unplayable-A drop")
+
+        // Wait for .loading first — once emitted, the defer path completed.
+        let sawLoading = try await waitUntil({
+            await statesBox.contains(.loading)
+        }, timeout: 1.0)
+        XCTAssertTrue(sawLoading,
+                      "handleSongPlaybackError must emit .loading when deferring queueNext")
+
+        // queueNext(C) must NOT have fired — C is uncached, defer path took it.
+        let callsAfter = await engine.recordedCalls()
+        let queuedC = callsAfter.contains(.queueNext(url: cUrl, startSeconds: nil))
+        XCTAssertFalse(queuedC,
+                       "handleSongPlaybackError must defer queueNext(C) when uncached; calls=\(callsAfter)")
+
+        stateCollector.cancel()
+    }
 }
 
 private actor StateBox {
