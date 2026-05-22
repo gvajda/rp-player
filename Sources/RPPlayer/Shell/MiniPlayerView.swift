@@ -170,6 +170,36 @@ struct MiniPlayerView: View {
             .disabled(viewModel.isLoading)
             .accessibilityLabel(viewModel.isLoading ? "Loading" : (viewModel.isPlaying ? "Pause" : "Play"))
 
+            secondarySlot
+        }
+    }
+
+    @ViewBuilder
+    private var secondarySlot: some View {
+        let isPaused = viewModel.nowPlaying != nil && !viewModel.isPlaying && !viewModel.isLoading
+        let showLoadingInSkipSlot = viewModel.isPlaying && !viewModel.nextReady
+
+        if isPaused {
+            Button {
+                Task { await viewModel.stopPlayback() }
+            } label: {
+                Image(systemName: "stop.fill")
+                    .font(.system(size: 22))
+            }
+            .buttonStyle(PressOpacityButtonStyle())
+            .frame(width: 38, height: 38)
+            .accessibilityLabel("Stop")
+        } else if showLoadingInSkipSlot {
+            ZStack {
+                Image(systemName: "circle")
+                    .font(.system(size: 22))
+                ProgressView()
+                    .controlSize(.small)
+                    .progressViewStyle(.circular)
+            }
+            .frame(width: 38, height: 38)
+            .accessibilityLabel("Loading next track")
+        } else {
             Button {
                 Task { await viewModel.skipForward() }
             } label: {
