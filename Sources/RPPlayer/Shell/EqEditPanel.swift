@@ -13,9 +13,10 @@ struct EqEditPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if let preset = viewModel.editingPreset {
-                footer(preset)
-                header(preset)
                 Divider()
+                buttonRow(preset)
+                Divider()
+                header(preset)
                 preampRow(preset)
                 bandsGrid(preset)
                 Button {
@@ -73,15 +74,21 @@ struct EqEditPanel: View {
                 }
             )
         }
-        .alert("Save failed", isPresented: Binding(get: { saveAlert != nil }, set: { if !$0 { saveAlert = nil } })) {
+        .alert(
+            "Save failed",
+            isPresented: Binding(get: { saveAlert != nil }, set: { if !$0 { saveAlert = nil } })
+        ) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(saveAlert ?? "")
         }
-        .alert("Save shared preset?", isPresented: Binding(
-            get: { sharedSaveConfirm != nil },
-            set: { if !$0 { sharedSaveConfirm = nil } }
-        )) {
+        .alert(
+            "Save shared preset?",
+            isPresented: Binding(
+                get: { sharedSaveConfirm != nil },
+                set: { if !$0 { sharedSaveConfirm = nil } }
+            )
+        ) {
             Button("Cancel", role: .cancel) { sharedSaveConfirm = nil }
             Button("Save Anyway") {
                 sharedSaveConfirm = nil
@@ -124,7 +131,7 @@ struct EqEditPanel: View {
             ) {
                 Text(String(format: "%+.1f dB", preset.preampDb)).monospacedDigit()
             }
-            .frame(maxWidth: 220)
+            .frame(maxWidth: 133)
         }
     }
 
@@ -227,7 +234,7 @@ struct EqEditPanel: View {
         }
     }
 
-    private func footer(_ preset: EqPreset) -> some View {
+    private func buttonRow(_ preset: EqPreset) -> some View {
         HStack {
             Button("Cancel") {
                 Task { await viewModel.cancelEdit() }
@@ -284,8 +291,11 @@ struct EqEditPanel: View {
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 280)
                 .onAppear {
-                    if showSaveAsSheet { saveAsName = initialValue }
-                    else { renameTarget = initialValue }
+                    if showSaveAsSheet {
+                        saveAsName = initialValue
+                    } else {
+                        renameTarget = initialValue
+                    }
                 }
             if let err = sheetError {
                 Text(err).foregroundStyle(.red).font(.caption)
