@@ -30,11 +30,13 @@ actor MockSongFileCache: SongFileCache {
 
     func setMode(_ m: Mode) { mode = m }
     func setFailing(_ ids: Set<Int>) { failingEventIds = ids }
-    func markDownloaded(_ ids: Set<Int>) {
-        downloadedEventIds.formUnion(ids)
-        for id in ids {
-            // Mirror production: a downloaded song must also be visible via cachedFile (fs-exists probe).
-            releasedMirror.set(eventId: id, url: URL(string: "https://mock.cache/\(id)")!)
+    func markDownloaded(_ songs: [GaplessSong]) {
+        for song in songs {
+            downloadedEventIds.insert(song.eventId)
+            // Mirror production: cachedFile returns the URL the engine will actually receive.
+            // In passthrough mode the engine sees the gaplessUrl; use that so queueNext
+            // assertions in tests match what tryQueueNextOrDefer passes to the engine.
+            releasedMirror.set(eventId: song.eventId, url: URL(string: song.gaplessUrl)!)
         }
     }
 

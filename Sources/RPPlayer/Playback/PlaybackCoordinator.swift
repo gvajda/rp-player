@@ -200,22 +200,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         emitState(.playing)
 
         if queue.count >= 2 {
-            let next = queue[1]
-            let nextUrl = await songFileCache.localFile(for: next)
-                ?? URL(string: next.gaplessUrl)
-            if let nextUrl {
-                // Race-guard: another action (skip / channel-change) may have run
-                // on this actor during the localFile await. queue[1] may no
-                // longer match `next`. Only queueNext if it still does.
-                if queue.count >= 2, queue[1].eventId == next.eventId {
-                    do {
-                        try await engine.queueNext(url: nextUrl, startSeconds: nil)
-                        queueNextEventId = next.eventId
-                    } catch {
-                        logger.warn("play: queueNext failed: \(error)")
-                    }
-                }
-            }
+            _ = await tryQueueNextOrDefer(queue[1])
         }
 
         // Telemetry + queueNext for queue[1] are driven from syncQueueHeadFromMpv when mpv fires .fileStarted.

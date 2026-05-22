@@ -1379,7 +1379,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         // synchronously and don't perturb ordering.
         // setInFlight replaces the in-flight set; passing [102] leaves C as
         // the only blocked song.
-        await cache.markDownloaded([100, 101])
+        await cache.markDownloaded(Array(response.songs.prefix(2)))
         await cache.setInFlight([102])
 
         try await coord.play(channelId: 0)
@@ -1479,7 +1479,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
 
         // A and promo cached so bootstrap and the first recovery proceed without
         // parking on localFile. C is in-flight so the deferred-queueNext branch fires.
-        await cache.markDownloaded([200, 201])
+        await cache.markDownloaded(Array(response.songs.prefix(2)))
         await cache.setInFlight([202])
 
         try await coord.play(channelId: 0)
@@ -1575,7 +1575,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
             api: api, engine: engine, songFileCache: cache, logger: capture, bitrateProvider: { 4 }
         )
 
-        await cache.markDownloaded([100, 101])
+        await cache.markDownloaded(Array(response.songs.prefix(2)))
         await cache.setInFlight([102])
 
         try await coord.play(channelId: 0)
@@ -1664,7 +1664,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         }
 
         // A + B downloaded so bootstrap completes; C in-flight (uncached).
-        await cache.markDownloaded([300, 301])
+        await cache.markDownloaded(Array(response.songs.prefix(2)))
         await cache.setInFlight([302])
 
         try await coord.play(channelId: 0)
@@ -1735,7 +1735,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         }
 
         // A + B downloaded (bootstrap plays A, queueNext B); C in-flight.
-        await cache.markDownloaded([400, 401])
+        await cache.markDownloaded(Array(response.songs.prefix(2)))
         await cache.setInFlight([402])
 
         try await coord.play(channelId: 0)
@@ -1802,7 +1802,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
             for await s in stateStream { await statesBox.append(s) }
         }
 
-        await cache.markDownloaded([500, 501])
+        await cache.markDownloaded(Array(initial.songs.prefix(2)))
 
         try await coord.play(channelId: 0)
 
@@ -1868,7 +1868,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         }
 
         // Both downloaded so localFile resolves synchronously for either song.
-        await cache.markDownloaded([800, 801])
+        await cache.markDownloaded(Array(response.songs.prefix(2)))
         // Override: cachedFile reports a miss for B (event 801) but the cached
         // URL for A. tryQueueNextOrDefer's synchronous probe for queue[1] thus
         // sees a miss; pre-fix's localFile path still returns B's passthrough URL.
