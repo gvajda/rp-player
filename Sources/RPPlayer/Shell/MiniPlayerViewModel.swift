@@ -8,6 +8,7 @@ final class MiniPlayerViewModel: ObservableObject {
     @Published private(set) var nowPlaying: NowPlaying?
     @Published private(set) var isPlaying: Bool = false
     @Published private(set) var isLoading: Bool = false
+    @Published private(set) var nextReady: Bool = false
     @Published private(set) var channels: [Channel] = []
     @Published private(set) var selectedChannelId: Int
     @Published private(set) var errorMessage: String?
@@ -40,6 +41,7 @@ final class MiniPlayerViewModel: ObservableObject {
     private var errorsSubscriptionTask: Task<Void, Never>?
     private var stateSubscriptionTask: Task<Void, Never>?
     private var settingsSubscriptionTask: Task<Void, Never>?
+    private var nextReadySubscriptionTask: Task<Void, Never>?
     private var updateStateTask: Task<Void, Never>?
     private var paletteTask: Task<Void, Never>?
     private var inFlightChannelId: Int?
@@ -99,6 +101,8 @@ final class MiniPlayerViewModel: ObservableObject {
         stateSubscriptionTask = nil
         settingsSubscriptionTask?.cancel()
         settingsSubscriptionTask = nil
+        nextReadySubscriptionTask?.cancel()
+        nextReadySubscriptionTask = nil
         paletteTask?.cancel()
         paletteTask = nil
         self.ambientEnabled = await configStore.settings.ambientBackgroundEnabled
@@ -191,6 +195,15 @@ final class MiniPlayerViewModel: ObservableObject {
             }
         }
 
+        self.nextReady = await coordinator.nextReady
+        let nextReadyStream = await coordinator.nextReadyUpdates
+        nextReadySubscriptionTask = Task { [weak self] in
+            for await value in nextReadyStream {
+                guard let self else { return }
+                await MainActor.run { self.nextReady = value }
+            }
+        }
+
         let settingsStream = await configStore.changes
         settingsSubscriptionTask = Task { [weak self] in
             for await snapshot in settingsStream {
@@ -232,6 +245,7 @@ final class MiniPlayerViewModel: ObservableObject {
         errorsSubscriptionTask?.cancel(); errorsSubscriptionTask = nil
         stateSubscriptionTask?.cancel(); stateSubscriptionTask = nil
         settingsSubscriptionTask?.cancel(); settingsSubscriptionTask = nil
+        nextReadySubscriptionTask?.cancel(); nextReadySubscriptionTask = nil
         paletteTask?.cancel(); paletteTask = nil
         updateStateTask?.cancel(); updateStateTask = nil
         hasStarted = false
