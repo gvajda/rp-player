@@ -44,7 +44,8 @@ struct SettingsView: View {
             }
             .formStyle(.grouped)
         }
-        .frame(width: 480, height: 560)
+        .frame(width: 480)
+        .frame(minHeight: 400, idealHeight: 560, maxHeight: .infinity)
         .task { await viewModel.start() }
         .alert("Force Max Volume", isPresented: $showForceMaxConfirm) {
             Button("Cancel", role: .cancel) {}

@@ -16,7 +16,10 @@ final class SettingsWindowControllerTests: XCTestCase {
         let window = sut.window!
         XCTAssertTrue(window.styleMask.contains(.titled))
         XCTAssertTrue(window.styleMask.contains(.closable))
+        XCTAssertTrue(window.styleMask.contains(.resizable))
         XCTAssertEqual(window.contentView?.frame.size, NSSize(width: 480, height: 560))
+        XCTAssertEqual(window.contentMinSize, NSSize(width: 480, height: 400))
+        XCTAssertEqual(window.contentMaxSize, NSSize(width: 480, height: 2000))
         XCTAssertEqual(window.title, "RP Player Settings")
     }
 

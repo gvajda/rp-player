@@ -28,6 +28,7 @@ Section labels: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`
 - EQ parser and writer now round-trip `OFF` filter rows verbatim. Previously the parser silently skipped them on load and the writer renumbered remaining bands; OFF rows are now preserved as `EqBand.enabled = false` so they survive an edit-save cycle. Writer emits `Filter N: ON|OFF …` with sequential N over all bands (enabled + disabled).
 - EQ preset filenames are now capped at **30 characters** (was 255). The UI label length is the binding constraint; import filenames longer than the cap are truncated on first save with no warning.
 - Changing the EQ preset picker while the editor is open with no unsaved changes now reseeds the editor with the newly-picked preset's values. With unsaved changes, a warning offers Keep editing / Discard / Save / Save as new preset.
+- Settings window is now vertically resizable (width locked at 480, height 400–2000). Lets the EQ edit panel fit on screen without truncation when many bands are open. Initial size remains 480×560.
 
 ### Removed
 
