@@ -248,7 +248,7 @@ struct EqEditPanel: View {
             .disabled(viewModel.editingIsNew)
 
             Button("Save As…") {
-                saveAsName = viewModel.editingOriginalName.map { "\($0)-copy" } ?? "Untitled"
+                saveAsName = viewModel.editingOriginalName ?? "Untitled"
                 sheetError = nil
                 showSaveAsSheet = true
             }

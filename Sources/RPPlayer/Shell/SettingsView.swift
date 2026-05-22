@@ -369,7 +369,7 @@ struct SettingsView: View {
             }
             Button("Save as new preset…") {
                 savingAsInProgress = true
-                pendingSaveAsName = viewModel.editingOriginalName.map { "\($0)-copy" } ?? "Untitled"
+                pendingSaveAsName = viewModel.editingOriginalName ?? "Untitled"
                 pendingSaveAsError = nil
                 pendingShowSaveAsSheet = true
             }
