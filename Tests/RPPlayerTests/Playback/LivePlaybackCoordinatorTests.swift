@@ -1897,6 +1897,82 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
 
         stateCollector.cancel()
     }
+
+    /// PR 41 cross-cutting: when a tryQueueNextOrDefer call defers (via the
+    /// .fileStarted advance path), kickSequentialDownload's post-download hook
+    /// must fire queueNext + lift state .loading → .playing once the bytes land.
+    /// One exemplar test covers the lift behaviour across all converted sites
+    /// (helper extraction means the lift path is shared).
+    func testDeferredQueueNextLiftsStateWhenDownloaderLands() async throws {
+        let api = MockRpApiClient()
+        let response = makeGaplessResponse(songs: [
+            makeGaplessSong(songId: "A", eventId: 900, gaplessUrl: "https://example.com/A.flac"),
+            makeGaplessSong(songId: "B", eventId: 901, gaplessUrl: "https://example.com/B.flac"),
+            makeGaplessSong(songId: "C", eventId: 902, gaplessUrl: "https://example.com/C.flac"),
+        ])
+        await api.setGaplessResponses([response])
+        let engine = MockPlayerEngine()
+        let cache = MockSongFileCache()
+        let coord = LivePlaybackCoordinator(
+            api: api, engine: engine, songFileCache: cache, logger: silentLogger(), bitrateProvider: { 4 }
+        )
+
+        let stateStream = await coord.stateUpdates
+        let statesBox = StateBox()
+        let stateCollector = Task {
+            for await s in stateStream { await statesBox.append(s) }
+        }
+
+        // A + B downloaded so bootstrap completes; C in-flight so defer fires on advance.
+        await cache.markDownloaded(Array(response.songs.prefix(2)))
+        await cache.setInFlight([902])
+
+        try await coord.play(channelId: 0)
+
+        let aUrl = URL(string: "https://example.com/A.flac")!
+        let bUrl = URL(string: "https://example.com/B.flac")!
+        let cUrl = URL(string: "https://example.com/C.flac")!
+        _ = try await waitUntil({
+            let calls = await engine.recordedCalls()
+            return calls.contains(.play(url: aUrl, startSeconds: nil))
+                && calls.contains(.queueNext(url: bUrl, startSeconds: nil))
+        }, timeout: 2.0)
+
+        // Seed lastStartedEventId by firing the initial .fileStarted (A).
+        // Mirrors the syncQueueHeadFromMpv defer test pattern.
+        await engine.fire(.fileStarted)
+        try await Task.sleep(nanoseconds: 200_000_000)
+
+        await statesBox.reset()
+
+        // Advance to B → tryQueueNextOrDefer(C) sees cache miss → defers + emits .loading.
+        await engine.setSimulatedCurrentPath(bUrl)
+        await engine.fire(.fileStarted)
+
+        // Confirm defer happened.
+        let sawLoading = try await waitUntil({
+            await statesBox.contains(.loading)
+        }, timeout: 1.0)
+        XCTAssertTrue(sawLoading,
+                      "defer path must emit .loading before downloader lands")
+
+        // Release C's download → tryQueueNextIfPending fires queueNext(C) + lifts state.
+        await cache.releaseInFlight(eventId: 902, url: cUrl)
+
+        let queuedC = try await waitUntil({
+            await engine.recordedCalls().contains(.queueNext(url: cUrl, startSeconds: nil))
+        }, timeout: 2.0)
+        XCTAssertTrue(queuedC,
+                      "tryQueueNextIfPending must fire queueNext(C) after C lands")
+
+        let backToPlaying = try await waitUntil({
+            await coord.currentPlaybackState == .playing
+        }, timeout: 1.0)
+        XCTAssertTrue(backToPlaying,
+                      "state must lift .loading → .playing after deferred queueNext lands")
+
+        stateCollector.cancel()
+    }
 }
 
 private actor StateBox {
