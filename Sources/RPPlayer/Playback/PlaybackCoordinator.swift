@@ -384,11 +384,9 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         if queue.count >= 2 {
             // If queue[1] hasn't actually been queueNext'd in mpv yet (the inline
             // localFile await in play()/sync handler is still in flight), advancing
-            // would jump to an empty playlist. Wait for the download + queueNext,
-            // surfacing the loading state to the UI for the duration.
+            // would jump to an empty playlist. Wait for the download + queueNext.
             if queueNextEventId != queue[1].eventId {
                 logger.debug("skipForward: queue[1] not yet queued in mpv (queueNextEventId=\(queueNextEventId.map(String.init) ?? "nil"), queue[1].eventId=\(queue[1].eventId)); awaiting download")
-                emitState(.loading)
                 let next = queue[1]
                 let nextUrl = await songFileCache.localFile(for: next)
                     ?? URL(string: next.gaplessUrl)
@@ -396,7 +394,6 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
                 // queue may have shifted during the await. Re-check.
                 guard queue.count >= 2, queue[1].eventId == next.eventId,
                       let nextUrl else {
-                    emitState(.playing)
                     return
                 }
                 // queueNextEventId may have been set by a concurrent path
@@ -407,11 +404,9 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
                         queueNextEventId = next.eventId
                         updateNextReady()
                     } catch {
-                        emitState(.playing)
                         throw PlaybackCoordinatorError.engineError(message: String(describing: error))
                     }
                 }
-                emitState(.playing)
             }
             logger.debug("skipForward: advancing to queued entry on engine")
             do {
@@ -649,15 +644,10 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
                                 } else {
                                     logger.debug("recovery: deferring queueNext (not cached) event=\(next.eventId)")
                                     deferredQueueNextAt = clock()
-                                    emitState(.loading)
                                 }
                             }
                             if queue.count < 3 { kickRefetch() }
                             kickSequentialDownload()
-                            // Lift any stale .loading once recovery successfully played the head. Covers the cascade case where a prior defer was cleared at line 622 before queueNext could re-defer, plus any normal recovery that ran while state was already .loading from an unrelated source.
-                            if currentState == .loading && deferredQueueNextAt == nil {
-                                emitState(.playing)
-                            }
                             return
                         } catch {
                             await handlePlaybackError(code: -99)
@@ -959,8 +949,8 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     // Resolves queue[1] (or any candidate "next" song) for engine.queueNext using
     // a synchronous cache probe. Returns true on cache hit + successful queueNext.
     // Returns false on cache miss (deferred — kickSequentialDownload's post-download
-    // hook tryQueueNextIfPending(landed:) will fire queueNext + lift state once
-    // the download lands) or on queueNext error.
+    // hook tryQueueNextIfPending(landed:) will fire queueNext + update nextReady
+    // once the download lands) or on queueNext error.
     private func tryQueueNextOrDefer(_ next: GaplessSong) async -> Bool {
         if let url = songFileCache.cachedFile(for: next) {
             do {
@@ -975,7 +965,6 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         }
         logger.debug("deferring queueNext (not cached) event=\(next.eventId)")
         deferredQueueNextAt = clock()
-        emitState(.loading)
         return false
     }
 
@@ -994,9 +983,6 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
                 let elapsedMs = Int(clock().timeIntervalSince(deferredAt) * 1000)
                 logger.debug("recovery: deferred queueNext fired event=\(next.eventId) elapsedSinceDeferMs=\(elapsedMs)")
                 deferredQueueNextAt = nil
-                if currentState == .loading {
-                    emitState(.playing)
-                }
             }
         } catch {
             logger.warn("recovery: deferred queueNext failed event=\(next.eventId): \(error)")

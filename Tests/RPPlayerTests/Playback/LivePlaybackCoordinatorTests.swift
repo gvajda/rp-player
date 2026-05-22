@@ -1426,19 +1426,14 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         XCTAssertFalse(queuedC,
                        "queueNext(C) must be deferred while C's download is in flight; calls=\(callsAfterPlay)")
 
-        // State must have transitioned to .loading: recovery deferred queueNext,
-        // so the UI needs the loading spinner. Pre-fix this assertion fails because
-        // the recovery branch never calls emitState.
-        let sawLoading = try await waitUntil({
-            await statesBox.contains(.loading)
+        // nextReady must be false: recovery deferred queueNext (C not yet preloaded).
+        let deferredNextReady = try await waitUntil({
+            await coord.nextReady == false
         }, timeout: 1.0)
-        XCTAssertTrue(sawLoading,
-                      "recovery should emit .loading when next song's download is in flight")
+        XCTAssertTrue(deferredNextReady,
+                      "nextReady should be false when recovery deferred queueNext")
 
-        // Release C's download. Post-fix: a post-download hook fires queueNext(C)
-        // and state returns to .playing. Pre-fix: the parked actor await finally
-        // returns and engine.queueNext(C) is called too, but state never returns
-        // to .loading→.playing cycle (no emit).
+        // Release C's download. Post-fix: a post-download hook fires queueNext(C).
         await cache.releaseInFlight(eventId: 102, url: cUrl)
 
         let queuedAfterRelease = try await waitUntil({
@@ -1448,11 +1443,11 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         XCTAssertTrue(queuedAfterRelease,
                       "engine.queueNext(C) must fire after C's download completes")
 
-        let endedPlaying = try await waitUntil({
-            await coord.currentPlaybackState == .playing
+        let nextReadyAfterLand = try await waitUntil({
+            await coord.nextReady == true
         }, timeout: 1.0)
-        XCTAssertTrue(endedPlaying,
-                      "coordinator state must return to .playing after deferred queueNext lands")
+        XCTAssertTrue(nextReadyAfterLand,
+                      "nextReady must become true after deferred queueNext lands")
 
         stateCollector.cancel()
     }
@@ -1513,10 +1508,10 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         }, timeout: 2.0)
         XCTAssertTrue(playedPromo, "first recovery should play the promo")
 
-        let sawLoading = try await waitUntil({
-            await statesBox.contains(.loading)
+        let deferredNextReady = try await waitUntil({
+            await coord.nextReady == false
         }, timeout: 1.0)
-        XCTAssertTrue(sawLoading, "deferred queueNext should emit .loading")
+        XCTAssertTrue(deferredNextReady, "nextReady should be false when queueNext for C is deferred")
 
         // Step 2: promo ends while C is still downloading. Second recovery removes promo;
         // its head-resolve awaits localFile(C), which is still in-flight, so it parks.
@@ -1540,12 +1535,8 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         }, timeout: 3.0)
         XCTAssertTrue(playedC, "second recovery should play C once its download lands")
 
-        // Recovery must lift coordinator state out of .loading once playback resumes.
-        // This also gives any racing downloader hooks a beat to attempt a stale queueNext.
-        let liftedToPlaying = try await waitUntil({
-            await coord.currentPlaybackState == .playing
-        }, timeout: 1.0)
-        XCTAssertTrue(liftedToPlaying, "cascade recovery must lift state from .loading to .playing")
+        // Give any racing downloader hooks a beat to attempt a stale queueNext.
+        try await Task.sleep(nanoseconds: 50_000_000)
 
         let finalCalls = await engine.recordedCalls()
         let playCCount = finalCalls.filter { $0 == .play(url: cUrl, startSeconds: nil) }.count
@@ -1558,9 +1549,6 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         let finalState = await coord.currentPlaybackState
         XCTAssertEqual(finalState, .playing,
                        "coordinator must reach .playing after cascade recovery completes")
-        let observedPlaying = await statesBox.contains(.playing)
-        XCTAssertTrue(observedPlaying,
-                      "state stream must observe .playing after cascade recovery")
 
         stateCollector.cancel()
     }
@@ -1702,14 +1690,12 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         await engine.setSimulatedCurrentPath(bUrl)
         await engine.fire(.fileStarted)
 
-        // Wait for .loading first: once emitted, syncQueueHeadFromMpv's defer
-        // path has run to completion (helper emits .loading at its tail), so any
-        // subsequent assertion about engine.queueNext is settled.
-        let sawLoading = try await waitUntil({
-            await statesBox.contains(.loading)
-        }, timeout: 1.0)
-        XCTAssertTrue(sawLoading,
-                      "syncQueueHeadFromMpv must emit .loading when deferring queueNext")
+        // nextReady must be false: syncQueueHeadFromMpv clears queueNextEventId on advance
+        // and defers queueNext(C) because C is uncached.
+        try await Task.sleep(nanoseconds: 200_000_000)
+        let nextReadyAfterAdvance = await coord.nextReady
+        XCTAssertFalse(nextReadyAfterAdvance,
+                       "nextReady must be false when syncQueueHeadFromMpv deferred queueNext")
 
         // queueNext(C) must NOT have fired — C is uncached, defer path took it.
         let callsAfterAdvance = await engine.recordedCalls()
@@ -1769,12 +1755,10 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         }, timeout: 2.0)
         XCTAssertTrue(playedB, "recovery must play B after unplayable-A drop")
 
-        // Wait for .loading first — once emitted, the defer path completed.
-        let sawLoading = try await waitUntil({
-            await statesBox.contains(.loading)
-        }, timeout: 1.0)
-        XCTAssertTrue(sawLoading,
-                      "handleSongPlaybackError must emit .loading when deferring queueNext")
+        // nextReady must be false — defer path took effect for C.
+        let nextReadyAfterError = await coord.nextReady
+        XCTAssertFalse(nextReadyAfterError,
+                       "nextReady must be false when handleSongPlaybackError deferred queueNext")
 
         // queueNext(C) must NOT have fired — C is uncached, defer path took it.
         let callsAfter = await engine.recordedCalls()
@@ -1837,12 +1821,10 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
 
         await coord.applyBitrateChange()
 
-        // Wait for .loading first — once emitted, the defer path completed.
-        let sawLoading = try await waitUntil({
-            await statesBox.contains(.loading)
-        }, timeout: 1.0)
-        XCTAssertTrue(sawLoading,
-                      "applyBitrateChange must emit .loading when deferring queueNext")
+        // nextReady must be false — defer path took effect for B.
+        let nextReadyAfterApply = await coord.nextReady
+        XCTAssertFalse(nextReadyAfterApply,
+                       "nextReady must be false when applyBitrateChange deferred queueNext")
 
         // queueNext(B-flac) must NOT have fired — B is uncached, defer path took it.
         let bNew = URL(string: "https://example.com/B-flac.flac")!
@@ -1960,18 +1942,18 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
 
         await statesBox.reset()
 
-        // Advance to B → tryQueueNextOrDefer(C) sees cache miss → defers + emits .loading.
+        // Advance to B → tryQueueNextOrDefer(C) sees cache miss → defers.
         await engine.setSimulatedCurrentPath(bUrl)
         await engine.fire(.fileStarted)
 
-        // Confirm defer happened.
-        let sawLoading = try await waitUntil({
-            await statesBox.contains(.loading)
-        }, timeout: 1.0)
-        XCTAssertTrue(sawLoading,
-                      "defer path must emit .loading before downloader lands")
+        // Confirm defer happened: nextReady must be false while C is in-flight.
+        // Give the actor a moment to process the advance event.
+        try await Task.sleep(nanoseconds: 200_000_000)
+        let nextReadyAfterAdvance = await coord.nextReady
+        XCTAssertFalse(nextReadyAfterAdvance,
+                       "nextReady must be false when defer path fires (C not yet cached)")
 
-        // Release C's download → tryQueueNextIfPending fires queueNext(C) + lifts state.
+        // Release C's download → tryQueueNextIfPending fires queueNext(C) + flips nextReady.
         await cache.releaseInFlight(eventId: 902, url: cUrl)
 
         let queuedC = try await waitUntil({
@@ -1980,11 +1962,11 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         XCTAssertTrue(queuedC,
                       "tryQueueNextIfPending must fire queueNext(C) after C lands")
 
-        let backToPlaying = try await waitUntil({
-            await coord.currentPlaybackState == .playing
+        let nextReadyAfterLand = try await waitUntil({
+            await coord.nextReady == true
         }, timeout: 1.0)
-        XCTAssertTrue(backToPlaying,
-                      "state must lift .loading → .playing after deferred queueNext lands")
+        XCTAssertTrue(nextReadyAfterLand,
+                      "nextReady must become true after deferred queueNext lands")
 
         stateCollector.cancel()
     }
@@ -2052,6 +2034,44 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         try await coordinator.stop()
         let value = await coordinator.nextReady
         XCTAssertFalse(value)
+    }
+
+    func testSkipForwardWithUncachedQueueNextDoesNotEmitLoading() async throws {
+        let api = MockRpApiClient()
+        let engine = MockPlayerEngine()
+        let cache = MockSongFileCache()
+        let head = makeGaplessSong(songId: "s0", eventId: 100, gaplessUrl: "https://s.example.com/100.flac")
+        let next = makeGaplessSong(songId: "s1", eventId: 101, gaplessUrl: "https://s.example.com/101.flac")
+        let third = makeGaplessSong(songId: "s2", eventId: 102, gaplessUrl: "https://s.example.com/102.flac")
+        await cache.markDownloaded([head]) // only head cached → next defers on play
+        await api.setGaplessResponse(makeGaplessResponse(songs: [head, next, third]))
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, songFileCache: cache, logger: silentLogger(), bitrateProvider: { 4 }
+        )
+
+        actor StateRecorder { var states: [PlaybackState] = []; func record(_ s: PlaybackState) { states.append(s) }; func snapshot() -> [PlaybackState] { states } }
+        let recorder = StateRecorder()
+        let stream = await coordinator.stateUpdates
+        let task = Task {
+            for await s in stream { await recorder.record(s) }
+        }
+        defer { task.cancel() }
+
+        try await coordinator.play(channelId: 0)
+        await engine.setSimulatedCurrentPath(URL(string: head.gaplessUrl))
+        await engine.fire(.fileStarted)
+        try await Task.sleep(nanoseconds: 80_000_000)
+
+        try await coordinator.skipForward()
+        try await Task.sleep(nanoseconds: 80_000_000)
+
+        let states = await recorder.snapshot()
+        guard let firstPlayingIdx = states.firstIndex(of: .playing) else {
+            XCTFail("never reached .playing"); return
+        }
+        let postPlaying = states[(firstPlayingIdx + 1)...]
+        XCTAssertFalse(postPlaying.contains(.loading),
+                       "no .loading should be emitted after audio starts; got post-playing states: \(Array(postPlaying))")
     }
 
     func testNextReadyStreamReplaysCurrentValue() async throws {
