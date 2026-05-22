@@ -1685,19 +1685,20 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         await engine.setSimulatedCurrentPath(bUrl)
         await engine.fire(.fileStarted)
 
-        // queueNext(C) must NOT fire — C is uncached, must defer.
-        try await Task.sleep(nanoseconds: 200_000_000)
-        let callsAfterAdvance = await engine.recordedCalls()
-        let queuedC = callsAfterAdvance.contains(.queueNext(url: cUrl, startSeconds: nil))
-        XCTAssertFalse(queuedC,
-                       "syncQueueHeadFromMpv must defer queueNext(C) when C is uncached; calls=\(callsAfterAdvance)")
-
-        // State must transition to .loading: defer signals to UI that we're waiting on a download.
+        // Wait for .loading first: once emitted, syncQueueHeadFromMpv's defer
+        // path has run to completion (helper emits .loading at its tail), so any
+        // subsequent assertion about engine.queueNext is settled.
         let sawLoading = try await waitUntil({
             await statesBox.contains(.loading)
         }, timeout: 1.0)
         XCTAssertTrue(sawLoading,
                       "syncQueueHeadFromMpv must emit .loading when deferring queueNext")
+
+        // queueNext(C) must NOT have fired — C is uncached, defer path took it.
+        let callsAfterAdvance = await engine.recordedCalls()
+        let queuedC = callsAfterAdvance.contains(.queueNext(url: cUrl, startSeconds: nil))
+        XCTAssertFalse(queuedC,
+                       "syncQueueHeadFromMpv must defer queueNext(C) when C is uncached; calls=\(callsAfterAdvance)")
 
         stateCollector.cancel()
     }
