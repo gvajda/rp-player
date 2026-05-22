@@ -29,6 +29,8 @@ Section labels: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`
 - EQ preset filenames are now capped at **30 characters** (was 255). The UI label length is the binding constraint; import filenames longer than the cap are truncated on first save with no warning.
 - Changing the EQ preset picker while the editor is open with no unsaved changes now reseeds the editor with the newly-picked preset's values. With unsaved changes, a warning offers Keep editing / Discard / Save / Save as new preset.
 - Settings window is now vertically resizable (width locked at 480, height 400–2000). Lets the EQ edit panel fit on screen without truncation when many bands are open. Initial size remains 480×560.
+- EQ edit panel layout reordered — button row (Cancel / Rename / Save As / Save) moved above the `Editing: <name>` header with a divider under the header, so actions stay reachable without scrolling when many bands are open.
+- EQ Save As name field now pre-fills with the current preset name (was `<name>-copy`). Rename already did this. Lets the user tweak a variant without retyping the full name.
 
 ### Removed
 
@@ -43,6 +45,7 @@ Section labels: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`
 - Cold-start audio filter chain failure (`AVFilterGraph: No such filter: 'volume' / 'bs2b'` errors at song start when EQ or crossfeed was enabled). The vendored `libmpv.dylib` and `libfftools-ffi.dylib` from the fork build shipped with poisoned `LC_RPATH` entries pointing at a stale nix-store path for the audio-default FFmpeg variant (no bs2b, only equalizer filter). When the host binary's own `@rpath` failed to resolve, dyld fell through to the baked-in nix-store rpath and silently loaded the wrong `libavfilter.dylib`. Fix: rewrote every `@rpath/lib<sibling>.dylib` reference across all 16 `Vendor/libmpv/lib/*.dylib` to `@loader_path/lib<sibling>.dylib` and re-signed each dylib ad-hoc. Sibling-dylib resolution now bypasses rpath search entirely.
 - Crossfeed Custom-mode numeric input rendering glitch where wider values (4-digit fcut like `1650`, 5-character feed like `12.00`) caused the rawText to render below the field's rounded-rect bezel instead of inside it. Root cause: the 56×18 frame from the prior `roundedBorder`-bezel fix was tuned for the original feed-only field (max 5 chars at small font); fcut Hz values pushed content past the inner padding and triggered a SwiftUI TextField vertical-baseline shift identical in symptom to the `roundedBorder` autosize bug fixed in `f526544`. Widened frame + pinned font removes the squeeze.
 - EQ preset picker now prompts before discarding unsaved edits in the editor panel. Previously, changing the picker while editing silently left the editor showing the old preset's values, and Save would overwrite the wrong file.
+- EQ Rename / Save As / Save-as-new-preset name sheet showed an empty text field on first open (the pre-filled name only appeared after Cancel + reopen). Root cause: `nameSheet` used a manually-constructed `Binding(get:set:)` and an `.onAppear { saveAsName = initialValue }` hop with a stale captured `initialValue` from a prior view build. Switched to projected `$saveAsName` / `$renameTarget` bindings on the sheet, moved the 30-char cap to `.onChange(of:)`.
 
 ## [v0.7.2] - 2026-05-17
 
