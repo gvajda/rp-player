@@ -48,6 +48,13 @@ final class SettingsViewModel: ObservableObject {
     @Published public private(set) var editingOriginalName: String?
     @Published public private(set) var editingDirty: Bool = false
     public var editingIsNew: Bool { editingOriginalName == nil }
+
+    public struct PendingPresetSwitch: Equatable, Sendable {
+        public let target: String?
+        public init(target: String?) { self.target = target }
+    }
+
+    @Published public private(set) var pendingPresetSwitch: PendingPresetSwitch?
     @Published public private(set) var crossfeedEnabled: Bool = false
     @Published public private(set) var crossfeedProfile: CrossfeedProfile = .cmoy
     @Published public private(set) var crossfeedFcut: Int = 700
@@ -572,6 +579,17 @@ final class SettingsViewModel: ObservableObject {
         }
         await eqEditingOverride.set(empty)
     }
+
+    public func cancelPendingSwitch() {
+        logger?.debug("cancelPendingSwitch")
+        pendingPresetSwitch = nil
+    }
+
+    #if DEBUG
+    internal func _setPendingPresetSwitchForTesting(_ value: PendingPresetSwitch?) {
+        pendingPresetSwitch = value
+    }
+    #endif
 
     public func cancelEdit() async {
         logger?.debug("cancelEdit")

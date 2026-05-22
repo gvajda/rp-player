@@ -279,4 +279,25 @@ final class SettingsViewModelEqEditTests: XCTestCase {
         let snap = await override.snapshot()
         XCTAssertEqual(snap?.preampDb, -5)
     }
+
+    func testCancelPendingSwitchClearsPendingWithoutTouchingEditor() async throws {
+        let eqStore = LiveEqPresetStore(directory: tmpDir)
+        try await savePresetFile(eqStore, name: "alpha")
+        let override = EqEditingOverride()
+        let vm = makeVM(eqStore: eqStore, override: override)
+        await vm.start()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        await vm.reloadParsedPreset()
+        await vm.beginEditCurrent()
+        await vm.setEditingPreamp(-2)
+
+        // Seed a pending switch directly so this task tests only cancel.
+        vm._setPendingPresetSwitchForTesting(SettingsViewModel.PendingPresetSwitch(target: "beta"))
+        XCTAssertNotNil(vm.pendingPresetSwitch)
+
+        vm.cancelPendingSwitch()
+        XCTAssertNil(vm.pendingPresetSwitch)
+        XCTAssertNotNil(vm.editingPreset)
+        XCTAssertEqual(vm.eqPresetName, "alpha")
+    }
 }
