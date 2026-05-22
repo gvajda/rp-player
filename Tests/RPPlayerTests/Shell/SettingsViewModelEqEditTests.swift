@@ -332,4 +332,62 @@ final class SettingsViewModelEqEditTests: XCTestCase {
         let pushed = await override.snapshot()
         XCTAssertEqual(pushed?.bands.count, 2)
     }
+
+    func testRequestPresetSwitchEditorClosedSetsPresetWithoutDialog() async throws {
+        let eqStore = LiveEqPresetStore(directory: tmpDir)
+        try await savePresetFile(eqStore, name: "alpha")
+        try await eqStore.save(name: "beta", text: "Preamp: 0 dB\nFilter 1: ON PK Fc 1000 Hz Gain 1 dB Q 1.0\n", overwrite: false)
+        let override = EqEditingOverride()
+        let vm = makeVM(eqStore: eqStore, override: override)
+        await vm.start()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        await vm.refreshPresets()
+
+        await vm.requestPresetSwitch(to: "beta")
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(vm.eqPresetName, "beta")
+        XCTAssertNil(vm.editingPreset)
+        XCTAssertNil(vm.pendingPresetSwitch)
+    }
+
+    func testRequestPresetSwitchSameTargetIsNoop() async throws {
+        let eqStore = LiveEqPresetStore(directory: tmpDir)
+        try await savePresetFile(eqStore, name: "alpha")
+        let override = EqEditingOverride()
+        let vm = makeVM(eqStore: eqStore, override: override)
+        await vm.start()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        await vm.reloadParsedPreset()
+        await vm.beginEditCurrent()
+        await vm.setEditingPreamp(-5)
+        XCTAssertTrue(vm.editingDirty)
+
+        await vm.requestPresetSwitch(to: "alpha")
+        XCTAssertNil(vm.pendingPresetSwitch)
+        XCTAssertTrue(vm.editingDirty)
+        XCTAssertEqual(vm.editingPreset?.preampDb, -5)
+    }
+
+    func testRequestPresetSwitchEditorCleanToBypassClosesEditor() async throws {
+        let eqStore = LiveEqPresetStore(directory: tmpDir)
+        try await savePresetFile(eqStore, name: "alpha")
+        let override = EqEditingOverride()
+        let vm = makeVM(eqStore: eqStore, override: override)
+        await vm.start()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        await vm.reloadParsedPreset()
+        await vm.beginEditCurrent()
+        XCTAssertNotNil(vm.editingPreset)
+
+        await vm.requestPresetSwitch(to: nil)
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertNil(vm.eqPresetName)
+        XCTAssertNil(vm.editingPreset)
+        XCTAssertNil(vm.editingOriginalName)
+        XCTAssertNil(vm.pendingPresetSwitch)
+        let pushed = await override.snapshot()
+        XCTAssertNil(pushed)
+    }
 }
