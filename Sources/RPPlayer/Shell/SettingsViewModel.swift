@@ -666,13 +666,7 @@ final class SettingsViewModel: ObservableObject {
     }
 
     public func saveEditAs(name: String) async throws {
-        guard let preset = editingPreset else { return }
-        editingPushTask?.cancel(); editingPushTask = nil
-        let trimmed = String(name.prefix(30))
-        let text = EqPresetWriter.write(preset)
-        try await eqPresetStore.save(name: trimmed, text: text, overwrite: false)
-        await eqEditingOverride.set(nil)
-        await refreshPresets()
+        let trimmed = try await writePresetFile(name: name)
         await setEqPresetName(trimmed)
         await reloadParsedPreset()
         await MainActor.run {
@@ -680,6 +674,17 @@ final class SettingsViewModel: ObservableObject {
             self.editingOriginalName = nil
             self.editingDirty = false
         }
+    }
+
+    private func writePresetFile(name: String) async throws -> String {
+        guard let preset = editingPreset else { throw EqPresetStoreError.invalidName }
+        editingPushTask?.cancel(); editingPushTask = nil
+        let trimmed = String(name.prefix(30))
+        let text = EqPresetWriter.write(preset)
+        try await eqPresetStore.save(name: trimmed, text: text, overwrite: false)
+        await eqEditingOverride.set(nil)
+        await refreshPresets()
+        return trimmed
     }
 
     public func renamePreset(from: String, to: String) async throws {
