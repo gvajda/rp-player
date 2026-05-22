@@ -445,17 +445,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         emitNowPlaying(forSongAt: 0)
         emitState(.playing)
         if queue.count >= 2 {
-            let next = queue[1]
-            let nextUrl = await songFileCache.localFile(for: next)
-                ?? URL(string: next.gaplessUrl)
-            if let nextUrl, queue.count >= 2, queue[1].eventId == next.eventId {
-                do {
-                    try await engine.queueNext(url: nextUrl, startSeconds: nil)
-                    queueNextEventId = next.eventId
-                } catch {
-                    logger.warn("skipForward shallow-refetch: queueNext failed: \(error)")
-                }
-            }
+            _ = await tryQueueNextOrDefer(queue[1])
         }
         kickSequentialDownload()
         // Telemetry driven from syncQueueHeadFromMpv when mpv fires .fileStarted.
