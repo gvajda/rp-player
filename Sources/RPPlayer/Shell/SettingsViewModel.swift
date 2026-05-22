@@ -585,11 +585,9 @@ final class SettingsViewModel: ObservableObject {
         pendingPresetSwitch = nil
     }
 
-    #if DEBUG
     internal func _setPendingPresetSwitchForTesting(_ value: PendingPresetSwitch?) {
         pendingPresetSwitch = value
     }
-    #endif
 
     public func cancelEdit() async {
         logger?.debug("cancelEdit")
