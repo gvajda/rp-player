@@ -300,4 +300,36 @@ final class SettingsViewModelEqEditTests: XCTestCase {
         XCTAssertNotNil(vm.editingPreset)
         XCTAssertEqual(vm.eqPresetName, "alpha")
     }
+
+    func testRequestPresetSwitchEditorCleanReseedsToTarget() async throws {
+        let eqStore = LiveEqPresetStore(directory: tmpDir)
+        try await savePresetFile(eqStore, name: "alpha")
+        // beta has different bands so we can distinguish.
+        try await eqStore.save(
+            name: "beta",
+            text: "Preamp: -3 dB\nFilter 1: ON PK Fc 500 Hz Gain -2 dB Q 0.7\nFilter 2: ON PK Fc 8000 Hz Gain 4 dB Q 1.4\n",
+            overwrite: false
+        )
+        let override = EqEditingOverride()
+        let vm = makeVM(eqStore: eqStore, override: override)
+        await vm.start()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        await vm.refreshPresets()
+        await vm.reloadParsedPreset()
+        await vm.beginEditCurrent()
+        XCTAssertEqual(vm.editingPreset?.bands.count, 1)
+        XCTAssertFalse(vm.editingDirty)
+
+        await vm.requestPresetSwitch(to: "beta")
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertNil(vm.pendingPresetSwitch)
+        XCTAssertEqual(vm.eqPresetName, "beta")
+        XCTAssertEqual(vm.editingOriginalName, "beta")
+        XCTAssertEqual(vm.editingPreset?.bands.count, 2)
+        XCTAssertEqual(vm.editingPreset?.preampDb, -3)
+        XCTAssertFalse(vm.editingDirty)
+        let pushed = await override.snapshot()
+        XCTAssertEqual(pushed?.bands.count, 2)
+    }
 }

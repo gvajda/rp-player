@@ -558,6 +558,54 @@ final class SettingsViewModel: ObservableObject {
         EqBand(enabled: true, type: .peak, fcHz: 1000, gainDb: 0, q: 1.0)
     }
 
+    public func requestPresetSwitch(to target: String?) async {
+        logger?.debug("requestPresetSwitch target=\(target ?? "<nil>")")
+        if pendingPresetSwitch != nil {
+            logger?.debug("requestPresetSwitch ignored: pending switch active")
+            return
+        }
+        if target == eqPresetName {
+            return
+        }
+        if editingPreset == nil {
+            await setEqPresetName(target)
+            return
+        }
+        if !editingDirty {
+            await performSwitch(to: target)
+            return
+        }
+        await MainActor.run {
+            self.pendingPresetSwitch = PendingPresetSwitch(target: target)
+        }
+    }
+
+    private func performSwitch(to target: String?) async {
+        await setEqPresetName(target)
+        if target == nil {
+            await cancelEdit()
+            return
+        }
+        await MainActor.run { self.eqPresetName = target }
+        await reloadParsedPreset()
+        await MainActor.run {
+            guard let preset = self.parsedEqPreset else {
+                self.editingPreset = nil
+                self.editingOriginalName = nil
+                self.editingDirty = false
+                return
+            }
+            self.editingPreset = preset
+            self.editingOriginalName = target
+            self.editingDirty = false
+        }
+        if editingPreset == nil {
+            await eqEditingOverride.set(nil)
+        } else {
+            await eqEditingOverride.set(editingPreset)
+        }
+    }
+
     public func beginEditCurrent() async {
         logger?.debug("beginEditCurrent")
         guard let preset = parsedEqPreset, let name = eqPresetName else { return }
