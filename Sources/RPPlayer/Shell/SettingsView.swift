@@ -7,6 +7,10 @@ struct SettingsView: View {
     @State private var showForceMaxConfirm = false
     @State private var eqImportAlert: EqImportAlert?
     @State private var eqDeleteAlert: EqDeleteAlert?
+    @State private var pendingSaveAsName: String = ""
+    @State private var pendingShowSaveAsSheet: Bool = false
+    @State private var pendingSaveAsError: String?
+    @State private var savingAsInProgress: Bool = false
 
     private struct EqImportAlert: Identifiable {
         let id = UUID()
@@ -267,7 +271,7 @@ struct SettingsView: View {
                         "",
                         selection: Binding<String?>(
                             get: { viewModel.eqPresetName },
-                            set: { v in Task { await viewModel.setEqPresetName(v) } }
+                            set: { v in Task { await viewModel.requestPresetSwitch(to: v) } }
                         )
                     ) {
                         Text("None (Bypass)").tag(String?.none)
@@ -344,6 +348,91 @@ struct SettingsView: View {
                 await viewModel.refreshPresets()
                 await viewModel.reloadParsedPreset()
             }
+        }
+        .alert(
+            "Unsaved EQ changes",
+            isPresented: Binding<Bool>(
+                get: { viewModel.pendingPresetSwitch != nil && !savingAsInProgress },
+                set: { newValue in
+                    if !newValue && !savingAsInProgress {
+                        viewModel.cancelPendingSwitch()
+                    }
+                }
+            )
+        ) {
+            Button("Keep editing", role: .cancel) {
+                viewModel.cancelPendingSwitch()
+            }
+            Button("Discard changes", role: .destructive) {
+                Task { await viewModel.resolvePendingSwitchDiscard() }
+            }
+            Button("Save as new preset…") {
+                savingAsInProgress = true
+                pendingSaveAsName = viewModel.editingOriginalName.map { "\($0)-copy" } ?? "Untitled"
+                pendingSaveAsError = nil
+                pendingShowSaveAsSheet = true
+            }
+            Button("Save changes") {
+                Task {
+                    do {
+                        try await viewModel.resolvePendingSwitchSave()
+                    } catch {
+                    }
+                }
+            }
+            .disabled(viewModel.editingIsNew)
+        } message: {
+            if viewModel.editingIsNew {
+                Text("You have an unsaved new preset draft. Choose what to do before switching.")
+            } else {
+                Text("You have unsaved changes to \"\(viewModel.editingOriginalName ?? "the preset")\". Choose what to do before switching.")
+            }
+        }
+        .sheet(
+            isPresented: $pendingShowSaveAsSheet,
+            onDismiss: { savingAsInProgress = false }
+        ) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Save preset as").font(.headline)
+                TextField(
+                    "Preset name",
+                    text: Binding<String>(
+                        get: { pendingSaveAsName },
+                        set: { v in pendingSaveAsName = String(v.prefix(30)) }
+                    )
+                )
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 280)
+                if let err = pendingSaveAsError {
+                    Text(err).foregroundStyle(.red).font(.caption)
+                }
+                HStack {
+                    Spacer()
+                    Button("Cancel") {
+                        viewModel.cancelPendingSwitch()
+                        pendingShowSaveAsSheet = false
+                        pendingSaveAsError = nil
+                    }
+                    Button("OK") {
+                        let name = pendingSaveAsName
+                        Task {
+                            do {
+                                try await viewModel.resolvePendingSwitchSaveAs(name: name)
+                                pendingShowSaveAsSheet = false
+                            } catch EqPresetStoreError.alreadyExists {
+                                pendingSaveAsError = "Name already used. Pick another."
+                            } catch EqPresetStoreError.invalidName {
+                                pendingSaveAsError = "Use 1–30 characters; no slashes or leading dot."
+                            } catch {
+                                pendingSaveAsError = "Failed to save: \(error)"
+                            }
+                        }
+                    }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(pendingSaveAsName.isEmpty)
+                }
+            }
+            .padding(16)
         }
     }
 
