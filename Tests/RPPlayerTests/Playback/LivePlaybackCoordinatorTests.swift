@@ -2091,6 +2091,32 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         let first = await iter.next()
         XCTAssertEqual(first, true, "new subscriber should immediately receive current nextReady value")
     }
+
+    func testPlayAfterStopReturnsLoadingThenPlaying() async throws {
+        let api = MockRpApiClient()
+        let engine = MockPlayerEngine()
+        let cache = MockSongFileCache()
+        let head = makeGaplessSong(songId: "s0", eventId: 100, gaplessUrl: "https://s.example.com/100.flac")
+        let next = makeGaplessSong(songId: "s1", eventId: 101, gaplessUrl: "https://s.example.com/101.flac")
+        await cache.markDownloaded([head, next])
+        await api.setGaplessResponse(makeGaplessResponse(songs: [head, next]))
+        let coordinator = LivePlaybackCoordinator(
+            api: api, engine: engine, songFileCache: cache, logger: silentLogger(), bitrateProvider: { 4 }
+        )
+
+        try await coordinator.play(channelId: 0)
+        try await Task.sleep(nanoseconds: 80_000_000)
+        try await coordinator.stop()
+        let stoppedState = await coordinator.currentPlaybackState
+        XCTAssertEqual(stoppedState, .stopped)
+        let nextReadyAfterStop = await coordinator.nextReady
+        XCTAssertFalse(nextReadyAfterStop)
+
+        try await coordinator.play(channelId: 0)
+        try await Task.sleep(nanoseconds: 80_000_000)
+        let playingState = await coordinator.currentPlaybackState
+        XCTAssertEqual(playingState, .playing)
+    }
 }
 
 private actor StateBox {
