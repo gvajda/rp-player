@@ -18,8 +18,10 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         ])
         await api.setGaplessResponse(response)
         let engine = MockPlayerEngine()
+        let cache = MockSongFileCache()
+        await cache.markDownloaded(Array(response.songs.prefix(2)))
         let coord = LivePlaybackCoordinator(
-            api: api, engine: engine, songFileCache: MockSongFileCache(), logger: silentLogger(), bitrateProvider: { 4 }
+            api: api, engine: engine, songFileCache: cache, logger: silentLogger(), bitrateProvider: { 4 }
         )
         try await coord.play(channelId: 0)
 
@@ -61,8 +63,10 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         ])
         await api.setGaplessResponse(response)
         let engine = MockPlayerEngine()
+        let cache = MockSongFileCache()
+        await cache.markDownloaded(Array(response.songs.prefix(3)))
         let coord = LivePlaybackCoordinator(
-            api: api, engine: engine, songFileCache: MockSongFileCache(), logger: silentLogger(), bitrateProvider: { 4 }
+            api: api, engine: engine, songFileCache: cache, logger: silentLogger(), bitrateProvider: { 4 }
         )
         try await coord.play(channelId: 0)
         // First fileStarted: mpv path = s1 (set by engine.play). Sets lastStartedEventId; no advance.
@@ -372,13 +376,16 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         let engine = MockPlayerEngine()
         final class IntBox: @unchecked Sendable { var value: Int; init(_ v: Int) { value = v } }
         let bitrateBox = IntBox(3)
+        let cache = MockSongFileCache()
+        await cache.markDownloaded(Array(initial.songs.prefix(2)))
         let coord = LivePlaybackCoordinator(
-            api: api, engine: engine, songFileCache: MockSongFileCache(), logger: silentLogger(),
+            api: api, engine: engine, songFileCache: cache, logger: silentLogger(),
             bitrateProvider: { bitrateBox.value }
         )
         try await coord.play(channelId: 0)
         try await Task.sleep(nanoseconds: 100_000_000)
 
+        await cache.markDownloaded(Array(refetched.songs.prefix(2)))
         bitrateBox.value = 4
         await coord.applyBitrateChange()
 
@@ -806,6 +813,7 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
             makeGaplessSong(eventId: 30, gaplessUrl: "https://s.example.com/2.flac"),
         ])
         await api.setGaplessResponses([response])
+        await cache.markDownloaded(response.songs)
 
         let coord = LivePlaybackCoordinator(
             api: api, engine: engine, songFileCache: cache, logger: silentLogger(), bitrateProvider: { 4 }
@@ -1785,11 +1793,18 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
             makeGaplessSong(songId: "A", eventId: 500, gaplessUrl: "https://example.com/A-320.mp3"),
             makeGaplessSong(songId: "B", eventId: 501, gaplessUrl: "https://example.com/B-320.mp3"),
         ])
+        // No-op response for kickRefetch (fires after play() because queue.count < 3).
+        // Same eventIds as initial so runRefetch's `newSongs > tailEvent` filter is empty;
+        // queue stays unchanged and applyBitrateChange consumes the refresh response.
+        let kickRefetchNoop = makeGaplessResponse(songs: [
+            makeGaplessSong(songId: "A", eventId: 500, gaplessUrl: "https://example.com/A-320.mp3"),
+            makeGaplessSong(songId: "B", eventId: 501, gaplessUrl: "https://example.com/B-320.mp3"),
+        ])
         let refresh = makeGaplessResponse(songs: [
             makeGaplessSong(songId: "A", eventId: 500, gaplessUrl: "https://example.com/A-flac.flac"),
             makeGaplessSong(songId: "B", eventId: 501, gaplessUrl: "https://example.com/B-flac.flac"),
         ])
-        await api.setGaplessResponses([initial, refresh])
+        await api.setGaplessResponses([initial, kickRefetchNoop, refresh])
         let engine = MockPlayerEngine()
         let cache = MockSongFileCache()
         let coord = LivePlaybackCoordinator(
