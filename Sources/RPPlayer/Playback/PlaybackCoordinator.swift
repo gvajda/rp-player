@@ -524,17 +524,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         downloaderTask = nil
         await songFileCache.cancelInFlightDownloads()
         if self.queue.count >= 2 {
-            let next = self.queue[1]
-            let nextUrl = await songFileCache.localFile(for: next)
-                ?? URL(string: next.gaplessUrl)
-            if let nextUrl, self.queue.count >= 2, self.queue[1].eventId == next.eventId {
-                do {
-                    try await engine.queueNext(url: nextUrl, startSeconds: nil)
-                    queueNextEventId = next.eventId
-                } catch {
-                    logger.warn("applyBitrateChange: queueNext failed: \(error)")
-                }
-            }
+            _ = await tryQueueNextOrDefer(self.queue[1])
         }
         if self.queue.count < 3 {
             kickRefetch()
