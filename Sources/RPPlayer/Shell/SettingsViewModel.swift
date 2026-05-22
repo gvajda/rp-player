@@ -633,6 +633,13 @@ final class SettingsViewModel: ObservableObject {
         pendingPresetSwitch = nil
     }
 
+    public func resolvePendingSwitchDiscard() async {
+        logger?.debug("resolvePendingSwitchDiscard")
+        guard let pending = pendingPresetSwitch else { return }
+        await MainActor.run { self.pendingPresetSwitch = nil }
+        await performSwitch(to: pending.target)
+    }
+
     internal func _setPendingPresetSwitchForTesting(_ value: PendingPresetSwitch?) {
         pendingPresetSwitch = value
     }

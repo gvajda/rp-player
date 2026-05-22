@@ -434,4 +434,29 @@ final class SettingsViewModelEqEditTests: XCTestCase {
         await vm.requestPresetSwitch(to: "gamma")
         XCTAssertEqual(vm.pendingPresetSwitch?.target, "beta")  // unchanged
     }
+
+    func testResolvePendingSwitchDiscardSwapsAndClearsPending() async throws {
+        let eqStore = LiveEqPresetStore(directory: tmpDir)
+        try await savePresetFile(eqStore, name: "alpha")
+        try await eqStore.save(name: "beta", text: "Preamp: -3 dB\nFilter 1: ON PK Fc 500 Hz Gain 2 dB Q 0.9\n", overwrite: false)
+        let override = EqEditingOverride()
+        let vm = makeVM(eqStore: eqStore, override: override)
+        await vm.start()
+        try await Task.sleep(nanoseconds: 50_000_000)
+        await vm.refreshPresets()
+        await vm.reloadParsedPreset()
+        await vm.beginEditCurrent()
+        await vm.setEditingPreamp(-9)
+        await vm.requestPresetSwitch(to: "beta")
+        XCTAssertNotNil(vm.pendingPresetSwitch)
+
+        await vm.resolvePendingSwitchDiscard()
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertNil(vm.pendingPresetSwitch)
+        XCTAssertEqual(vm.eqPresetName, "beta")
+        XCTAssertEqual(vm.editingOriginalName, "beta")
+        XCTAssertEqual(vm.editingPreset?.preampDb, -3)
+        XCTAssertFalse(vm.editingDirty)
+    }
 }
