@@ -6,6 +6,8 @@ Section labels: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`
 
 ## [Unreleased]
 
+## [v1.0.0] - 2026-06-09
+
 ### Added
 
 - Popover transport now shows a **Stop** button (filled square) in the second slot when playback is paused. Pressing Stop clears the play queue and the displayed track info / album art, returning the popover to the fresh-launch state. Channel selection is preserved.
@@ -46,6 +48,7 @@ Section labels: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`
 - Crossfeed Custom-mode numeric input rendering glitch where wider values (4-digit fcut like `1650`, 5-character feed like `12.00`) caused the rawText to render below the field's rounded-rect bezel instead of inside it. Root cause: the 56×18 frame from the prior `roundedBorder`-bezel fix was tuned for the original feed-only field (max 5 chars at small font); fcut Hz values pushed content past the inner padding and triggered a SwiftUI TextField vertical-baseline shift identical in symptom to the `roundedBorder` autosize bug fixed in `f526544`. Widened frame + pinned font removes the squeeze.
 - EQ preset picker now prompts before discarding unsaved edits in the editor panel. Previously, changing the picker while editing silently left the editor showing the old preset's values, and Save would overwrite the wrong file.
 - EQ Rename / Save As / Save-as-new-preset name sheet showed an empty text field on first open (the pre-filled name only appeared after Cancel + reopen). Root cause: `nameSheet` used a manually-constructed `Binding(get:set:)` and an `.onAppear { saveAsName = initialValue }` hop with a stale captured `initialValue` from a prior view build. Switched to projected `$saveAsName` / `$renameTarget` bindings on the sheet, moved the 30-char cap to `.onChange(of:)`.
+- Flaky CI test `testSetEditingPreampMarksDirtyAndPushesOverride`. The test set the editing preamp then waited a fixed 150 ms before asserting the `EqEditingOverride` snapshot reflected the change — only 50 ms past the view model's 100 ms push debounce, so under CI load the debounced `override.set` slipped past the wait and the snapshot still held the pre-edit value. Now polls via `waitUntil` (2 s timeout) instead of a fixed sleep.
 
 ## [v0.7.2] - 2026-05-17
 

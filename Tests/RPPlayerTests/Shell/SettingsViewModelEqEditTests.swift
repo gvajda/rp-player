@@ -84,9 +84,9 @@ final class SettingsViewModelEqEditTests: XCTestCase {
         await vm.reloadParsedPreset()
         await vm.beginEditCurrent()
         await vm.setEditingPreamp(-4)
-        try await Task.sleep(nanoseconds: 150_000_000)
         XCTAssertEqual(vm.editingPreset?.preampDb, -4)
         XCTAssertTrue(vm.editingDirty)
+        try await waitUntil({ await override.snapshot()?.preampDb == -4 }, timeout: 2)
         let snap = await override.snapshot()
         XCTAssertEqual(snap?.preampDb, -4)
     }
