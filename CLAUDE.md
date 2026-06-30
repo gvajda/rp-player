@@ -52,7 +52,7 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 - **Test counts log:** `docs/test-counts.md`
 - **Key technical decisions (audio pipeline, libmpv, coordinator, shell, view models, API, auth, persistence, album art, logging, errors, notifications, deployment, CI):** `docs/architecture.md`
 - **Design source of truth:** `docs/DESIGN.md` — project-level architecture spec.
-- **Plans:** `docs/superpowers/plans/` — written just-in-time before each PR's execution. Gitignored (local only).
-- **Specs:** `docs/superpowers/specs/` — design docs from the brainstorming phase. Gitignored (local only).
+- **Plans:** `docs/superpowers/plans/` — written just-in-time before each PR's execution. Committed.
+- **Specs:** `docs/superpowers/specs/` — design docs from the brainstorming phase. Committed.
 - **Notes / known-issue handoffs:** `docs/notes/` — committed. Most recent: `docs/notes/pr12-outstanding-2026-05-01.md`.
 - **Legacy reference:** `docs/legacy/` — the Windows app's C# code, kept for cross-checking RP API behavior (URLs, cookies, query shapes).
