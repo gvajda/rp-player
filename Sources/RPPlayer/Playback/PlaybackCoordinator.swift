@@ -40,6 +40,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     private var pausePositionMs: Int = 0
 
     private var currentChannelId: Int?
+    private var skipPolicy: SkipPolicy = SkipPolicy(enabled: false, threshold: 5)
     private var queue: [GaplessSong] = []
     private var currentResponse: GaplessResponse?
     // mpv may fire MPV_EVENT_START_FILE multiple times around state transitions (initial load + auto-advance + replace).
@@ -190,7 +191,12 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         let response = try await api.gapless(channel: channelId, bitrate: bitrate, numSongs: 20)
         guard !response.songs.isEmpty else { throw PlaybackCoordinatorError.blockHasNoSongs }
 
-        queue = response.songs
+        let filtered = applySkipFilter(response.songs)
+        guard !filtered.isEmpty else {
+            await stopWithNoMatchesMessage()
+            return
+        }
+        queue = filtered
         currentResponse = response
         currentChannelId = channelId
         refetchTask?.cancel()
@@ -433,8 +439,13 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             errorsContinuation?.yield("Cannot skip — no upcoming songs.")
             return
         }
+        let filtered = applySkipFilter(response.songs)
+        guard !filtered.isEmpty else {
+            await stopWithNoMatchesMessage()
+            return
+        }
         // Drop the skipped song; jump to the new response's first song.
-        queue = response.songs
+        queue = filtered
         currentResponse = response
         queueNextEventId = nil
         updateNextReady()
@@ -572,6 +583,24 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
 
     public func emitUserMessage(_ message: String) async {
         errorsContinuation?.yield(message)
+    }
+
+    public func updateSkipPolicy(_ policy: SkipPolicy) async {
+        skipPolicy = policy
+    }
+
+    private func shouldSkip(_ userRating: Int) -> Bool {
+        skipPolicy.shouldSkip(userRating)
+    }
+
+    private func applySkipFilter(_ songs: [GaplessSong]) -> [GaplessSong] {
+        guard skipPolicy.enabled else { return songs }
+        return songs.filter { !shouldSkip($0.userRating) }
+    }
+
+    private func stopWithNoMatchesMessage() async {
+        try? await stop()
+        await emitUserMessage("No upcoming songs match your rating filter — raise the threshold in Settings.")
     }
 
     // Idempotent. Awaited from inside actor isolation, so by the time it returns
@@ -1007,7 +1036,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             self.refetchTask = nil
             return
         }
-        let newSongs = response.songs.filter { $0.eventId > tailEvent }
+        let newSongs = applySkipFilter(response.songs.filter { $0.eventId > tailEvent })
         let hadShortQueue = self.queue.count < 2
         self.queue = self.queue + newSongs
         self.currentResponse = response
