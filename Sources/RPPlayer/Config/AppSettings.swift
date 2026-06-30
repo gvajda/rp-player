@@ -13,6 +13,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var ambientBackgroundEnabled: Bool
     public var popoverStyle: PopoverStyle
     public var frostedUpcomingEnabled: Bool
+    public var skipLowRatedEnabled: Bool
+    public var skipRatingThreshold: Int
     /// Radio Paradise bitrate code passed to `api/gapless`.
     /// 0 = 32k aac, 1 = 64k aac, 2 = 128k aac, 3 = 320k aac, 4 = flac, 5 = 128k mp3, 6 = 320k mp3.
     /// Default 4 (FLAC) to honour the project's bit-perfect goal.
@@ -45,6 +47,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         ambientBackgroundEnabled: Bool = true,
         popoverStyle: PopoverStyle = .ambient,
         frostedUpcomingEnabled: Bool = false,
+        skipLowRatedEnabled: Bool = false,
+        skipRatingThreshold: Int = 5,
         bitrate: Int = 4,
         outputDeviceUID: String? = nil,
         logLevel: AppLogger.Level = .info,
@@ -69,6 +73,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.ambientBackgroundEnabled = ambientBackgroundEnabled
         self.popoverStyle = popoverStyle
         self.frostedUpcomingEnabled = frostedUpcomingEnabled
+        self.skipLowRatedEnabled = skipLowRatedEnabled
+        self.skipRatingThreshold = skipRatingThreshold
         self.bitrate = bitrate
         self.outputDeviceUID = outputDeviceUID
         self.logLevel = logLevel
@@ -102,6 +108,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         self.ambientBackgroundEnabled = try c.decodeIfPresent(Bool.self, forKey: .ambientBackgroundEnabled) ?? true
         self.popoverStyle = try c.decodeIfPresent(PopoverStyle.self, forKey: .popoverStyle) ?? .ambient
         self.frostedUpcomingEnabled = try c.decodeIfPresent(Bool.self, forKey: .frostedUpcomingEnabled) ?? false
+        self.skipLowRatedEnabled = try c.decodeIfPresent(Bool.self, forKey: .skipLowRatedEnabled) ?? false
+        self.skipRatingThreshold = try c.decodeIfPresent(Int.self, forKey: .skipRatingThreshold) ?? 5
         self.bitrate = try c.decodeIfPresent(Int.self, forKey: .bitrate) ?? 4
         self.outputDeviceUID = try c.decodeIfPresent(String.self, forKey: .outputDeviceUID)
         self.logLevel = try c.decodeIfPresent(AppLogger.Level.self, forKey: .logLevel) ?? .info
@@ -124,6 +132,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
         case volumeMode
         case notificationsEnabled, appearance, menuBarIconStyle
         case ambientBackgroundEnabled, popoverStyle, frostedUpcomingEnabled
+        case skipLowRatedEnabled, skipRatingThreshold
         case bitrate, outputDeviceUID, logLevel, verboseLoggingEnabled
         case playerId, upcomingRowCount, upcomingHiddenChannelIds
         case popoverFloating, audioProfiles, updateCheckEnabled
@@ -145,6 +154,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         try c.encode(ambientBackgroundEnabled, forKey: .ambientBackgroundEnabled)
         try c.encode(popoverStyle, forKey: .popoverStyle)
         try c.encode(frostedUpcomingEnabled, forKey: .frostedUpcomingEnabled)
+        try c.encode(skipLowRatedEnabled, forKey: .skipLowRatedEnabled)
+        try c.encode(skipRatingThreshold, forKey: .skipRatingThreshold)
         try c.encode(bitrate, forKey: .bitrate)
         try c.encodeIfPresent(outputDeviceUID, forKey: .outputDeviceUID)
         try c.encode(logLevel, forKey: .logLevel)
