@@ -875,6 +875,11 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         if let channelId = currentChannelId {
             fireSongStartTelemetry(song: queue[0], channelId: channelId)
         }
+        if shouldSkip(queue[0].userRating), queue.count >= 1 {
+            logger.info("auto-skip head (rating \(queue[0].userRating) below threshold) \(describeSong(queue[0]))")
+            try? await skipForward()
+            return
+        }
         // Only re-issue queueNext on advance — initial sync is preceded by play()/handleSongPlaybackError/etc which already queued queue[1].
         if isAdvance {
             // The old queueNext'd entry is now playing; mpv's playlist is empty

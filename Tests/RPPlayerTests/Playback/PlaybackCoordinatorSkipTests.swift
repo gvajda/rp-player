@@ -67,6 +67,40 @@ final class PlaybackCoordinatorSkipTests: XCTestCase {
                       "expected no-matches message. emitted=\(emitted)")
     }
 
+    /// A song that becomes skip-bound after a mid-playback policy change is auto-skipped when it becomes head.
+    func testHeadBecomingSkipBoundIsAutoSkipped() async throws {
+        let api = MockRpApiClient()
+        let response = makeGaplessResponse(songs: [
+            makeGaplessSong(songId: "s1", eventId: 100, gaplessUrl: "https://example.com/s1.flac", userRating: 8),
+            makeGaplessSong(songId: "s2", eventId: 101, gaplessUrl: "https://example.com/s2.flac", userRating: 2),
+            makeGaplessSong(songId: "s3", eventId: 102, gaplessUrl: "https://example.com/s3.flac", userRating: 9),
+            makeGaplessSong(songId: "s4", eventId: 103, gaplessUrl: "https://example.com/s4.flac", userRating: 9),
+        ])
+        await api.setGaplessResponse(response)
+        let engine = MockPlayerEngine()
+        let cache = MockSongFileCache()
+        await cache.markDownloaded(response.songs)
+        let coord = LivePlaybackCoordinator(
+            api: api, engine: engine, songFileCache: cache, logger: silentLogger(), bitrateProvider: { 4 }
+        )
+        // Start with policy disabled so s2 (rating 2) is queued normally.
+        try await coord.play(channelId: 0)
+        await engine.fire(.fileStarted)  // initial: head = s1
+        try await Task.sleep(nanoseconds: 50_000_000)
+
+        // Now enable the policy mid-playback. s2 is already in the queue (downloaded/queued).
+        await coord.updateSkipPolicy(SkipPolicy(enabled: true, threshold: 5))
+
+        // mpv advances to s2 → Layer B sees a skip-bound head and skips forward to s3.
+        await engine.setSimulatedCurrentPath(URL(string: "https://example.com/s2.flac"))
+        await engine.fire(.fileStarted)
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        let engineCalls = await engine.recordedCalls()
+        XCTAssertTrue(engineCalls.contains(.advanceToQueued),
+                      "Layer B should advance past the skip-bound head. calls=\(engineCalls)")
+    }
+
     /// Policy disabled → no filtering; low-rated songs play normally.
     func testDisabledPolicyPlaysLowRated() async throws {
         let api = MockRpApiClient()
