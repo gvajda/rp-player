@@ -6,6 +6,10 @@ Section labels: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`
 
 ## [Unreleased]
 
+### Added
+
+- Skip low-rated songs: a Settings toggle + threshold picker (★2–★10, default ★5) auto-skips songs rated below the threshold. Rating the current song low skips it immediately; already-low-rated upcoming songs are never downloaded and show a dimmed "⏭ SKIP" marking in the Upcoming list. When a whole block has no qualifying songs, playback stops with a message to raise the threshold.
+
 ## [v1.0.0] - 2026-06-09
 
 ### Added
