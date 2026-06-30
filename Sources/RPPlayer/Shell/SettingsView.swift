@@ -36,6 +36,7 @@ struct SettingsView: View {
                 audioSection
                 deviceSettingsSection
                 notificationsSection
+                skipLowRatedSection
                 appearanceSection
                 upcomingProgramSection
                 updatesSection
@@ -618,6 +619,19 @@ struct SettingsView: View {
         }
     }
 
+    private var skipLowRatedSection: some View {
+        Section("Playback") {
+            Toggle("Skip songs rated below a threshold", isOn: skipLowRatedBinding)
+            if viewModel.skipLowRatedEnabled {
+                Picker("Skip below", selection: skipRatingThresholdBinding) {
+                    ForEach(2...10, id: \.self) { n in
+                        Text("★ \(n)").tag(n)
+                    }
+                }
+            }
+        }
+    }
+
     private var updatesSection: some View {
         Section("Updates") {
             Toggle("Check for updates automatically", isOn: updateCheckEnabledBinding)
@@ -801,6 +815,20 @@ struct SettingsView: View {
         Binding(
             get: { viewModel.notificationsEnabled },
             set: { newValue in Task { await viewModel.setNotificationsEnabled(newValue) } }
+        )
+    }
+
+    private var skipLowRatedBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.skipLowRatedEnabled },
+            set: { newValue in Task { await viewModel.setSkipLowRatedEnabled(newValue) } }
+        )
+    }
+
+    private var skipRatingThresholdBinding: Binding<Int> {
+        Binding(
+            get: { viewModel.skipRatingThreshold },
+            set: { newValue in Task { await viewModel.setSkipRatingThreshold(newValue) } }
         )
     }
 
