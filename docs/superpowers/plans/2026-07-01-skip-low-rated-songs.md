@@ -746,14 +746,14 @@ final class MiniPlayerViewModelSkipTests: XCTestCase {
             coordinator: coordinator,
             api: api,
             initialChannelId: 0,
-            albumArtCache: NoopAlbumArtCache(),
+            albumArtCache: StubAlbumArtCache(),
             auth: auth,
             configStore: store,
             paletteExtractor: StubAmbientPaletteExtractor(),
             openSettings: {}
         )
         let song = makeGaplessSong(songId: "42", eventId: 100, userRating: 0)
-        let np = NowPlaying(song: song, channelId: 0, bitrateLabel: "flac", songDurationSeconds: 180)
+        let np = NowPlaying(channelId: 0, song: song, songDurationSeconds: 180, bitrateLabel: "flac")
         await coordinator.setNowPlaying(np)
         await vm.start()
         try? await Task.sleep(nanoseconds: 50_000_000)
@@ -799,15 +799,7 @@ final class MiniPlayerViewModelSkipTests: XCTestCase {
 }
 ```
 
-If `NoopAlbumArtCache` does not already exist in the test target, add this minimal stub at the bottom of the test file:
-
-```swift
-private actor NoopAlbumArtCache: AlbumArtCache {
-    func image(for path: String) async -> NSImage? { nil }
-}
-```
-
-(Before adding, check for an existing album-art test double — grep `AlbumArtCache` under `Tests/`. Reuse the existing one if present and delete this stub.)
+`StubAlbumArtCache` already exists in the test target (`Tests/RPPlayerTests/Shell/StubAlbumArtCache.swift`, `@MainActor final class StubAlbumArtCache: AlbumArtCache`) — use it directly, no new stub needed.
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -871,7 +863,7 @@ final class UpcomingProgramViewModelSkipTests: XCTestCase {
     private func makeVM(_ settings: AppSettings, _ api: MockRpApiClient) -> UpcomingProgramViewModel {
         UpcomingProgramViewModel(
             api: api,
-            albumArtCache: NoopAlbumArtCache(),
+            albumArtCache: StubAlbumArtCache(),
             configStore: StubConfigStore(initial: settings),
             paletteExtractor: StubAmbientPaletteExtractor()
         )
@@ -882,7 +874,7 @@ final class UpcomingProgramViewModelSkipTests: XCTestCase {
         s.skipLowRatedEnabled = true
         s.skipRatingThreshold = 5
         let api = MockRpApiClient()
-        await api.setListChannelsResponse([Channel(chan: "0", title: "Main", streamName: "main", isER: false)])
+        await api.setListChannelsResponse([Channel(chan: "0", title: "Main", streamName: "main", bannerUrl: nil, slug: nil, image: nil)])
         await api.setGaplessByChannel([0: makeGaplessResponse(songs: [
             makeGaplessSong(songId: "good", eventId: 100, userRating: 8),
             makeGaplessSong(songId: "bad",  eventId: 101, userRating: 2),
@@ -900,7 +892,7 @@ final class UpcomingProgramViewModelSkipTests: XCTestCase {
     func testNoRowsSkippedWhenDisabled() async throws {
         let s = AppSettings.default  // skipLowRatedEnabled defaults false
         let api = MockRpApiClient()
-        await api.setListChannelsResponse([Channel(chan: "0", title: "Main", streamName: "main", isER: false)])
+        await api.setListChannelsResponse([Channel(chan: "0", title: "Main", streamName: "main", bannerUrl: nil, slug: nil, image: nil)])
         await api.setGaplessByChannel([0: makeGaplessResponse(songs: [
             makeGaplessSong(songId: "bad", eventId: 101, userRating: 2),
         ])])
@@ -911,7 +903,7 @@ final class UpcomingProgramViewModelSkipTests: XCTestCase {
 }
 ```
 
-Verify the `Channel(...)` initializer arguments against `ApiModels.swift` before running; adjust the member order/labels if the test fails to compile. Reuse the same `NoopAlbumArtCache` stub decision as Task 7.
+`Channel` memberwise init is `(chan:title:streamName:bannerUrl:slug:image:)`. Use `StubAlbumArtCache` as in Task 7.
 
 - [ ] **Step 2: Run test to verify it fails**
 
