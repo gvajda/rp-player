@@ -292,6 +292,19 @@ extension AppContainer {
 
         coordinatorBox.value = coordinator
 
+        Task { [coordinator, store, initial] in
+            await coordinator.updateSkipPolicy(
+                SkipPolicy(enabled: initial.skipLowRatedEnabled, threshold: initial.skipRatingThreshold)
+            )
+            guard let store else { return }
+            let stream = await store.changes
+            for await settings in stream {
+                await coordinator.updateSkipPolicy(
+                    SkipPolicy(enabled: settings.skipLowRatedEnabled, threshold: settings.skipRatingThreshold)
+                )
+            }
+        }
+
         if let store {
             // Release/re-acquire hog on pause/resume when the user opted in.
             // Also pin device volume to max on every .playing transition when
