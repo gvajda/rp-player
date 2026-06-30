@@ -527,7 +527,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             let serverHead = response.songs.first?.eventId.description ?? "nil"
             logger.warn("applyBitrateChange: server cursor at eventId=\(serverHead), expected \(head.eventId)")
         }
-        let newSongs = response.songs.filter { $0.eventId > head.eventId }
+        let newSongs = applySkipFilter(response.songs.filter { $0.eventId > head.eventId })
         self.queue = [head] + newSongs
         self.currentResponse = response
         emitNowPlaying(forSongAt: 0)

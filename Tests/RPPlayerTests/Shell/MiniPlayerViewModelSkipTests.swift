@@ -3,7 +3,7 @@ import XCTest
 
 @MainActor
 final class MiniPlayerViewModelSkipTests: XCTestCase {
-    private func makeVM(settings: AppSettings, rating: Int)
+    private func makeVM(settings: AppSettings)
         async -> (MiniPlayerViewModel, MockPlaybackCoordinator, StubKeychainAuth) {
         let coordinator = MockPlaybackCoordinator()
         let api = MockRpApiClient()
@@ -33,7 +33,7 @@ final class MiniPlayerViewModelSkipTests: XCTestCase {
         var s = AppSettings.default
         s.skipLowRatedEnabled = true
         s.skipRatingThreshold = 5
-        let (vm, coordinator, _) = await makeVM(settings: s, rating: 2)
+        let (vm, coordinator, _) = await makeVM(settings: s)
         await vm.rate(2)
         try await Task.sleep(nanoseconds: 50_000_000)
         let calls = await coordinator.recordedCalls()
@@ -45,7 +45,7 @@ final class MiniPlayerViewModelSkipTests: XCTestCase {
         var s = AppSettings.default
         s.skipLowRatedEnabled = true
         s.skipRatingThreshold = 5
-        let (vm, coordinator, _) = await makeVM(settings: s, rating: 5)
+        let (vm, coordinator, _) = await makeVM(settings: s)
         await vm.rate(5)
         try await Task.sleep(nanoseconds: 50_000_000)
         let calls = await coordinator.recordedCalls()
@@ -57,7 +57,7 @@ final class MiniPlayerViewModelSkipTests: XCTestCase {
         var s = AppSettings.default
         s.skipLowRatedEnabled = false
         s.skipRatingThreshold = 5
-        let (vm, coordinator, _) = await makeVM(settings: s, rating: 2)
+        let (vm, coordinator, _) = await makeVM(settings: s)
         await vm.rate(2)
         try await Task.sleep(nanoseconds: 50_000_000)
         let calls = await coordinator.recordedCalls()

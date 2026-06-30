@@ -48,23 +48,28 @@ final class PlaybackCoordinatorSkipTests: XCTestCase {
         )
         await coord.updateSkipPolicy(SkipPolicy(enabled: true, threshold: 5))
 
+        final class MessageBag: @unchecked Sendable {
+            private var lock = NSLock()
+            private var msgs: [String] = []
+            func append(_ m: String) { lock.withLock { msgs.append(m) } }
+            func snapshot() -> [String] { lock.withLock { msgs } }
+        }
+        let bag = MessageBag()
         let errorsStream = await coord.errors
-        let collector = Task<[String], Never> {
-            var msgs: [String] = []
-            for await m in errorsStream { msgs.append(m) }
-            return msgs
+        let collector = Task<Void, Never> {
+            for await m in errorsStream { bag.append(m) }
         }
 
         try await coord.play(channelId: 0)
-        try await Task.sleep(nanoseconds: 100_000_000)
+        let noMatchesMessage = "No upcoming songs match your rating filter — raise the threshold in Settings."
+        try await waitUntil({ bag.snapshot().contains(noMatchesMessage) }, timeout: 2)
         collector.cancel()
-        let emitted = await collector.value
 
         let engineCalls = await engine.recordedCalls()
         XCTAssertFalse(engineCalls.contains { if case .play = $0 { return true } else { return false } },
                        "nothing should play when all songs are skip-bound. calls=\(engineCalls)")
-        XCTAssertTrue(emitted.contains("No upcoming songs match your rating filter — raise the threshold in Settings."),
-                      "expected no-matches message. emitted=\(emitted)")
+        XCTAssertTrue(bag.snapshot().contains(noMatchesMessage),
+                      "expected no-matches message. emitted=\(bag.snapshot())")
     }
 
     /// A song that becomes skip-bound after a mid-playback policy change is auto-skipped when it becomes head.
@@ -86,7 +91,6 @@ final class PlaybackCoordinatorSkipTests: XCTestCase {
         // Start with policy disabled so s2 (rating 2) is queued normally.
         try await coord.play(channelId: 0)
         await engine.fire(.fileStarted)  // initial: head = s1
-        try await Task.sleep(nanoseconds: 50_000_000)
 
         // Now enable the policy mid-playback. s2 is already in the queue (downloaded/queued).
         await coord.updateSkipPolicy(SkipPolicy(enabled: true, threshold: 5))
@@ -94,11 +98,42 @@ final class PlaybackCoordinatorSkipTests: XCTestCase {
         // mpv advances to s2 → Layer B sees a skip-bound head and skips forward to s3.
         await engine.setSimulatedCurrentPath(URL(string: "https://example.com/s2.flac"))
         await engine.fire(.fileStarted)
-        try await Task.sleep(nanoseconds: 150_000_000)
+        try await waitUntil({ await engine.recordedCalls().contains(.advanceToQueued) }, timeout: 2)
 
         let engineCalls = await engine.recordedCalls()
         XCTAssertTrue(engineCalls.contains(.advanceToQueued),
                       "Layer B should advance past the skip-bound head. calls=\(engineCalls)")
+    }
+
+    /// applyBitrateChange must apply the skip filter to the fresh gapless response.
+    func testApplyBitrateChangeFiltersSkipBoundSongs() async throws {
+        let api = MockRpApiClient()
+        let head = makeGaplessSong(songId: "head", eventId: 100, gaplessUrl: "https://example.com/head.flac", userRating: 8)
+        let low  = makeGaplessSong(songId: "low",  eventId: 101, gaplessUrl: "https://example.com/low.flac",  userRating: 2)
+        let good = makeGaplessSong(songId: "good", eventId: 102, gaplessUrl: "https://example.com/good.flac", userRating: 9)
+        let initial = makeGaplessResponse(songs: [head, low, good])
+        let refetched = makeGaplessResponse(songs: [head, low, good])
+        await api.setGaplessResponses([initial, refetched, refetched])
+        let engine = MockPlayerEngine()
+        let cache = MockSongFileCache()
+        await cache.markDownloaded([head, low, good])
+        let coord = LivePlaybackCoordinator(
+            api: api, engine: engine, songFileCache: cache, logger: silentLogger(), bitrateProvider: { 4 }
+        )
+        await coord.updateSkipPolicy(SkipPolicy(enabled: true, threshold: 5))
+        try await coord.play(channelId: 0)
+        await engine.fire(.fileStarted)
+
+        await coord.applyBitrateChange()
+
+        let engineCalls = await engine.recordedCalls()
+        XCTAssertFalse(engineCalls.contains { call in
+            if case .play(let url, _) = call { return url.absoluteString.contains("low") }
+            if case .queueNext(let url, _) = call { return url.absoluteString.contains("low") }
+            return false
+        }, "skip-bound song must not reach engine after applyBitrateChange. calls=\(engineCalls)")
+        XCTAssertTrue(engineCalls.contains(.queueNext(url: URL(string: "https://example.com/good.flac")!, startSeconds: nil)),
+                      "queueNext must target the good song. calls=\(engineCalls)")
     }
 
     /// Policy disabled → no filtering; low-rated songs play normally.
