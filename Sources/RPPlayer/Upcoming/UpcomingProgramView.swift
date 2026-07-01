@@ -22,7 +22,8 @@ struct UpcomingSongCardView: View {
         )
         .shadow(color: isCurrent ? Color.accentColor.opacity(0.6) : .clear, radius: 6)
         .opacity(row.isSkipped ? 0.4 : 1)
-        .overlay(alignment: .topTrailing) {
+        .grayscale(row.isSkipped ? 1 : 0)
+        .overlay(alignment: .bottomTrailing) {
             if row.isSkipped {
                 Text("⏭ SKIP")
                     .font(.system(size: 8, weight: .bold))

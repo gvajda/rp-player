@@ -76,7 +76,7 @@ The app installs a status item in the menu bar (no Dock icon, no main window). C
 - **Skip low-rated songs** (optional, off by default)
   - Settings → Playback: enable the toggle and pick a threshold (★2–★10, default ★5).
   - Songs rated below the threshold are never downloaded — they are silently removed from the playback queue before any audio is fetched. Rating the currently playing song below the threshold skips it immediately after the rating is confirmed.
-  - The Upcoming Program window still shows skip-bound songs, dimmed with a "⏭ SKIP" pill, so you can see what was filtered out.
+  - The Upcoming Program window still shows skip-bound songs, greyed-out and dimmed with a "⏭ SKIP" pill, so you can see what was filtered out.
   - If an entire block of upcoming songs falls below the threshold, playback stops with a message prompting you to raise the threshold in Settings.
 
 - **Behaviour matches the official player**
