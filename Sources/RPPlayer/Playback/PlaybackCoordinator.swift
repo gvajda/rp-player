@@ -74,7 +74,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     public var errors: AsyncStream<String>
 
     private let onDeviceUnavailable: (@Sendable () async -> Void)?
-    private let prePlayHook: @Sendable () async -> Void
+    private let prePlayHook: @Sendable () async throws -> Void
 
     public init(
         api: any RpApiClient,
@@ -85,7 +85,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         clock: @escaping @Sendable () -> Date = { Date() },
         prefetchArt: @escaping @Sendable (String) -> Void = { _ in },
         onDeviceUnavailable: (@Sendable () async -> Void)? = nil,
-        prePlayHook: @escaping @Sendable () async -> Void = {}
+        prePlayHook: @escaping @Sendable () async throws -> Void = {}
     ) {
         self.api = api
         self.engine = engine
@@ -221,7 +221,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         // mpv's shared-mode AO can race with hog acquisition and end up registered
         // but silent — the user sees the progress bar advance but hears nothing
         // until pause+play forces an AO recreate.
-        await prePlayHook()
+        try await prePlayHook()
         lastStartedEventId = nil
         do {
             try await engine.play(url: url, startSeconds: startSeconds)
@@ -297,7 +297,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             return
         }
 
-        await prePlayHook()
+        try await prePlayHook()
         do { try await engine.resume() } catch { throw PlaybackCoordinatorError.engineError(message: String(describing: error)) }
         emitState(.playing)
 
@@ -1083,6 +1083,8 @@ extension PlaybackCoordinatorError: LocalizedError {
             return "Audio engine error: \(message)"
         case .underlying(let message):
             return message
+        case .outputDeviceUnavailable(let name):
+            return "\(name) is disconnected \u{2014} waiting for it to come back."
         }
     }
 }

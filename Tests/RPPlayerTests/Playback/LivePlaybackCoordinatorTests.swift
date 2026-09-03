@@ -703,6 +703,35 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         XCTAssertEqual(firedAt, 0, "prePlayHook must fire before any engine.play")
     }
 
+    func testPrePlayHookThrowingAbortsPlayBeforeEngine() async throws {
+        let api = MockRpApiClient()
+        let response = makeGaplessResponse(songs: [
+            makeGaplessSong(songId: "s1", eventId: 100, gaplessUrl: "https://example.com/s1.flac"),
+        ])
+        await api.setGaplessResponse(response)
+        let engine = MockPlayerEngine()
+        let coord = LivePlaybackCoordinator(
+            api: api, engine: engine, songFileCache: MockSongFileCache(), logger: silentLogger(), bitrateProvider: { 4 },
+            prePlayHook: { throw PlaybackCoordinatorError.outputDeviceUnavailable(name: "Test DAC") }
+        )
+        do {
+            try await coord.play(channelId: 0)
+            XCTFail("play must rethrow the hook error")
+        } catch let error as PlaybackCoordinatorError {
+            XCTAssertEqual(error, .outputDeviceUnavailable(name: "Test DAC"))
+        }
+        let calls = await engine.recordedCalls()
+        let played = calls.contains { if case .play = $0 { return true } else { return false } }
+        XCTAssertFalse(played, "engine.play must not run when the hook throws; calls=\(calls)")
+        let state = await coord.currentPlaybackState
+        XCTAssertNotEqual(state, .playing)
+    }
+
+    func testOutputDeviceUnavailableErrorDescription() {
+        let error = PlaybackCoordinatorError.outputDeviceUnavailable(name: "Test DAC")
+        XCTAssertEqual(error.localizedDescription, "Test DAC is disconnected \u{2014} waiting for it to come back.")
+    }
+
     func testFavoritesLikeChannelStillCallsGapless() async throws {
         let api = MockRpApiClient()
         let response = makeGaplessResponse(songs: [

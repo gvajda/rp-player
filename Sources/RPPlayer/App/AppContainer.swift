@@ -276,7 +276,11 @@ extension AppContainer {
                     }
                 }
             },
-            prePlayHook: { [store, hogController] in
+            prePlayHook: { [store, hogController, reattachState] in
+                let held = await MainActor.run { (reattachState.heldUID, reattachState.lastKnownDeviceNames) }
+                if let uid = held.0 {
+                    throw PlaybackCoordinatorError.outputDeviceUnavailable(name: held.1[uid] ?? uid)
+                }
                 // Acquire hog BEFORE mpv opens the CoreAudio AO. Without this,
                 // mpv's shared-mode AO open can race with hog acquisition (which
                 // currently fires on the .playing state transition, after engine.play
