@@ -8,7 +8,8 @@ public enum EqPresetError: Error, Equatable, Sendable {
 public enum EqPresetParser {
     public static let maxBands = 10
 
-    private static let filterPattern = #"^Filter\s+\d+:\s+(ON|OFF)\s+([A-Z]{2})\s+Fc\s+(\d+(?:\.\d+)?)\s*Hz\s+Gain\s+([+-]?\d+(?:\.\d+)?)\s*dB\s+Q\s+(\d+(?:\.\d+)?)\s*$"#
+    // Index optional (Equalizer APO omits it); type 2-3 letters (AutoEq/Squiglink write LSC/HSC, Qudelix LS/HS).
+    private static let filterPattern = #"^Filter(?:\s+\d+)?:\s+(ON|OFF)\s+([A-Z]{2,3})\s+Fc\s+(\d+(?:\.\d+)?)\s*Hz\s+Gain\s+([+-]?\d+(?:\.\d+)?)\s*dB\s+Q\s+(\d+(?:\.\d+)?)\s*$"#
     private static let preampPattern = #"^Preamp:\s+([+-]?\d+(?:\.\d+)?)\s*dB\s*$"#
 
     public static func parse(text: String, filename: String) -> Result<EqPreset, EqPresetError> {
@@ -56,9 +57,9 @@ public enum EqPresetParser {
                 let typeStr = String(line[typeR])
                 let mapped: EqBandType?
                 switch typeStr {
-                case "PK": mapped = .peak
-                case "LS": mapped = .lowShelf
-                case "HS": mapped = .highShelf
+                case "PK", "PEQ": mapped = .peak
+                case "LS", "LSC": mapped = .lowShelf
+                case "HS", "HSC": mapped = .highShelf
                 default:
                     warnings.append("Dropped unsupported filter type \(typeStr) at line \(index + 1)")
                     continue

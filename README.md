@@ -118,7 +118,7 @@ The app installs a status item in the menu bar (no Dock icon, no main window). C
   - **Force Max** (for external DACs): pins the device's CoreAudio volume to 100% and locks `volume-max` so no software attenuation is in the signal path. Confirmation alert before enabling — set your DAC/amp/headphone volume first. Requires Hog Mode on.
 
 - **Parametric EQ** (per device):
-  - Import AutoEQ / Equalizer APO / REW `.txt` presets (peaking + low-shelf + high-shelf bands, up to 10, plus a Preamp). Strict parser — files with unsupported filter types or malformed lines are rejected.
+  - Import AutoEQ / Squiglink / Equalizer APO / REW / Qudelix `.txt` presets (peaking + low-shelf + high-shelf bands, up to 10, plus a Preamp; both `LS`/`HS` and `LSC`/`HSC` shelf spellings accepted). Strict parser — files with unsupported filter types (low-pass, high-pass, band-pass, notch) or malformed lines are rejected.
   - Library is global; multiple devices can share a preset. Built-in import / export / delete; deleting a preset clears every device reference.
   - **Preset editor.** Open any preset in an inline edit panel (grid: Type / Frequency / Gain / Q + trash icon per row, plus Add band). Filter type dropdown covers Peak / Low Shelf / High Shelf and a Bypass option that round-trips as `OFF` in the on-disk `.txt`. Save updates the current preset; Save As writes a copy; Rename retargets every device that references the old name. Edits stream live to the audio filter chain while the panel is open — the disk file stays untouched until you click Save.
   - Applied via libmpv `af` chain (`volume` + `equalizer` + `lowshelf` + `highshelf`). Composes with hog mode, ReplayGain, and Crossfeed; bit-perfect path is preserved when EQ is off.

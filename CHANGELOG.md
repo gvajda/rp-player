@@ -17,6 +17,10 @@ Section labels: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`
 
 - The app log now records more detail about audio device selection and hog mode, to help track down a rare "no sound after reconnecting a USB DAC" issue. No change to playback.
 
+### Fixed
+
+- Importing a parametric EQ preset exported from Squiglink or AutoEq failed with "Malformed Filter line" because those files spell shelf filters `LSC` / `HSC` (Qudelix writes `LS` / `HS`). Both spellings, and Equalizer APO's unnumbered `Filter:` lines, now import. The crossfeed line was never required.
+
 ## [v1.0.0] - 2026-06-09
 
 ### Added
