@@ -6,6 +6,8 @@ Section labels: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`
 
 ## [Unreleased]
 
+## [v1.0.1] - 2026-09-03
+
 ### Added
 
 - Skip low-rated songs: a Settings toggle + threshold picker (★2–★10, default ★5) auto-skips songs rated below the threshold. Rating the current song low skips it immediately; already-low-rated upcoming songs are never downloaded and show a greyed-out, dimmed "⏭ SKIP" marking in the Upcoming list. When a whole block has no qualifying songs, playback stops with a message to raise the threshold.
@@ -14,6 +16,7 @@ Section labels: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`
 ### Changed
 
 - Log: mpv `warn` lines and `ao*` verbose lines (device selection, AudioUnit warnings) are now written to the app log; hog acquire/release log the CoreAudio device ID and sample rate before/after. Diagnostics for the silent-playback-after-DAC-replug report (see `docs/notes/pr45-dac-reattach-investigation-2026-09-03.md`).
+- CI: a release is now published automatically when a commit reaches `main` whose CHANGELOG top section is a versioned `## [vX.Y.Z]` heading that has no GitHub release yet. Manual `v*` tags still work, but only for commits already on `main`.
 
 ## [v1.0.0] - 2026-06-09
 
