@@ -43,4 +43,20 @@ final class HogModeControllerTests: XCTestCase {
         let stored = await controller.originalSampleRate
         XCTAssertNil(stored)
     }
+
+    func testAcquireWithUnknownUIDLogsWarnWithUID() async {
+        let logger = RecordingLogger()
+        let controller = HogModeController(logger: logger)
+        let uid = "definitely-not-a-real-uid-\(UUID().uuidString)"
+        _ = await controller.acquire(deviceUID: uid)
+        let warns = logger.entries().filter { $0.hasPrefix("[WARN]") && $0.contains(uid) }
+        XCTAssertEqual(warns.count, 1, "expected one WARN naming the missing device, got \(logger.entries())")
+    }
+
+    func testReleaseWithoutAcquireLogsNothing() async {
+        let logger = RecordingLogger()
+        let controller = HogModeController(logger: logger)
+        await controller.release()
+        XCTAssertTrue(logger.entries().isEmpty, "unexpected log lines: \(logger.entries())")
+    }
 }

@@ -204,7 +204,7 @@ extension AppContainer {
             engine = NoopPlayerEngine(error: error)
         }
 
-        let hogController = HogModeController()
+        let hogController = HogModeController(logger: logger)
         let volumeController = DeviceVolumeController()
         // Skip the launch-time acquire when release-on-pause is on: nothing is
         // playing yet, so grabbing the device would block other apps for no
