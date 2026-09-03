@@ -139,6 +139,7 @@ user message rather than retrying.
 
 - `AppLogger` is a `final class @unchecked Sendable` with `setMinimumLevel(_:)` / `setVerbose(_:)` mutators behind an `NSLock`. `AppContainer.live()` flips the threshold based on `AppSettings.verboseLoggingEnabled` (re-flips on every settings change). Verbose ON: file sink captures every API request, every coordinator decision (play / pause / resume / skip / prefetch / swap / song-boundary cross), every engine state transition (file load, format detection, AO open, hog write, audio-device write), every bootstrap step. Default OFF.
 - File sink lives at `~/Library/Application Support/RP Player/Logs/RPPlayer.log` via `AppLogger.fileBacked(category:directory:minimumLevel:)`.
+- **mpv log level is `v`, filtered in the engine pump.** `mpv_request_log_messages(h, "v")` so `[ao/coreaudio]` device-selection lines exist at all; `MpvEventBridge.diagnosticText` forwards `warn` (any prefix) and `ao*`-prefixed `info`/`v` to `Logging`, drops the rest, and `error` still becomes `PlayerEvent.error`. Don't lower the request level back to `error` — the 2026-09-03 silent-play incident had zero evidence because of it.
 
 ## Errors
 

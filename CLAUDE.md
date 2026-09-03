@@ -14,9 +14,9 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 
 ## Current state
 
-- Last merged: **PR 44** — Skip low-rated songs. Settings "Playback" toggle + threshold picker (★2–★10, default ★5) auto-skips songs rated below the threshold. Rating the current song low skips it immediately; already-low-rated upcoming songs are never downloaded and show a greyed-out, dimmed "⏭ SKIP" pill in the Upcoming list. A fully-filtered block stops playback with a message to raise the threshold. Two-layer skip: Layer A filters at gapless-fetch time (no download, no telemetry); Layer B re-checks the playing head in `syncQueueHeadFromMpv` for songs queued before a mid-playback settings change. 20 new tests. 592 tests.
+- Last merged: **PR 45** — DAC reattach diagnostics + Play guard. mpv `warn` + `ao*` verbose lines and hog acquire/release (device id, sample rates) now reach the app log; Play while the held device is absent shows a waiting message instead of a failed mpv AO init. Investigation note: `docs/notes/pr45-dac-reattach-investigation-2026-09-03.md`. 6 new tests. 598 tests.
 - **Released:** **v1.0.0** (2026-06-09) — first stable tag. Bundles everything since v0.7.2 (PR 37–43: device reattach under hog, bs2b crossfeed, EQ preset editor + picker-switch UX, EOF-recovery non-blocking, cache-aware transport + Stop). Also de-flaked `testSetEditingPreampMarksDirtyAndPushesOverride` (fixed-sleep → `waitUntil` poll). 572 tests.
-- **Next up:** TBD — pick from the deferred list (`docs/pr-history.md` § Deferred) or brainstorm the next subsystem.
+- **Next up:** TBD — if the silent-play-after-replug recurs, read the new log lines per the PR 45 note; otherwise pick from the deferred list.
 
 ---
 
