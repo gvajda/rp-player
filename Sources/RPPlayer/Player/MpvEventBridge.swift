@@ -20,7 +20,7 @@ enum MpvEventBridge {
     // Only AO-related verbose lines are worth the log volume; everything else at v/info is demux/decoder chatter.
     static func diagnosticText(for line: MpvLogLine) -> String? {
         switch line.level {
-        case "warn":
+        case "warn", "fatal":
             return "mpv[\(line.prefix)] \(line.text)"
         case "info", "v":
             return line.prefix.hasPrefix("ao") ? "mpv[\(line.prefix)] \(line.text)" : nil

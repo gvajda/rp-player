@@ -119,5 +119,9 @@ final class MpvEventBridgeTests: XCTestCase {
         XCTAssertNil(MpvEventBridge.diagnosticText(for: MpvLogLine(level: "v", prefix: "demux", text: "x")))
         XCTAssertNil(MpvEventBridge.diagnosticText(for: MpvLogLine(level: "info", prefix: "cplayer", text: "x")))
         XCTAssertNil(MpvEventBridge.diagnosticText(for: MpvLogLine(level: "error", prefix: "ao/coreaudio", text: "x")))
+        XCTAssertEqual(
+            MpvEventBridge.diagnosticText(for: MpvLogLine(level: "fatal", prefix: "ao", text: "z")),
+            "mpv[ao] z"
+        )
     }
 }

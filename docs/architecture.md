@@ -143,7 +143,7 @@ user message rather than retrying.
 
 ## Errors
 
-- `PlaybackCoordinatorError: LocalizedError` provides clean `errorDescription` strings for all five cases (`notPlaying`, `channelNotFound`, `blockHasNoSongs`, `engineError`, `underlying`). View models surface `error.localizedDescription`.
+- `PlaybackCoordinatorError: LocalizedError` provides clean `errorDescription` strings for all six cases (`notPlaying`, `channelNotFound`, `blockHasNoSongs`, `engineError`, `underlying`, `outputDeviceUnavailable`). View models surface `error.localizedDescription`.
 
 ## Notifications
 

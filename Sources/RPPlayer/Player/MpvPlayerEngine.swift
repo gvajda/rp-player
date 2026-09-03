@@ -188,7 +188,7 @@ public actor MpvPlayerEngine: PlayerEngine {
                 let logPtr = event.data.assumingMemoryBound(to: mpv_event_log_message.self)
                 if let line = MpvEventBridge.logLine(from: logPtr.pointee), line.level != "error" {
                     if let text = MpvEventBridge.diagnosticText(for: line) {
-                        line.level == "warn" ? logger?.warn(text) : logger?.debug(text)
+                        (line.level == "warn" || line.level == "fatal") ? logger?.warn(text) : logger?.info(text)
                     }
                     continue
                 }
