@@ -6,17 +6,16 @@ Section labels: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`
 
 ## [Unreleased]
 
-## [v1.0.1] - 2026-09-03
+## [v1.1.0] - 2026-09-03
 
 ### Added
 
-- Skip low-rated songs: a Settings toggle + threshold picker (★2–★10, default ★5) auto-skips songs rated below the threshold. Rating the current song low skips it immediately; already-low-rated upcoming songs are never downloaded and show a greyed-out, dimmed "⏭ SKIP" marking in the Upcoming list. When a whole block has no qualifying songs, playback stops with a message to raise the threshold.
-- Pressing Play while the selected output device is disconnected (hog mode on) now shows "<Device> is disconnected — waiting for it to come back." instead of handing mpv an absent device.
+- **Skip low-rated songs.** Turn it on in Settings → Playback and pick a threshold (★2–★10, default ★5). Songs you've rated below the threshold are skipped automatically: rating the current song low skips it right away, and upcoming low-rated songs are shown dimmed with a "⏭ SKIP" mark and never downloaded. If nothing in the current block qualifies, playback stops and asks you to lower the threshold.
+- Pressing Play while your selected output device is unplugged now shows "<Device> is disconnected — waiting for it to come back." instead of silently doing nothing.
 
 ### Changed
 
-- Log: mpv `warn` lines and `ao*` verbose lines (device selection, AudioUnit warnings) are now written to the app log; hog acquire/release log the CoreAudio device ID and sample rate before/after. Diagnostics for the silent-playback-after-DAC-replug report (see `docs/notes/pr45-dac-reattach-investigation-2026-09-03.md`).
-- CI: a release is now published automatically when a commit reaches `main` whose CHANGELOG top section is a versioned `## [vX.Y.Z]` heading that has no GitHub release yet. Manual `v*` tags still work, but only for commits already on `main`.
+- The app log now records more detail about audio device selection and hog mode, to help track down a rare "no sound after reconnecting a USB DAC" issue. No change to playback.
 
 ## [v1.0.0] - 2026-06-09
 

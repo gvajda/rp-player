@@ -15,7 +15,8 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 ## Current state
 
 - Last merged: **PR 45** — DAC reattach diagnostics + Play guard. mpv `warn` + `ao*` verbose lines and hog acquire/release (device id, sample rates) now reach the app log; Play while the held device is absent shows a waiting message instead of a failed mpv AO init. Investigation note: `docs/notes/pr45-dac-reattach-investigation-2026-09-03.md`. 6 new tests. 598 tests.
-- **Released:** **v1.0.1** (2026-09-03, published automatically when PR 45 merged to `main`) — PR 44 skip-low-rated + PR 45 DAC reattach diagnostics. Previous: v1.0.0 (2026-06-09), first stable tag, PR 37–43.
+- **Released:** **v1.1.0** (2026-09-03, published automatically when PR 45 merged to `main`) — headline: PR 44 skip-low-rated songs; plus PR 45 DAC reattach diagnostics + Play guard. Previous: v1.0.0 (2026-06-09), first stable tag, PR 37–43.
+- **CHANGELOG audience is end users.** Plain-language entries, no CI/internal-symbol bullets; technical detail belongs in `docs/pr-history.md` / `docs/architecture.md`.
 - **Release mechanics:** CI's `plan-release` job derives the tag from the top `## [vX.Y.Z]` CHANGELOG heading on every push to `main` and publishes if that release doesn't exist yet. To ship: rename `## [Unreleased]` → `## [vX.Y.Z] - YYYY-MM-DD`, re-add an empty `## [Unreleased]` above it, merge. No manual tagging needed.
 - **Next up:** TBD — if the silent-play-after-replug recurs, read the new log lines per the PR 45 note; otherwise pick from the deferred list.
 
