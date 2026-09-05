@@ -60,6 +60,8 @@ Per-PR change log. Newest at bottom. The CLAUDE.md table format is preserved her
 
 | 45   | claude/pr45-dac-reattach-diagnostics | ⏳ | DAC reattach diagnostics + Play guard (2026-09-03): mpv log requested at `v`, pump forwards `warn` (any prefix) + `info`/`v` with `ao` prefix via `MpvEventBridge.logLine`/`diagnosticText`; `error` stays on the `.error` event path. `HogModeController(logger:)` logs acquire/release with device id + rateBefore/rateNow/restoredRate. `prePlayHook` is now throwing; AppContainer throws `PlaybackCoordinatorError.outputDeviceUnavailable(name:)` while `DeviceReattachState.heldUID` is set (`LocalizedError` text surfaces in the popover). Investigation note in `docs/notes/`. Release automation: new `plan-release` CI job publishes on merge to `main` from the top `## [vX.Y.Z]` CHANGELOG heading (see architecture.md § CI). Addendum: `EqPresetParser` accepts AutoEq/Squiglink `LSC`/`HSC` shelf codes and Equalizer APO unnumbered `Filter:` lines (regex was `[A-Z]{2}` + mandatory index). 8 new tests. 600 tests. Ships as v1.1.0. |
 
+| 46   | claude/pr46-dac-reattach-settle | ⏳ | DAC reattach settle + stuck-AO recovery (2026-09-05): root cause of the silent-play-after-replug bug found via unified log — `spawnReattachWatcher` wrote hog/rate/volume ~80 ms after device activation, inside the USB driver's `RequestConfigChange`; the in-process HAL client's `PauseIO`/`ResumeIO` on the device's IO context raced across threads, one resume clamped at 0, IO stayed disabled for the process (`HALB_IOThread::_Start: IO is still disabled after waiting` → `AudioOutputUnitStart` error 35). mpv 0.36 `ao_coreaudio.start()` only warns, so the core "plays" with `time-pos` 0. Fix: watcher skips device writes when release-on-pause is on (Play acquires via `prePlayHook`), otherwise sleeps `settle` (default 2 s) first. New `PlayerEvent.audioOutputStartFailed` from `MpvEventBridge.isAudioOutputStartFailure` (warn `ao/coreaudio` `can't start audio unit`); coordinator stops and yields a relaunch message. 4 new tests. 604 tests. Ships as v1.1.1. |
+
 ## Deferred / tech debt
 
 Items surfaced by past reviews / ad-hoc investigation. Non-blocking; pick up if a related area is touched.
@@ -74,6 +76,8 @@ Pre-scan quick wins landed in `b046cc2`: `time-pos` observer `MPV_FORMAT_DOUBLE`
 
 If a deep scan happens later: Instruments Allocations / Leaks. Open suspects if RAM still grows: NSImage retention (popover state, `MPMediaItemArtwork` closures), SwiftUI hosting-view leaks across popover open/close, `URLSession.shared` response data, NSHostingView / NSVisualEffectView retention in `PopoverController` container view. Past-song popover's bounded ≤1 VM leak (see Notifications section in architecture.md) — close-callback follow-up still tracked. SwiftUI re-render audit (ambient gradient + frosted view) only worth doing if a hot path is found.
 
-### PR 45 — Silent AO after DAC replug: root cause + recovery
+### PR 46 — DAC reattach follow-ups
 
-Only one occurrence (3 Sep 2026). PR 45 adds the logging needed; when it recurs, follow `docs/notes/pr45-dac-reattach-investigation-2026-09-03.md`. Candidate recovery: `ao-reload` when `time-pos` stays 0 for ~3 s after `fileLoaded`.
+- Reattach watcher missed two reappearances (3 Sep 12:52→14:29, 5 Sep 17:26→17:38): the device came back with no `reappeared` line and hog was never re-acquired. `CoreAudioDeviceCatalog.changes` delivery after a lost device needs a look.
+- `HogModeController.releaseHog` restores the pre-hog rate (48 kHz on the Qudelix) on every pause when release-on-pause is on, so each pause/resume is two device config changes under a live AUHAL. Balanced in the 5 Sep log, but skip the restore on release-on-pause releases if a pause-time drift ever shows up.
+- In-process recovery is not possible: a new AUHAL on the same device inherits the disabled IO state. Only relaunch (or unplug/replug creating a new device object — unverified) clears it.

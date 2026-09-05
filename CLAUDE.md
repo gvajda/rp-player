@@ -14,11 +14,11 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 
 ## Current state
 
-- Last merged: **PR 45** — DAC reattach diagnostics + Play guard. mpv `warn` + `ao*` verbose lines and hog acquire/release (device id, sample rates) now reach the app log; Play while the held device is absent shows a waiting message instead of a failed mpv AO init. Investigation note: `docs/notes/pr45-dac-reattach-investigation-2026-09-03.md`. Addendum: EQ preset parser accepts AutoEq/Squiglink `LSC`/`HSC` shelf codes + unnumbered `Filter:` lines. 8 new tests. 600 tests.
-- **Released:** **v1.1.0** (2026-09-03, published automatically when PR 45 merged to `main`) — headline: PR 44 skip-low-rated songs; plus PR 45 DAC reattach diagnostics + Play guard. Previous: v1.0.0 (2026-06-09), first stable tag, PR 37–43.
+- Last merged: **PR 46** — DAC reattach settle + stuck-AO recovery. Root cause of silent-play-after-replug: reattach watcher wrote hog/rate/volume during the USB driver's bring-up config change → in-process HAL IO pause counter drifted → IO disabled for the process; mpv 0.36 only warns. Watcher now defers device writes (skip when release-on-pause, else 2 s settle); `PlayerEvent.audioOutputStartFailed` stops playback with a relaunch message. 4 new tests. 604 tests.
+- **Released:** **v1.1.1** (2026-09-05, published automatically when PR 46 merged to `main`). Previous: v1.1.0 (2026-09-03, PR 44–45), v1.0.0 (2026-06-09).
 - **CHANGELOG audience is end users.** Plain-language entries, no CI/internal-symbol bullets; technical detail belongs in `docs/pr-history.md` / `docs/architecture.md`.
 - **Release mechanics:** CI's `plan-release` job derives the tag from the top `## [vX.Y.Z]` CHANGELOG heading on every push to `main` and publishes if that release doesn't exist yet. To ship: rename `## [Unreleased]` → `## [vX.Y.Z] - YYYY-MM-DD`, re-add an empty `## [Unreleased]` above it, merge. No manual tagging needed.
-- **Next up:** TBD — if the silent-play-after-replug recurs, read the new log lines per the PR 45 note; otherwise pick from the deferred list.
+- **Next up:** TBD — deferred list in `docs/pr-history.md` (reattach watcher missed reappearances is the closest follow-up).
 
 ---
 

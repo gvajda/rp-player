@@ -6,6 +6,12 @@ Section labels: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`
 
 ## [Unreleased]
 
+## [v1.1.1] - 2026-09-05
+
+### Fixed
+
+- **No sound after reconnecting a USB DAC.** Unplugging and replugging the selected DAC, then pressing Play, could leave the app looking like it was playing with no audio and the progress bar stuck at 0 until you relaunched. The app now waits for the device to finish initialising before taking it over, which avoids the macOS audio glitch that caused this. If the glitch still happens, playback stops and a message asks you to quit and reopen RP Player instead of playing silently.
+
 ## [v1.1.0] - 2026-09-03
 
 ### Added
