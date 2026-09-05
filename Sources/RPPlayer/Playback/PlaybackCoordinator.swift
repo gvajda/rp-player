@@ -710,6 +710,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             logger.error("player engine reported error: \(message)")
 
         case .audioOutputStartFailed:
+            if currentState == .stopped { return }
             logger.error("audio unit failed to start; stopping (in-process CoreAudio IO is stuck until relaunch)")
             try? await stop()
             errorsContinuation?.yield(
