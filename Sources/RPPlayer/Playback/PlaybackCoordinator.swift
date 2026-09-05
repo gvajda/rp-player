@@ -709,7 +709,14 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         case .error(let message):
             logger.error("player engine reported error: \(message)")
 
-        case .outputDeviceChanged, .shutdown, .audioOutputStartFailed:
+        case .audioOutputStartFailed:
+            logger.error("audio unit failed to start; stopping (in-process CoreAudio IO is stuck until relaunch)")
+            try? await stop()
+            errorsContinuation?.yield(
+                "Audio output failed to start after the device reconnected. Quit and reopen RP Player to restore sound."
+            )
+
+        case .outputDeviceChanged, .shutdown:
             break
         }
     }

@@ -331,6 +331,40 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         XCTAssertNil(np, "state must be cleared on -14")
     }
 
+    /// audioOutputStartFailed: the AU never renders, so stop and tell the user to relaunch.
+    func testAudioOutputStartFailedStopsAndYieldsRelaunchMessage() async throws {
+        let api = MockRpApiClient()
+        let response = makeGaplessResponse(songs: [
+            makeGaplessSong(songId: "s1", eventId: 100, gaplessUrl: "https://example.com/s1.flac"),
+            makeGaplessSong(songId: "s2", eventId: 101, gaplessUrl: "https://example.com/s2.flac"),
+        ])
+        await api.setGaplessResponse(response)
+        let engine = MockPlayerEngine()
+        let coord = LivePlaybackCoordinator(
+            api: api, engine: engine, songFileCache: MockSongFileCache(), logger: silentLogger(), bitrateProvider: { 4 }
+        )
+        let errors = await coord.errors
+        let errorTask = Task<String?, Never> {
+            var iter = errors.makeAsyncIterator()
+            return await iter.next()
+        }
+
+        try await coord.play(channelId: 0)
+        await engine.fire(.audioOutputStartFailed)
+
+        let message = await errorTask.value
+        XCTAssertEqual(
+            message,
+            "Audio output failed to start after the device reconnected. Quit and reopen RP Player to restore sound."
+        )
+
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let np = await coord.nowPlaying
+        XCTAssertNil(np, "playback must be stopped — the AU will never render in this process")
+        let state = await coord.currentPlaybackState
+        XCTAssertEqual(state, .stopped)
+    }
+
     /// 11. kickRefetch appends new songs above the head event.
     func testKickRefetchAppendsNewSongs() async throws {
         let api = MockRpApiClient()
