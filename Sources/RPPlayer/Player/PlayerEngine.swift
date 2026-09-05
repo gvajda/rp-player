@@ -36,6 +36,7 @@ public enum PlayerEvent: Sendable, Equatable {
     case fileEnded(reason: PlayerEndReason)
     case error(message: String)
     case outputDeviceChanged(uid: String?)
+    case audioOutputStartFailed
     case shutdown
 }
 

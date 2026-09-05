@@ -190,6 +190,9 @@ public actor MpvPlayerEngine: PlayerEngine {
                     if let text = MpvEventBridge.diagnosticText(for: line) {
                         (line.level == "warn" || line.level == "fatal") ? logger?.warn(text) : logger?.info(text)
                     }
+                    if MpvEventBridge.isAudioOutputStartFailure(line) {
+                        await deliver(.audioOutputStartFailed)
+                    }
                     continue
                 }
             }

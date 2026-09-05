@@ -124,4 +124,15 @@ final class MpvEventBridgeTests: XCTestCase {
             "mpv[ao] z"
         )
     }
+
+    func testIsAudioOutputStartFailureMatchesCoreaudioStartWarnOnly() {
+        XCTAssertTrue(MpvEventBridge.isAudioOutputStartFailure(
+            MpvLogLine(level: "warn", prefix: "ao/coreaudio", text: "can't start audio unit ([35][0][0][0]/35)")))
+        XCTAssertFalse(MpvEventBridge.isAudioOutputStartFailure(
+            MpvLogLine(level: "warn", prefix: "ao/coreaudio", text: "can't reset audio unit (x)")))
+        XCTAssertFalse(MpvEventBridge.isAudioOutputStartFailure(
+            MpvLogLine(level: "v", prefix: "ao/coreaudio", text: "can't start audio unit (x)")))
+        XCTAssertFalse(MpvEventBridge.isAudioOutputStartFailure(
+            MpvLogLine(level: "warn", prefix: "demux", text: "can't start audio unit")))
+    }
 }

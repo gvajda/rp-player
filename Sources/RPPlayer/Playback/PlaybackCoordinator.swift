@@ -709,7 +709,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         case .error(let message):
             logger.error("player engine reported error: \(message)")
 
-        case .outputDeviceChanged, .shutdown:
+        case .outputDeviceChanged, .shutdown, .audioOutputStartFailed:
             break
         }
     }

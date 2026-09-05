@@ -29,6 +29,12 @@ enum MpvEventBridge {
         }
     }
 
+    // mpv 0.36 ao_coreaudio start() only warns when AudioOutputUnitStart fails; the
+    // core keeps "playing" with time-pos stuck at 0, so this warn is the only signal.
+    static func isAudioOutputStartFailure(_ line: MpvLogLine) -> Bool {
+        line.level == "warn" && line.prefix == "ao/coreaudio" && line.text.hasPrefix("can't start audio unit")
+    }
+
     static func endReason(from event: mpv_event_end_file) -> PlayerEndReason {
         switch event.reason {
         case MPV_END_FILE_REASON_EOF:      return .eof
