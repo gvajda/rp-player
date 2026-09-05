@@ -71,6 +71,29 @@ final class EqPresetParserTests: XCTestCase {
         XCTAssertEqual(preset.bands[2].enabled, true)
     }
 
+    func testParsesSquiglinkAutoEqExport() throws {
+        let text = """
+        Preamp: -2.9 dB
+        Filter 1: ON LSC Fc 60 Hz Gain -3.7 dB Q 0.700
+        Filter 2: ON PK Fc 300 Hz Gain -2.3 dB Q 1.200
+        Filter 3: ON HSC Fc 7000 Hz Gain -2.0 dB Q 0.700
+        Filter 4: OFF PK Fc 0 Hz Gain 0.0 dB Q 0.000
+        """
+        let preset = try EqPresetParser.parse(text: text, filename: "AirPods Pro 3").get()
+        XCTAssertEqual(preset.preampDb, -2.9, accuracy: 0.0001)
+        XCTAssertEqual(preset.bands.map(\.type), [.lowShelf, .peak, .highShelf, .peak])
+        XCTAssertEqual(preset.bands.map(\.enabled), [true, true, true, false])
+        XCTAssertEqual(preset.bands[0].fcHz, 60)
+        XCTAssertEqual(preset.bands[2].gainDb, -2.0, accuracy: 0.0001)
+    }
+
+    func testParsesUnnumberedFilterLine() throws {
+        let text = "Filter: ON PK Fc 1000 Hz Gain -1.5 dB Q 1.4"
+        let preset = try EqPresetParser.parse(text: text, filename: "n").get()
+        XCTAssertEqual(preset.bands.count, 1)
+        XCTAssertEqual(preset.bands[0].q, 1.4, accuracy: 0.0001)
+    }
+
     func testRejectsUnsupportedFilterType() {
         let text = """
         Filter 1: ON PK Fc 100 Hz Gain 0 dB Q 1.0

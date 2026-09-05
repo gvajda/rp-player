@@ -88,7 +88,7 @@ final class DeviceReattachTests: XCTestCase {
 
     // MARK: spawnReattachWatcher
 
-    func testSpawnReattachWatcherReacquiresOnReappear() async throws {
+    func testSpawnReattachWatcherFiresCallbackOnReappear() async throws {
         let store = try makeTempStore()
         try await store.update {
             $0.outputDeviceUID = "watch-uid"
@@ -108,6 +108,7 @@ final class DeviceReattachTests: XCTestCase {
             volumeController: volumeController,
             store: store,
             logger: makeLogger(),
+            settle: .zero,
             onReattached: { reattachCalled = true }
         )
         defer { task.cancel() }
@@ -156,5 +157,121 @@ final class DeviceReattachTests: XCTestCase {
 
         try await Task.sleep(nanoseconds: 100_000_000) // 100ms
         XCTAssertFalse(reattachCalled)
+    }
+
+    func testSpawnReattachWatcherSkipsHogWhenReleaseOnPauseIsOn() async throws {
+        let store = try makeTempStore()
+        try await store.update {
+            $0.outputDeviceUID = "rop-uid"
+            $0.hogModeEnabled = true
+            $0.releaseHogOnPauseEnabled = true
+            $0.volumeMode = .none
+        }
+        let lister = StubAudioDeviceLister(devices: [])
+        let catalog = CoreAudioDeviceCatalog(lister: lister)
+        let hogLogger = RecordingLogger()
+        let hogController = HogModeController(logger: hogLogger)
+
+        var reattachCalled = false
+        let task = AppContainer.spawnReattachWatcher(
+            heldUID: "rop-uid",
+            catalog: catalog,
+            hogController: hogController,
+            volumeController: DeviceVolumeController(),
+            store: store,
+            logger: makeLogger(),
+            settle: .zero,
+            onReattached: { reattachCalled = true }
+        )
+        defer { task.cancel() }
+
+        try await Task.sleep(nanoseconds: 150_000_000)
+        lister.setDevices([AudioDevice(uid: "rop-uid", name: "ROP DAC", transportType: .usb)])
+        await catalog.reload()
+        try await Task.sleep(nanoseconds: 200_000_000)
+
+        XCTAssertTrue(reattachCalled)
+        let acquires = hogLogger.entries().filter { $0.contains("hog acquire") }
+        XCTAssertTrue(acquires.isEmpty, "watcher must not touch the device when release-on-pause is on: \(acquires)")
+    }
+
+    func testSpawnReattachWatcherAcquiresAfterSettleWhenHogIsHeldWhileIdle() async throws {
+        let store = try makeTempStore()
+        try await store.update {
+            $0.outputDeviceUID = "hold-uid"
+            $0.hogModeEnabled = true
+            $0.releaseHogOnPauseEnabled = false
+            $0.volumeMode = .none
+        }
+        let lister = StubAudioDeviceLister(devices: [])
+        let catalog = CoreAudioDeviceCatalog(lister: lister)
+        let hogLogger = RecordingLogger()
+        let hogController = HogModeController(logger: hogLogger)
+
+        var reattachCalled = false
+        let task = AppContainer.spawnReattachWatcher(
+            heldUID: "hold-uid",
+            catalog: catalog,
+            hogController: hogController,
+            volumeController: DeviceVolumeController(),
+            store: store,
+            logger: makeLogger(),
+            settle: .milliseconds(100),
+            onReattached: { reattachCalled = true }
+        )
+        defer { task.cancel() }
+
+        try await Task.sleep(nanoseconds: 150_000_000)
+        lister.setDevices([AudioDevice(uid: "hold-uid", name: "Hold DAC", transportType: .usb)])
+        await catalog.reload()
+
+        // Before the settle window elapses nothing may have touched the device.
+        try await Task.sleep(nanoseconds: 30_000_000)
+        XCTAssertTrue(hogLogger.entries().filter { $0.contains("hog acquire") }.isEmpty)
+        XCTAssertFalse(reattachCalled)
+
+        try await Task.sleep(nanoseconds: 250_000_000)
+        XCTAssertTrue(reattachCalled)
+        let acquires = hogLogger.entries().filter { $0.contains("hog acquire") && $0.contains("hold-uid") }
+        XCTAssertEqual(acquires.count, 1, "expected one acquire attempt after settle: \(hogLogger.entries())")
+    }
+
+    func testSpawnReattachWatcherDelaysCallbackDuringSettleWhenReleaseOnPauseIsOn() async throws {
+        let store = try makeTempStore()
+        try await store.update {
+            $0.outputDeviceUID = "rop-settle-uid"
+            $0.hogModeEnabled = true
+            $0.releaseHogOnPauseEnabled = true
+            $0.volumeMode = .none
+        }
+        let lister = StubAudioDeviceLister(devices: [])
+        let catalog = CoreAudioDeviceCatalog(lister: lister)
+        let hogLogger = RecordingLogger()
+        let hogController = HogModeController(logger: hogLogger)
+
+        var reattachCalled = false
+        let task = AppContainer.spawnReattachWatcher(
+            heldUID: "rop-settle-uid",
+            catalog: catalog,
+            hogController: hogController,
+            volumeController: DeviceVolumeController(),
+            store: store,
+            logger: makeLogger(),
+            settle: .milliseconds(100),
+            onReattached: { reattachCalled = true }
+        )
+        defer { task.cancel() }
+
+        try await Task.sleep(nanoseconds: 150_000_000)
+        lister.setDevices([AudioDevice(uid: "rop-settle-uid", name: "ROP Settle DAC", transportType: .usb)])
+        await catalog.reload()
+
+        try await Task.sleep(nanoseconds: 30_000_000)
+        XCTAssertFalse(reattachCalled)
+
+        try await Task.sleep(nanoseconds: 250_000_000)
+        XCTAssertTrue(reattachCalled)
+        let acquires = hogLogger.entries().filter { $0.contains("hog acquire") }
+        XCTAssertTrue(acquires.isEmpty, "watcher must not touch the device when release-on-pause is on: \(acquires)")
     }
 }

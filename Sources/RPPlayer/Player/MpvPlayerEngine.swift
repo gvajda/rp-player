@@ -118,9 +118,8 @@ public actor MpvPlayerEngine: PlayerEngine {
         // UI progress bar and song-boundary checks only need second resolution.
         _ = mpv_observe_property(h, /*reply_userdata*/ 0, "time-pos", MPV_FORMAT_INT64)
 
-        // Required for MPV_EVENT_LOG_MESSAGE delivery; without this the bridge's
-        // .error(message:) translation path is unreachable.
-        _ = mpv_request_log_messages(h, "error")
+        // "v" so ao/coreaudio device-selection lines reach the log; the pump drops everything else below warn.
+        _ = mpv_request_log_messages(h, "v")
 
         self.handle = h
         let bits = UInt(bitPattern: Int(bitPattern: UnsafeRawPointer(h)))
@@ -140,9 +139,11 @@ public actor MpvPlayerEngine: PlayerEngine {
         // the detached-task boundary; libmpv's client API is thread-safe except
         // for `mpv_wait_event`, and the pump is the only caller.
         let box = HandleBox(handle: handle)
+        let logger = self.logger
         pumpTask = Task.detached { [weak self] in
             await Self.pump(
                 handle: box.handle,
+                logger: logger,
                 deliver: { [weak self] event in
                     await self?.deliver(event)
                 }
@@ -176,12 +177,25 @@ public actor MpvPlayerEngine: PlayerEngine {
     /// shutdown calls mpv_wakeup explicitly so termination latency stays low.
     private static func pump(
         handle: OpaquePointer,
+        logger: (any Logging)?,
         deliver: @Sendable @escaping (PlayerEvent) async -> Void
     ) async {
         while !Task.isCancelled {
             guard let eventPtr = mpv_wait_event(handle, /*timeout*/ 5.0) else { continue }
             let event = eventPtr.pointee
             if event.event_id == MPV_EVENT_NONE { continue }
+            if event.event_id == MPV_EVENT_LOG_MESSAGE {
+                let logPtr = event.data.assumingMemoryBound(to: mpv_event_log_message.self)
+                if let line = MpvEventBridge.logLine(from: logPtr.pointee), line.level != "error" {
+                    if let text = MpvEventBridge.diagnosticText(for: line) {
+                        (line.level == "warn" || line.level == "fatal") ? logger?.warn(text) : logger?.info(text)
+                    }
+                    if MpvEventBridge.isAudioOutputStartFailure(line) {
+                        await deliver(.audioOutputStartFailed)
+                    }
+                    continue
+                }
+            }
             if let translated = MpvEventBridge.playerEvent(from: event) {
                 await deliver(translated)
                 if case .shutdown = translated { return }

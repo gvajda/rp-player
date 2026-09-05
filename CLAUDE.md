@@ -14,9 +14,11 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 
 ## Current state
 
-- Last merged (pending): **PR 43** — EQ preset picker switch while editing + Settings panel UX polish. Picker side: clean change reseeds editor; dirty change shows "Unsaved EQ changes" alert (Keep editing / Discard / Save / Save as new preset…). New `SettingsViewModel.requestPresetSwitch(to:)` + `pendingPresetSwitch` published + 4 resolve methods. Save-as variant lands picker on user's originally-picked target, not on save-as name. Internals: extracted private `writePresetFile(name:)` from `saveEditAs`; private `performSwitch(to:)` does atomic picker change + editor reseed (includes a manual `self.eqPresetName = target` sync hop to avoid configStore-stream-lag reparsing the wrong preset). SwiftUI alert + name sheet on `eqSection`; `savingAsInProgress` `@State` flag gates the alert's `isPresented` setter so Save-as button-tap doesn't auto-cancel pending state before sheet's OK runs. UX polish on the same branch: Settings window vertically resizable (480×400…2000, initial 560); EQ edit panel button row moved above header with divider; Save As pre-fills with current preset name (no `-copy`); `nameSheet` refactored to projected `$saveAsName`/`$renameTarget` bindings + `.onChange` cap (fixes "first-open empty" bug where stale `initialValue` capture in `.onAppear` clobbered button-set pre-fill). 13 new tests. 572 tests.
-- **Released:** **v1.0.0** (2026-06-09) — first stable tag. Bundles everything since v0.7.2 (PR 37–43: device reattach under hog, bs2b crossfeed, EQ preset editor + picker-switch UX, EOF-recovery non-blocking, cache-aware transport + Stop). Also de-flaked `testSetEditingPreampMarksDirtyAndPushesOverride` (fixed-sleep → `waitUntil` poll). 572 tests.
-- **Next up:** TBD — pick from the deferred list (`docs/pr-history.md` § Deferred) or brainstorm the next subsystem.
+- Last merged: **PR 45 + 46** (one PR, GitHub #3) — DAC reattach diagnostics + Play guard, then the fix: DAC reattach settle + stuck-AO recovery. Root cause of silent-play-after-replug: reattach watcher wrote hog/rate/volume during the USB driver's bring-up config change → in-process HAL IO pause counter drifted → IO disabled for the process; mpv 0.36 only warns. Watcher now defers device writes (skip when release-on-pause, else 2 s settle); `PlayerEvent.audioOutputStartFailed` stops playback with a relaunch message. 6 new tests. 606 tests.
+- **Released:** **v1.1.0** (2026-09-06, published automatically when PR 45+46 merged to `main`) — headline: PR 44 skip-low-rated songs; plus PR 45 diagnostics and the PR 46 DAC-reattach fix. Previous: v1.0.0 (2026-06-09).
+- **CHANGELOG audience is end users.** Plain-language entries, no CI/internal-symbol bullets; technical detail belongs in `docs/pr-history.md` / `docs/architecture.md`.
+- **Release mechanics:** CI's `plan-release` job derives the tag from the top `## [vX.Y.Z]` CHANGELOG heading on every push to `main` and publishes if that release doesn't exist yet. To ship: rename `## [Unreleased]` → `## [vX.Y.Z] - YYYY-MM-DD`, re-add an empty `## [Unreleased]` above it, merge. No manual tagging needed.
+- **Next up:** TBD — deferred list in `docs/pr-history.md` (reattach watcher missed reappearances is the closest follow-up).
 
 ---
 
@@ -52,7 +54,7 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 - **Test counts log:** `docs/test-counts.md`
 - **Key technical decisions (audio pipeline, libmpv, coordinator, shell, view models, API, auth, persistence, album art, logging, errors, notifications, deployment, CI):** `docs/architecture.md`
 - **Design source of truth:** `docs/DESIGN.md` — project-level architecture spec.
-- **Plans:** `docs/superpowers/plans/` — written just-in-time before each PR's execution. Gitignored (local only).
-- **Specs:** `docs/superpowers/specs/` — design docs from the brainstorming phase. Gitignored (local only).
+- **Plans:** `docs/superpowers/plans/` — written just-in-time before each PR's execution. Committed.
+- **Specs:** `docs/superpowers/specs/` — design docs from the brainstorming phase. Committed.
 - **Notes / known-issue handoffs:** `docs/notes/` — committed. Most recent: `docs/notes/pr12-outstanding-2026-05-01.md`.
 - **Legacy reference:** `docs/legacy/` — the Windows app's C# code, kept for cross-checking RP API behavior (URLs, cookies, query shapes).

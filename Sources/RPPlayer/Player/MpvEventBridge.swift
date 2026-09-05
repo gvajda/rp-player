@@ -1,7 +1,40 @@
 import CMpv
 import Foundation
 
+struct MpvLogLine: Equatable, Sendable {
+    let level: String
+    let prefix: String
+    let text: String
+}
+
 enum MpvEventBridge {
+    static func logLine(from log: mpv_event_log_message) -> MpvLogLine? {
+        guard let levelPtr = log.level, let prefixPtr = log.prefix, let textPtr = log.text else { return nil }
+        return MpvLogLine(
+            level: String(cString: levelPtr),
+            prefix: String(cString: prefixPtr),
+            text: String(cString: textPtr).trimmingCharacters(in: .newlines)
+        )
+    }
+
+    // Only AO-related verbose lines are worth the log volume; everything else at v/info is demux/decoder chatter.
+    static func diagnosticText(for line: MpvLogLine) -> String? {
+        switch line.level {
+        case "warn", "fatal":
+            return "mpv[\(line.prefix)] \(line.text)"
+        case "info", "v":
+            return line.prefix.hasPrefix("ao") ? "mpv[\(line.prefix)] \(line.text)" : nil
+        default:
+            return nil
+        }
+    }
+
+    // mpv 0.36 ao_coreaudio start() only warns when AudioOutputUnitStart fails; the
+    // core keeps "playing" with time-pos stuck at 0, so this warn is the only signal.
+    static func isAudioOutputStartFailure(_ line: MpvLogLine) -> Bool {
+        line.level == "warn" && line.prefix == "ao/coreaudio" && line.text.hasPrefix("can't start audio unit")
+    }
+
     static func endReason(from event: mpv_event_end_file) -> PlayerEndReason {
         switch event.reason {
         case MPV_END_FILE_REASON_EOF:      return .eof
@@ -39,12 +72,8 @@ enum MpvEventBridge {
             return propertyChange(from: propPtr.pointee)
         case MPV_EVENT_LOG_MESSAGE:
             let logPtr = event.data.assumingMemoryBound(to: mpv_event_log_message.self)
-            let log = logPtr.pointee
-            if let levelPtr = log.level, String(cString: levelPtr) == "error",
-               let textPtr = log.text {
-                return .error(message: String(cString: textPtr).trimmingCharacters(in: .newlines))
-            }
-            return nil
+            guard let line = logLine(from: logPtr.pointee), line.level == "error" else { return nil }
+            return .error(message: line.text)
         case MPV_EVENT_SHUTDOWN:
             return .shutdown
         default:
