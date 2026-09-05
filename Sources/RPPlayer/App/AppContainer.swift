@@ -820,6 +820,7 @@ extension AppContainer {
         volumeController: DeviceVolumeController,
         store: JSONConfigStore,
         logger: any Logging,
+        settle: Duration = .seconds(2),
         onReattached: @escaping @MainActor () -> Void
     ) -> Task<Void, Never> {
         Task { [catalog, hogController, volumeController, store, logger] in
@@ -827,11 +828,22 @@ extension AppContainer {
             for await devices in stream {
                 if Task.isCancelled { return }
                 guard devices.contains(where: { $0.uid == heldUID }) else { continue }
-                logger.info("held device '\(heldUID)' reappeared; re-acquiring hog")
-                _ = await hogController.acquire(deviceUID: heldUID)
                 let s = await store.settings
-                if s.volumeMode == .forceMax {
-                    _ = await volumeController.setVolumeMax(deviceUID: heldUID)
+                // Writing hog/rate/volume while the USB driver is still configuring the
+                // freshly enumerated device races the HAL client's IO pause counter and
+                // leaves IO disabled for the life of the process (see PR 46 note).
+                // Release-on-pause: nothing is playing, prePlayHook acquires at Play.
+                if s.releaseHogOnPauseEnabled {
+                    logger.info("held device '\(heldUID)' reappeared; hog deferred to Play (release-on-pause)")
+                } else {
+                    logger.info("held device '\(heldUID)' reappeared; re-acquiring hog after settle")
+                    // ponytail: fixed settle; poll for a quiet config-change window if it recurs
+                    try? await Task.sleep(for: settle)
+                    if Task.isCancelled { return }
+                    _ = await hogController.acquire(deviceUID: heldUID)
+                    if s.volumeMode == .forceMax {
+                        _ = await volumeController.setVolumeMax(deviceUID: heldUID)
+                    }
                 }
                 await MainActor.run { onReattached() }
                 return
