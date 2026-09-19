@@ -6,6 +6,22 @@ Section labels: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`
 
 ## [Unreleased]
 
+## [v1.1.0] - 2026-09-06
+
+### Added
+
+- **Skip low-rated songs.** Turn it on in Settings → Playback and pick a threshold (★2–★10, default ★5). Songs you've rated below the threshold are skipped automatically: rating the current song low skips it right away, and upcoming low-rated songs are shown dimmed with a "⏭ SKIP" mark and never downloaded. If nothing in the current block qualifies, playback stops and asks you to lower the threshold.
+- Pressing Play while your selected output device is unplugged now shows "<Device> is disconnected — waiting for it to come back." instead of silently doing nothing.
+
+### Changed
+
+- The app log now records more detail about audio device selection and hog mode.
+
+### Fixed
+
+- **No sound after reconnecting a USB DAC.** Unplugging and replugging the selected DAC, then pressing Play, could leave the app looking like it was playing with no audio and the progress bar stuck at 0 until you relaunched. The app now waits for the device to finish initialising before taking it over, which avoids the macOS audio glitch that caused this. If the glitch still happens, playback stops and a message asks you to quit and reopen RP Player instead of playing silently.
+- Importing a parametric EQ preset exported from Squiglink or AutoEq failed with "Malformed Filter line" because those files spell shelf filters `LSC` / `HSC` (Qudelix writes `LS` / `HS`). Both spellings, and Equalizer APO's unnumbered `Filter:` lines, now import. The crossfeed line was never required.
+
 ## [v1.0.0] - 2026-06-09
 
 ### Added

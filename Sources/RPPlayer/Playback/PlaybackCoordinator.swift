@@ -40,6 +40,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     private var pausePositionMs: Int = 0
 
     private var currentChannelId: Int?
+    private var skipPolicy: SkipPolicy = SkipPolicy(enabled: false, threshold: 5)
     private var queue: [GaplessSong] = []
     private var currentResponse: GaplessResponse?
     // mpv may fire MPV_EVENT_START_FILE multiple times around state transitions (initial load + auto-advance + replace).
@@ -73,7 +74,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     public var errors: AsyncStream<String>
 
     private let onDeviceUnavailable: (@Sendable () async -> Void)?
-    private let prePlayHook: @Sendable () async -> Void
+    private let prePlayHook: @Sendable () async throws -> Void
 
     public init(
         api: any RpApiClient,
@@ -84,7 +85,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         clock: @escaping @Sendable () -> Date = { Date() },
         prefetchArt: @escaping @Sendable (String) -> Void = { _ in },
         onDeviceUnavailable: (@Sendable () async -> Void)? = nil,
-        prePlayHook: @escaping @Sendable () async -> Void = {}
+        prePlayHook: @escaping @Sendable () async throws -> Void = {}
     ) {
         self.api = api
         self.engine = engine
@@ -190,7 +191,12 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         let response = try await api.gapless(channel: channelId, bitrate: bitrate, numSongs: 20)
         guard !response.songs.isEmpty else { throw PlaybackCoordinatorError.blockHasNoSongs }
 
-        queue = response.songs
+        let filtered = applySkipFilter(response.songs)
+        guard !filtered.isEmpty else {
+            await stopWithNoMatchesMessage()
+            return
+        }
+        queue = filtered
         currentResponse = response
         currentChannelId = channelId
         refetchTask?.cancel()
@@ -215,7 +221,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         // mpv's shared-mode AO can race with hog acquisition and end up registered
         // but silent — the user sees the progress bar advance but hears nothing
         // until pause+play forces an AO recreate.
-        await prePlayHook()
+        try await prePlayHook()
         lastStartedEventId = nil
         do {
             try await engine.play(url: url, startSeconds: startSeconds)
@@ -291,7 +297,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             return
         }
 
-        await prePlayHook()
+        try await prePlayHook()
         do { try await engine.resume() } catch { throw PlaybackCoordinatorError.engineError(message: String(describing: error)) }
         emitState(.playing)
 
@@ -433,8 +439,13 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             errorsContinuation?.yield("Cannot skip — no upcoming songs.")
             return
         }
+        let filtered = applySkipFilter(response.songs)
+        guard !filtered.isEmpty else {
+            await stopWithNoMatchesMessage()
+            return
+        }
         // Drop the skipped song; jump to the new response's first song.
-        queue = response.songs
+        queue = filtered
         currentResponse = response
         queueNextEventId = nil
         updateNextReady()
@@ -516,7 +527,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             let serverHead = response.songs.first?.eventId.description ?? "nil"
             logger.warn("applyBitrateChange: server cursor at eventId=\(serverHead), expected \(head.eventId)")
         }
-        let newSongs = response.songs.filter { $0.eventId > head.eventId }
+        let newSongs = applySkipFilter(response.songs.filter { $0.eventId > head.eventId })
         self.queue = [head] + newSongs
         self.currentResponse = response
         emitNowPlaying(forSongAt: 0)
@@ -572,6 +583,24 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
 
     public func emitUserMessage(_ message: String) async {
         errorsContinuation?.yield(message)
+    }
+
+    public func updateSkipPolicy(_ policy: SkipPolicy) async {
+        skipPolicy = policy
+    }
+
+    private func shouldSkip(_ userRating: Int) -> Bool {
+        skipPolicy.shouldSkip(userRating)
+    }
+
+    private func applySkipFilter(_ songs: [GaplessSong]) -> [GaplessSong] {
+        guard skipPolicy.enabled else { return songs }
+        return songs.filter { !shouldSkip($0.userRating) }
+    }
+
+    private func stopWithNoMatchesMessage() async {
+        try? await stop()
+        await emitUserMessage("No upcoming songs match your rating filter — raise the threshold in Settings.")
     }
 
     // Idempotent. Awaited from inside actor isolation, so by the time it returns
@@ -679,6 +708,14 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
 
         case .error(let message):
             logger.error("player engine reported error: \(message)")
+
+        case .audioOutputStartFailed:
+            if currentState == .stopped { return }
+            logger.error("audio unit failed to start; stopping (in-process CoreAudio IO is stuck until relaunch)")
+            try? await stop()
+            errorsContinuation?.yield(
+                "Audio output failed to start after the device reconnected. Quit and reopen RP Player to restore sound."
+            )
 
         case .outputDeviceChanged, .shutdown:
             break
@@ -846,6 +883,11 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         if let channelId = currentChannelId {
             fireSongStartTelemetry(song: queue[0], channelId: channelId)
         }
+        if shouldSkip(queue[0].userRating) {
+            logger.info("auto-skip head (rating \(queue[0].userRating) below threshold) \(describeSong(queue[0]))")
+            try? await skipForward()
+            return
+        }
         // Only re-issue queueNext on advance — initial sync is preceded by play()/handleSongPlaybackError/etc which already queued queue[1].
         if isAdvance {
             // The old queueNext'd entry is now playing; mpv's playlist is empty
@@ -1007,7 +1049,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
             self.refetchTask = nil
             return
         }
-        let newSongs = response.songs.filter { $0.eventId > tailEvent }
+        let newSongs = applySkipFilter(response.songs.filter { $0.eventId > tailEvent })
         let hadShortQueue = self.queue.count < 2
         self.queue = self.queue + newSongs
         self.currentResponse = response
@@ -1049,6 +1091,8 @@ extension PlaybackCoordinatorError: LocalizedError {
             return "Audio engine error: \(message)"
         case .underlying(let message):
             return message
+        case .outputDeviceUnavailable(let name):
+            return "\(name) is disconnected \u{2014} waiting for it to come back."
         }
     }
 }

@@ -16,6 +16,8 @@ final class SettingsViewModel: ObservableObject {
     @Published private(set) var ambientBackgroundEnabled: Bool
     @Published private(set) var popoverStyle: PopoverStyle
     @Published private(set) var frostedUpcomingEnabled: Bool
+    @Published private(set) var skipLowRatedEnabled: Bool = false
+    @Published private(set) var skipRatingThreshold: Int = 5
     @Published private(set) var upcomingRowCount: Int
     @Published private(set) var upcomingHiddenChannelIds: [Int]
     @Published private(set) var upcomingChannels: [Channel] = []
@@ -131,6 +133,8 @@ final class SettingsViewModel: ObservableObject {
         self.ambientBackgroundEnabled = snapshot.ambientBackgroundEnabled
         self.popoverStyle = snapshot.popoverStyle
         self.frostedUpcomingEnabled = snapshot.frostedUpcomingEnabled
+        self.skipLowRatedEnabled = snapshot.skipLowRatedEnabled
+        self.skipRatingThreshold = snapshot.skipRatingThreshold
         self.upcomingRowCount = snapshot.upcomingRowCount
         self.upcomingHiddenChannelIds = snapshot.upcomingHiddenChannelIds
 
@@ -160,6 +164,8 @@ final class SettingsViewModel: ObservableObject {
                     self.popoverStyle = snapshot.popoverStyle
 
                     self.frostedUpcomingEnabled = snapshot.frostedUpcomingEnabled
+                    self.skipLowRatedEnabled = snapshot.skipLowRatedEnabled
+                    self.skipRatingThreshold = snapshot.skipRatingThreshold
                     self.upcomingRowCount = snapshot.upcomingRowCount
                     self.upcomingHiddenChannelIds = snapshot.upcomingHiddenChannelIds
                     self.currentDeviceName = self.devices.first(where: { $0.uid == snapshot.outputDeviceUID })?.name
@@ -300,6 +306,14 @@ final class SettingsViewModel: ObservableObject {
 
     func setFrostedUpcomingEnabled(_ value: Bool) async {
         await update { $0.frostedUpcomingEnabled = value }
+    }
+
+    func setSkipLowRatedEnabled(_ value: Bool) async {
+        await update { $0.skipLowRatedEnabled = value }
+    }
+
+    func setSkipRatingThreshold(_ value: Int) async {
+        await update { $0.skipRatingThreshold = value }
     }
 
     func setUpcomingRowCount(_ value: Int) async {

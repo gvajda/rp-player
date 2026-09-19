@@ -78,4 +78,61 @@ final class MpvEventBridgeTests: XCTestCase {
             XCTAssertNil(MpvEventBridge.propertyChange(from: prop))
         }
     }
+
+    private func withLogMessage<T>(
+        level: String, prefix: String, text: String,
+        _ body: (mpv_event_log_message) -> T
+    ) -> T {
+        level.withCString { levelPtr in
+            prefix.withCString { prefixPtr in
+                text.withCString { textPtr in
+                    var msg = mpv_event_log_message()
+                    msg.level = levelPtr
+                    msg.prefix = prefixPtr
+                    msg.text = textPtr
+                    return body(msg)
+                }
+            }
+        }
+    }
+
+    func testLogLineParsesFieldsAndTrimsNewline() {
+        let line = withLogMessage(level: "warn", prefix: "ao/coreaudio", text: "can't start audio unit\n") {
+            MpvEventBridge.logLine(from: $0)
+        }
+        XCTAssertEqual(line, MpvLogLine(level: "warn", prefix: "ao/coreaudio", text: "can't start audio unit"))
+    }
+
+    func testDiagnosticTextForwardsWarnAndAoVerboseOnly() {
+        XCTAssertEqual(
+            MpvEventBridge.diagnosticText(for: MpvLogLine(level: "warn", prefix: "demux", text: "x")),
+            "mpv[demux] x"
+        )
+        XCTAssertEqual(
+            MpvEventBridge.diagnosticText(for: MpvLogLine(level: "v", prefix: "ao/coreaudio", text: "selected audio output device: Q (78)")),
+            "mpv[ao/coreaudio] selected audio output device: Q (78)"
+        )
+        XCTAssertEqual(
+            MpvEventBridge.diagnosticText(for: MpvLogLine(level: "info", prefix: "ao", text: "y")),
+            "mpv[ao] y"
+        )
+        XCTAssertNil(MpvEventBridge.diagnosticText(for: MpvLogLine(level: "v", prefix: "demux", text: "x")))
+        XCTAssertNil(MpvEventBridge.diagnosticText(for: MpvLogLine(level: "info", prefix: "cplayer", text: "x")))
+        XCTAssertNil(MpvEventBridge.diagnosticText(for: MpvLogLine(level: "error", prefix: "ao/coreaudio", text: "x")))
+        XCTAssertEqual(
+            MpvEventBridge.diagnosticText(for: MpvLogLine(level: "fatal", prefix: "ao", text: "z")),
+            "mpv[ao] z"
+        )
+    }
+
+    func testIsAudioOutputStartFailureMatchesCoreaudioStartWarnOnly() {
+        XCTAssertTrue(MpvEventBridge.isAudioOutputStartFailure(
+            MpvLogLine(level: "warn", prefix: "ao/coreaudio", text: "can't start audio unit ([35][0][0][0]/35)")))
+        XCTAssertFalse(MpvEventBridge.isAudioOutputStartFailure(
+            MpvLogLine(level: "warn", prefix: "ao/coreaudio", text: "can't reset audio unit (x)")))
+        XCTAssertFalse(MpvEventBridge.isAudioOutputStartFailure(
+            MpvLogLine(level: "v", prefix: "ao/coreaudio", text: "can't start audio unit (x)")))
+        XCTAssertFalse(MpvEventBridge.isAudioOutputStartFailure(
+            MpvLogLine(level: "warn", prefix: "demux", text: "can't start audio unit")))
+    }
 }

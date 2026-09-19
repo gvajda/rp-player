@@ -331,6 +331,74 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         XCTAssertNil(np, "state must be cleared on -14")
     }
 
+    /// audioOutputStartFailed: the AU never renders, so stop and tell the user to relaunch.
+    func testAudioOutputStartFailedStopsAndYieldsRelaunchMessage() async throws {
+        let api = MockRpApiClient()
+        let response = makeGaplessResponse(songs: [
+            makeGaplessSong(songId: "s1", eventId: 100, gaplessUrl: "https://example.com/s1.flac"),
+            makeGaplessSong(songId: "s2", eventId: 101, gaplessUrl: "https://example.com/s2.flac"),
+        ])
+        await api.setGaplessResponse(response)
+        let engine = MockPlayerEngine()
+        let coord = LivePlaybackCoordinator(
+            api: api, engine: engine, songFileCache: MockSongFileCache(), logger: silentLogger(), bitrateProvider: { 4 }
+        )
+        let errors = await coord.errors
+        let errorTask = Task<String?, Never> {
+            var iter = errors.makeAsyncIterator()
+            return await iter.next()
+        }
+
+        try await coord.play(channelId: 0)
+        await engine.fire(.audioOutputStartFailed)
+
+        let message = await errorTask.value
+        XCTAssertEqual(
+            message,
+            "Audio output failed to start after the device reconnected. Quit and reopen RP Player to restore sound."
+        )
+
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let np = await coord.nowPlaying
+        XCTAssertNil(np, "playback must be stopped — the AU will never render in this process")
+        let state = await coord.currentPlaybackState
+        XCTAssertEqual(state, .stopped)
+    }
+
+    func testAudioOutputStartFailedTwiceOnlyYieldsOneMessage() async throws {
+        let api = MockRpApiClient()
+        let response = makeGaplessResponse(songs: [
+            makeGaplessSong(songId: "s1", eventId: 100, gaplessUrl: "https://example.com/s1.flac"),
+            makeGaplessSong(songId: "s2", eventId: 101, gaplessUrl: "https://example.com/s2.flac"),
+        ])
+        await api.setGaplessResponse(response)
+        let engine = MockPlayerEngine()
+        let coord = LivePlaybackCoordinator(
+            api: api, engine: engine, songFileCache: MockSongFileCache(), logger: silentLogger(), bitrateProvider: { 4 }
+        )
+        let errors = await coord.errors
+        let collector = ErrorMessageCollector()
+        let collectorTask = Task {
+            for await message in errors {
+                await collector.append(message)
+            }
+        }
+
+        try await coord.play(channelId: 0)
+        await engine.fire(.audioOutputStartFailed)
+        try await Task.sleep(nanoseconds: 50_000_000)
+        await engine.fire(.audioOutputStartFailed)
+        try await Task.sleep(nanoseconds: 200_000_000)
+
+        collectorTask.cancel()
+        let messages = await collector.messages
+        XCTAssertEqual(
+            messages,
+            ["Audio output failed to start after the device reconnected. Quit and reopen RP Player to restore sound."],
+            "a second audioOutputStartFailed while already stopped must not yield another message"
+        )
+    }
+
     /// 11. kickRefetch appends new songs above the head event.
     func testKickRefetchAppendsNewSongs() async throws {
         let api = MockRpApiClient()
@@ -701,6 +769,35 @@ final class LivePlaybackCoordinatorTests: XCTestCase {
         try await coord.play(channelId: 0)
         let (firedAt, _) = await spy.get()
         XCTAssertEqual(firedAt, 0, "prePlayHook must fire before any engine.play")
+    }
+
+    func testPrePlayHookThrowingAbortsPlayBeforeEngine() async throws {
+        let api = MockRpApiClient()
+        let response = makeGaplessResponse(songs: [
+            makeGaplessSong(songId: "s1", eventId: 100, gaplessUrl: "https://example.com/s1.flac"),
+        ])
+        await api.setGaplessResponse(response)
+        let engine = MockPlayerEngine()
+        let coord = LivePlaybackCoordinator(
+            api: api, engine: engine, songFileCache: MockSongFileCache(), logger: silentLogger(), bitrateProvider: { 4 },
+            prePlayHook: { throw PlaybackCoordinatorError.outputDeviceUnavailable(name: "Test DAC") }
+        )
+        do {
+            try await coord.play(channelId: 0)
+            XCTFail("play must rethrow the hook error")
+        } catch let error as PlaybackCoordinatorError {
+            XCTAssertEqual(error, .outputDeviceUnavailable(name: "Test DAC"))
+        }
+        let calls = await engine.recordedCalls()
+        let played = calls.contains { if case .play = $0 { return true } else { return false } }
+        XCTAssertFalse(played, "engine.play must not run when the hook throws; calls=\(calls)")
+        let state = await coord.currentPlaybackState
+        XCTAssertNotEqual(state, .playing)
+    }
+
+    func testOutputDeviceUnavailableErrorDescription() {
+        let error = PlaybackCoordinatorError.outputDeviceUnavailable(name: "Test DAC")
+        XCTAssertEqual(error.localizedDescription, "Test DAC is disconnected \u{2014} waiting for it to come back.")
     }
 
     func testFavoritesLikeChannelStillCallsGapless() async throws {
@@ -2124,4 +2221,9 @@ private actor StateBox {
     func append(_ s: PlaybackState) { states.append(s) }
     func contains(_ s: PlaybackState) -> Bool { states.contains(s) }
     func reset() { states.removeAll() }
+}
+
+private actor ErrorMessageCollector {
+    private(set) var messages: [String] = []
+    func append(_ m: String) { messages.append(m) }
 }

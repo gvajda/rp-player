@@ -342,6 +342,10 @@ final class MiniPlayerViewModel: ObservableObject {
             errorMessage = nil
             _ = try await api.rate(songId: songId, rating: value)
             currentRating = value
+            let s = await configStore.settings
+            if SkipPolicy(enabled: s.skipLowRatedEnabled, threshold: s.skipRatingThreshold).shouldSkip(value) {
+                try? await coordinator.skipForward()
+            }
         } catch RpApiError.invalidResponse(statusCode: 401, _) {
             // Stored cookie no longer accepted by RP — clear it and prompt re-login.
             await auth.clearCookie()

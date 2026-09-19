@@ -38,4 +38,5 @@ public enum PlaybackCoordinatorError: Error, Sendable, Equatable {
     case blockHasNoSongs
     case engineError(message: String)
     case underlying(message: String)
+    case outputDeviceUnavailable(name: String)
 }

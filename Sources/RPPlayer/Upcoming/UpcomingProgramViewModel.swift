@@ -12,6 +12,7 @@ struct UpcomingSongRow: Identifiable, Sendable {
     let song: GaplessSong
     let art: NSImage?
     let ambientColor: Color
+    let isSkipped: Bool
 }
 
 @MainActor
@@ -110,6 +111,7 @@ final class UpcomingProgramViewModel: ObservableObject {
         errorMessage = nil
 
         let settings = await configStore.settings
+        let skipPolicy = SkipPolicy(enabled: settings.skipLowRatedEnabled, threshold: settings.skipRatingThreshold)
         let rowCount = settings.upcomingRowCount
         let hiddenIds = Set(settings.upcomingHiddenChannelIds)
         let bitrate = settings.bitrate
@@ -194,7 +196,13 @@ final class UpcomingProgramViewModel: ObservableObject {
         columns = stubs.enumerated().map { ci, stub in
             let rows = stub.songs.enumerated().map { ri, song in
                 let (art, color) = artResults["\(ci)-\(ri)"] ?? (nil, Color(nsColor: .windowBackgroundColor))
-                return UpcomingSongRow(id: "\(stub.chanId)-\(song.songId)", song: song, art: art, ambientColor: color)
+                return UpcomingSongRow(
+                    id: "\(stub.chanId)-\(song.songId)",
+                    song: song,
+                    art: art,
+                    ambientColor: color,
+                    isSkipped: skipPolicy.shouldSkip(song.userRating)
+                )
             }
             return UpcomingColumn(id: stub.chanId, channel: stub.channel, songs: rows)
         }

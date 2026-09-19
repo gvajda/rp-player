@@ -204,7 +204,7 @@ extension AppContainer {
             engine = NoopPlayerEngine(error: error)
         }
 
-        let hogController = HogModeController()
+        let hogController = HogModeController(logger: logger)
         let volumeController = DeviceVolumeController()
         // Skip the launch-time acquire when release-on-pause is on: nothing is
         // playing yet, so grabbing the device would block other apps for no
@@ -276,7 +276,11 @@ extension AppContainer {
                     }
                 }
             },
-            prePlayHook: { [store, hogController] in
+            prePlayHook: { [store, hogController, reattachState] in
+                let held = await MainActor.run { (reattachState.heldUID, reattachState.lastKnownDeviceNames) }
+                if let uid = held.0 {
+                    throw PlaybackCoordinatorError.outputDeviceUnavailable(name: held.1[uid] ?? uid)
+                }
                 // Acquire hog BEFORE mpv opens the CoreAudio AO. Without this,
                 // mpv's shared-mode AO open can race with hog acquisition (which
                 // currently fires on the .playing state transition, after engine.play
@@ -291,6 +295,19 @@ extension AppContainer {
         )
 
         coordinatorBox.value = coordinator
+
+        Task { [coordinator, store, initial] in
+            await coordinator.updateSkipPolicy(
+                SkipPolicy(enabled: initial.skipLowRatedEnabled, threshold: initial.skipRatingThreshold)
+            )
+            guard let store else { return }
+            let stream = await store.changes
+            for await settings in stream {
+                await coordinator.updateSkipPolicy(
+                    SkipPolicy(enabled: settings.skipLowRatedEnabled, threshold: settings.skipRatingThreshold)
+                )
+            }
+        }
 
         if let store {
             // Release/re-acquire hog on pause/resume when the user opted in.
@@ -803,6 +820,7 @@ extension AppContainer {
         volumeController: DeviceVolumeController,
         store: JSONConfigStore,
         logger: any Logging,
+        settle: Duration = .seconds(2),
         onReattached: @escaping @MainActor () -> Void
     ) -> Task<Void, Never> {
         Task { [catalog, hogController, volumeController, store, logger] in
@@ -810,11 +828,22 @@ extension AppContainer {
             for await devices in stream {
                 if Task.isCancelled { return }
                 guard devices.contains(where: { $0.uid == heldUID }) else { continue }
-                logger.info("held device '\(heldUID)' reappeared; re-acquiring hog")
-                _ = await hogController.acquire(deviceUID: heldUID)
+                // Writing hog/rate/volume while the USB driver is still configuring the
+                // freshly enumerated device races the HAL client's IO pause counter and
+                // leaves IO disabled for the life of the process (see PR 46 note).
+                // ponytail: fixed settle; poll for a quiet config-change window if it recurs
+                try? await Task.sleep(for: settle)
+                if Task.isCancelled { return }
                 let s = await store.settings
-                if s.volumeMode == .forceMax {
-                    _ = await volumeController.setVolumeMax(deviceUID: heldUID)
+                // Release-on-pause: nothing is playing, prePlayHook acquires at Play.
+                if s.releaseHogOnPauseEnabled {
+                    logger.info("held device '\(heldUID)' reappeared; settled, hog deferred to Play (release-on-pause)")
+                } else {
+                    logger.info("held device '\(heldUID)' reappeared; settled, re-acquiring hog")
+                    _ = await hogController.acquire(deviceUID: heldUID)
+                    if s.volumeMode == .forceMax {
+                        _ = await volumeController.setVolumeMax(deviceUID: heldUID)
+                    }
                 }
                 await MainActor.run { onReattached() }
                 return

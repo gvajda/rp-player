@@ -4,13 +4,19 @@ import Foundation
 public actor HogModeController {
     private var hoggedDeviceID: AudioDeviceID?
     internal private(set) var originalSampleRate: Double?
+    private let logger: (any Logging)?
 
-    public init() {}
+    public init(logger: (any Logging)? = nil) {
+        self.logger = logger
+    }
 
     public var isHogging: Bool { hoggedDeviceID != nil }
 
     public func acquire(deviceUID: String) async -> Bool {
-        guard let target = deviceID(forUID: deviceUID) else { return false }
+        guard let target = deviceID(forUID: deviceUID) else {
+            logger?.warn("hog acquire: device '\(deviceUID)' not found")
+            return false
+        }
         if let current = hoggedDeviceID, current == target { return true }
         if hoggedDeviceID != nil {
             await releaseHog()
@@ -26,20 +32,28 @@ public actor HogModeController {
             target, &address, 0, nil,
             UInt32(MemoryLayout<pid_t>.size), &pid
         )
-        guard setStatus == noErr else { return false }
+        guard setStatus == noErr else {
+            logger?.warn("hog acquire: set failed id=\(target) status=\(setStatus)")
+            return false
+        }
         var size = UInt32(MemoryLayout<pid_t>.size)
         var actual: pid_t = -1
         let getStatus = AudioObjectGetPropertyData(
             target, &address, 0, nil, &size, &actual
         )
-        guard getStatus == noErr, actual == getpid() else { return false }
+        guard getStatus == noErr, actual == getpid() else {
+            logger?.warn("hog acquire: verify failed id=\(target) status=\(getStatus) owner=\(actual)")
+            return false
+        }
         // RP streams are always 44.1 kHz; enforce matching hardware rate to
         // prevent CoreAudio resampling when the device is configured otherwise.
-        if !(await setSampleRateInternal(44100.0, deviceID: target, settle: true)) {
-            fputs("[HogModeController] setSampleRate(44100) failed — playback may resample\n", stderr)
+        let rateOK = await setSampleRateInternal(44100.0, deviceID: target, settle: true)
+        if !rateOK {
+            logger?.warn("hog acquire: setSampleRate(44100) failed id=\(target) — playback may resample")
         }
         hoggedDeviceID = target
         originalSampleRate = savedRate
+        logger?.info("hog acquired id=\(target) rateBefore=\(savedRate.map { String($0) } ?? "nil") rateNow=\(readSampleRate(deviceID: target).map { String($0) } ?? "nil")")
         return true
     }
 
@@ -60,16 +74,19 @@ public actor HogModeController {
             mElement: kAudioObjectPropertyElementMain
         )
         var pid: pid_t = -1
-        _ = AudioObjectSetPropertyData(
+        let status = AudioObjectSetPropertyData(
             target, &address, 0, nil,
             UInt32(MemoryLayout<pid_t>.size), &pid
         )
         hoggedDeviceID = nil
+        var restored = "none"
         if let rate = originalSampleRate {
             // No settle sleep on restore — we are releasing, not about to open IO.
-            _ = await setSampleRateInternal(rate, deviceID: target, settle: false)
+            let ok = await setSampleRateInternal(rate, deviceID: target, settle: false)
+            restored = ok ? String(rate) : "failed(\(rate))"
             originalSampleRate = nil
         }
+        logger?.info("hog released id=\(target) status=\(status) restoredRate=\(restored)")
     }
 
     private func readSampleRate(deviceID: AudioDeviceID) -> Double? {
