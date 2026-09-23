@@ -626,19 +626,7 @@ extension AppContainer {
                     }
                     if let uid = settings.outputDeviceUID {
                         try? await store.update { s in
-                            let existing = s.audioProfiles[uid] ?? AudioProfile.safeDefault
-                            s.audioProfiles[uid] = AudioProfile(
-                                hogModeEnabled: s.hogModeEnabled,
-                                releaseHogOnPauseEnabled: s.releaseHogOnPauseEnabled,
-                                volumeMode: s.volumeMode,
-                                bitrate: s.bitrate,
-                                eqEnabled: existing.eqEnabled,
-                                eqPresetName: existing.eqPresetName,
-                                crossfeedEnabled: existing.crossfeedEnabled,
-                                crossfeedProfile: existing.crossfeedProfile,
-                                crossfeedFcut: existing.crossfeedFcut,
-                                crossfeedFeedDb: existing.crossfeedFeedDb
-                            )
+                            s.audioProfiles[uid] = AppContainer.profileWritingDeviceSettings(s, onto: s.audioProfiles[uid])
                         }
                     }
                 }
@@ -705,6 +693,16 @@ extension AppContainer {
             quietNow: { engine.muteImmediately() },
             onLaunchTasks: onLaunchTasks
         )
+    }
+
+    // Copies the profile so fields owned by other binders (EQ, crossfeed, plugin) survive a device-settings write.
+    internal nonisolated static func profileWritingDeviceSettings(_ settings: AppSettings, onto existing: AudioProfile?) -> AudioProfile {
+        var profile = existing ?? .safeDefault
+        profile.hogModeEnabled = settings.hogModeEnabled
+        profile.releaseHogOnPauseEnabled = settings.releaseHogOnPauseEnabled
+        profile.volumeMode = settings.volumeMode
+        profile.bitrate = settings.bitrate
+        return profile
     }
 
     internal static func runAudioFilterBinder(
