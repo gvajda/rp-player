@@ -162,6 +162,17 @@ extension AppContainer {
         let eqPresetStore: any EqPresetStore = LiveEqPresetStore(directory: ConfigPaths.eqPresetsDirectory, logger: eqLogger)
         let eqEditingOverride = EqEditingOverride()
 
+        let pluginLogger = AppLogger.fileBacked(category: "plugins", directory: ConfigPaths.logsDirectory)
+        pluginLogger.setVerbose(loaded.verboseLoggingEnabled)
+        let pluginStore = PluginStore(directory: ConfigPaths.pluginsDirectory, logger: pluginLogger)
+        let pluginBridge = PluginBridge.defaultPath().flatMap { PluginBridge.load(path: $0, logger: pluginLogger) }
+        if pluginBridge == nil {
+            pluginLogger.error("plugin bridge unavailable; Audio Unit plugins disabled")
+        } else if pluginBridge?.filterPart == nil {
+            pluginLogger.error("plugin bridge path contains [ or ]; Audio Unit plugins disabled")
+        }
+        let pluginHost = PluginHost(store: pluginStore, setUnit: { pluginBridge?.setUnit($0) }, logger: pluginLogger)
+
         let imageBaseURL = URL(string: "https://img.radioparadise.com/")!
         let cache: any AlbumArtCache
         do {
@@ -333,11 +344,12 @@ extension AppContainer {
                     }
                 }
             }
-            Task { [logger, eqLogger] in
+            Task { [logger, eqLogger, pluginLogger] in
                 let stream = await store.changes
                 for await settings in stream {
                     logger.setVerbose(settings.verboseLoggingEnabled)
                     eqLogger.setVerbose(settings.verboseLoggingEnabled)
+                    pluginLogger.setVerbose(settings.verboseLoggingEnabled)
                 }
             }
             Task { @MainActor in
@@ -350,13 +362,15 @@ extension AppContainer {
                     }
                 }
             }
-            Task { [engine, eqPresetStore, eqEditingOverride, store] in
+            Task { [engine, eqPresetStore, eqEditingOverride, store, pluginBridge, pluginHost] in
                 await AppContainer.runAudioFilterBinder(
                     store: store,
                     engine: engine,
                     eqPresetStore: eqPresetStore,
                     override: eqEditingOverride,
-                    initialProfile: startupProfile
+                    initialProfile: startupProfile,
+                    pluginPart: pluginBridge?.filterPart,
+                    selectPlugin: { id in await pluginHost.select(id) }
                 )
             }
         }
@@ -710,11 +724,24 @@ extension AppContainer {
         engine: any PlayerEngine,
         eqPresetStore: any EqPresetStore,
         override: EqEditingOverride,
-        initialProfile: AudioProfile
+        initialProfile: AudioProfile,
+        pluginPart: String? = nil,
+        selectPlugin: (@Sendable (String?) async -> Void)? = nil
     ) async {
         let state = _BinderState(profile: initialProfile, override: await override.snapshot())
+
+        @Sendable func apply(_ p: AudioProfile, _ o: EqPreset?) async {
+            let chain = await buildAudioFilterChain(store: eqPresetStore, profile: p, override: o, pluginPart: pluginPart)
+            if await state.recordChain(chain) {
+                try? await engine.setAudioFilterChain(chain)
+            }
+            if let selectPlugin, await state.recordPlugin(p.pluginEnabled ? p.pluginId : nil) {
+                await selectPlugin(p.pluginEnabled ? p.pluginId : nil)
+            }
+        }
+
         let (p0, o0) = await state.snapshot()
-        await applyAudioFilterState(engine: engine, store: eqPresetStore, profile: p0, override: o0)
+        await apply(p0, o0)
 
         let configStream = await store.changes
         let overrideStream = await override.changes
@@ -727,7 +754,7 @@ extension AppContainer {
                     let changed = await state.updateProfile(next)
                     if changed {
                         let (p, o) = await state.snapshot()
-                        await applyAudioFilterState(engine: engine, store: eqPresetStore, profile: p, override: o)
+                        await apply(p, o)
                     }
                 }
             }
@@ -736,19 +763,19 @@ extension AppContainer {
                     let changed = await state.updateOverride(preset)
                     if changed {
                         let (p, o) = await state.snapshot()
-                        await applyAudioFilterState(engine: engine, store: eqPresetStore, profile: p, override: o)
+                        await apply(p, o)
                     }
                 }
             }
         }
     }
 
-    internal static func applyAudioFilterState(
-        engine: any PlayerEngine,
+    internal static func buildAudioFilterChain(
         store: any EqPresetStore,
         profile: AudioProfile,
-        override: EqPreset?
-    ) async {
+        override: EqPreset?,
+        pluginPart: String?
+    ) async -> String? {
         var parts: [String] = []
         if profile.eqEnabled {
             if let override {
@@ -764,6 +791,9 @@ extension AppContainer {
                 }
             }
         }
+        if profile.pluginEnabled, profile.pluginId != nil, let pluginPart {
+            parts.append(pluginPart)
+        }
         if profile.crossfeedEnabled {
             parts.append(CrossfeedFilterBuilder.buildPart(
                 profile: profile.crossfeedProfile,
@@ -771,11 +801,7 @@ extension AppContainer {
                 feedDb: profile.crossfeedFeedDb
             ))
         }
-        if parts.isEmpty {
-            try? await engine.setAudioFilterChain(nil)
-        } else {
-            try? await engine.setAudioFilterChain("lavfi=[" + parts.joined(separator: ",") + "]")
-        }
+        return parts.isEmpty ? nil : "lavfi=[" + parts.joined(separator: ",") + "]"
     }
 
     @discardableResult
@@ -869,6 +895,8 @@ extension AppContainer {
 private actor _BinderState {
     var profile: AudioProfile
     var override: EqPreset?
+    private var lastChain: String??
+    private var lastPlugin: String??
     init(profile: AudioProfile, override: EqPreset?) {
         self.profile = profile
         self.override = override
@@ -884,6 +912,17 @@ private actor _BinderState {
         return changed
     }
     func snapshot() -> (AudioProfile, EqPreset?) { (profile, override) }
+    // Same af string twice would make mpv rebuild the graph; a plugin swap must only change the bridge's unit.
+    func recordChain(_ chain: String?) -> Bool {
+        if lastChain == .some(chain) { return false }
+        lastChain = .some(chain)
+        return true
+    }
+    func recordPlugin(_ id: String?) -> Bool {
+        if lastPlugin == .some(id) { return false }
+        lastPlugin = .some(id)
+        return true
+    }
 }
 
 // Fallback when JSONConfigStore fails to open so SettingsViewModel still constructs.

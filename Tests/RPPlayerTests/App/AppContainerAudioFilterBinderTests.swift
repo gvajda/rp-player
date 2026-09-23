@@ -481,4 +481,107 @@ final class AppContainerAudioFilterBinderTests: XCTestCase {
             }
         }
     }
+
+    private final class SelectRecorder: @unchecked Sendable {
+        private let lock = NSLock()
+        private var ids: [String?] = []
+        func record(_ id: String?) { lock.withLock { ids.append(id) } }
+        var calls: [String?] { lock.withLock { ids } }
+    }
+
+    private nonisolated static let part = "ladspa=file=/x/libRPBridge.dylib:p=rpbridge"
+    private nonisolated static let idA = "3F2504E0-4F89-11D3-9A0C-0305E82C3301"
+    private nonisolated static let idB = "7C9E6679-7425-40DE-944B-E07FC1F90AE7"
+
+    private static func chains(_ engine: MockPlayerEngine) async -> [String?] {
+        await engine.recordedCalls().compactMap { call in
+            if case .setAudioFilterChain(let chain) = call { return .some(chain) }
+            return nil
+        }
+    }
+
+    private func startBinder(profile: AudioProfile, pluginPart: String?) -> (StubConfigStore, MockPlayerEngine, SelectRecorder, Task<Void, Never>) {
+        var settings = AppSettings.default
+        settings.outputDeviceUID = "dev-A"
+        settings.audioProfiles["dev-A"] = profile
+        let configStore = StubConfigStore(initial: settings)
+        let engine = MockPlayerEngine()
+        let recorder = SelectRecorder()
+        let eqStore = LiveEqPresetStore(directory: tmpDir)
+        let task = Task {
+            await AppContainer.runAudioFilterBinder(
+                store: configStore, engine: engine, eqPresetStore: eqStore, override: EqEditingOverride(),
+                initialProfile: profile, pluginPart: pluginPart, selectPlugin: { recorder.record($0) })
+        }
+        return (configStore, engine, recorder, task)
+    }
+
+    func testPluginPartSitsBetweenEqAndCrossfeed() async throws {
+        let eqStore = LiveEqPresetStore(directory: tmpDir)
+        try await eqStore.save(name: "p", text: "Filter 1: ON PK Fc 1000 Hz Gain 2 dB Q 1.0\n", overwrite: false)
+        var profile = AudioProfile.safeDefault
+        profile.eqEnabled = true
+        profile.eqPresetName = "p"
+        profile.crossfeedEnabled = true
+        profile.pluginEnabled = true
+        profile.pluginId = Self.idA
+        let (_, engine, recorder, task) = startBinder(profile: profile, pluginPart: Self.part)
+        defer { task.cancel() }
+
+        try await waitUntil({ await !Self.chains(engine).isEmpty }, timeout: 1.0)
+        let lastChain = await Self.chains(engine).last ?? nil
+        let chain = try XCTUnwrap(lastChain)
+        let eq = try XCTUnwrap(chain.range(of: "equalizer"))
+        let plugin = try XCTUnwrap(chain.range(of: Self.part))
+        let bs2b = try XCTUnwrap(chain.range(of: "bs2b"))
+        XCTAssertTrue(eq.upperBound <= plugin.lowerBound && plugin.upperBound <= bs2b.lowerBound, chain)
+        try await waitUntil({ recorder.calls == [Self.idA] }, timeout: 1.0)
+    }
+
+    func testNoPluginPartWithoutIdOrBridge() async throws {
+        var noId = AudioProfile.safeDefault
+        noId.pluginEnabled = true
+        let (_, engine1, recorder1, task1) = startBinder(profile: noId, pluginPart: Self.part)
+        defer { task1.cancel() }
+        try await waitUntil({ await !Self.chains(engine1).isEmpty }, timeout: 1.0)
+        let chains1 = await Self.chains(engine1)
+        XCTAssertEqual(chains1, [nil])
+        try await waitUntil({ recorder1.calls == [nil] }, timeout: 1.0)
+
+        var noBridge = AudioProfile.safeDefault
+        noBridge.pluginEnabled = true
+        noBridge.pluginId = Self.idA
+        let (_, engine2, _, task2) = startBinder(profile: noBridge, pluginPart: nil)
+        defer { task2.cancel() }
+        try await waitUntil({ await !Self.chains(engine2).isEmpty }, timeout: 1.0)
+        let chains2 = await Self.chains(engine2)
+        XCTAssertEqual(chains2, [nil])
+    }
+
+    func testSwappingPluginSelectsWithoutRewritingChain() async throws {
+        var profile = AudioProfile.safeDefault
+        profile.pluginEnabled = true
+        profile.pluginId = Self.idA
+        let (configStore, engine, recorder, task) = startBinder(profile: profile, pluginPart: Self.part)
+        defer { task.cancel() }
+        try await waitUntil({ recorder.calls == [Self.idA] }, timeout: 1.0)
+
+        try await configStore.update { $0.audioProfiles["dev-A"]?.pluginId = Self.idB }
+        try await waitUntil({ recorder.calls == [Self.idA, Self.idB] }, timeout: 1.0)
+        let finalChains = await Self.chains(engine)
+        XCTAssertEqual(finalChains, ["lavfi=[\(Self.part)]"], "a plugin swap must not rewrite af")
+    }
+
+    func testDisablingPluginDeselectsAndDropsPart() async throws {
+        var profile = AudioProfile.safeDefault
+        profile.pluginEnabled = true
+        profile.pluginId = Self.idA
+        let (configStore, engine, recorder, task) = startBinder(profile: profile, pluginPart: Self.part)
+        defer { task.cancel() }
+        try await waitUntil({ recorder.calls == [Self.idA] }, timeout: 1.0)
+
+        try await configStore.update { $0.audioProfiles["dev-A"]?.pluginEnabled = false }
+        try await waitUntil({ recorder.calls == [Self.idA, nil] }, timeout: 1.0)
+        try await waitUntil({ await Self.chains(engine) == ["lavfi=[\(Self.part)]", nil] }, timeout: 1.0)
+    }
 }

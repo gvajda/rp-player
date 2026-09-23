@@ -97,37 +97,41 @@ Because configuration also happens lazily inside `run()` under the same mutex, `
 
 **API:**
 - `list() -> [ImportedPlugin]`, where `ImportedPlugin` has `id` (the folder uuid), `name`, `manufacturer`, `version`, `componentDescription` and `bundleURL`.
-- `import(from: URL) throws -> ImportedPlugin`.
+- `plugin(id:) -> ImportedPlugin?`.
+- `importComponent(from: URL) throws -> ImportedPlugin` (renamed from `import(from:)`, since `import` is a keyword).
 - `delete(id:)`.
-- `loadState(id:) -> [String: Any]?`.
-- `saveState(id:, _:)`, which writes a binary plist.
+- `loadState(id:) -> Data?` and `saveState(id:_:)` take `Data` — a binary plist. The host converts `fullState` to/from `Data` with `PropertyListSerialization`, not the store.
+- Errors are one enum, `PluginStoreError`: `notAComponent`, `notAnEffect`, `wrongArchitecture`, `duplicate(name:)`, `notFound`, `ioFailure`.
 
-**Validation** is a pure function, `PluginValidator.validate(infoPlist:architectures:existing:)`. The store feeds it the bundle's Info.plist dictionary and `Bundle.executableArchitectures`. It rejects a bundle with a typed error when:
+**Validation** is a pure function, `PluginValidator.validate(infoPlist:architectures:existing:)`. The store feeds it the bundle's Info.plist dictionary and an injected architecture reader, `architectures: (URL) -> [Int]` (not `Bundle.executableArchitectures` directly, so it's testable). It rejects a bundle with a typed error when:
 - `.notAComponent`: there is no `AudioComponents` array, as in bundles that only support the legacy Component Manager.
 - `.notAnEffect`: the type is not `aufx` or `aumf`.
 - `.wrongArchitecture`: the executable has no slice for the host architecture. arm64 on Apple silicon, x86_64 on Intel.
 - `.duplicate(name)`: an imported plugin already has the same type, subtype and manufacturer. `AudioComponentRegister` cannot be undone, so two registrations of the same description would be ambiguous. The user has to delete the old one first.
 
-The first valid `AudioComponents` entry wins. A bundle that fails validation is never copied.
+The first valid `AudioComponents` entry wins. A bundle that fails validation is never copied. Folder ids must parse as UUIDs, so a config value can't be used to reach outside the plugins directory.
 
-**Copy:** copy into a temporary sibling folder, then rename it into place. A failed copy leaves nothing behind.
+**Copy:** copy into a temporary sibling folder, then rename it into place. The staging folder's name does not parse as a UUID, so `list()` ignores it — a partial copy is never seen as an imported plugin. A failed copy leaves nothing behind.
 
 ### 3.4 `PluginHost` — `@MainActor`, `Sources/RPPlayer/Audio/`
 
 - `select(_ id: String?) async`. For a non-nil id:
   1. Look up the plugin in the store.
-  2. Register it if this process has not already registered that description: load the `Bundle`, resolve `factoryFunction` with `CFBundleGetFunctionPointerForName`, and call `AudioComponentRegister`. Keep a description → registered map. Never unload the bundle.
+  2. Skip registration when `AudioComponentFindNext` already finds the description (registered earlier in this process, or installed system-wide). Otherwise load the `Bundle`, resolve `factoryFunction` with `CFBundleGetFunctionPointerForName`, and call `AudioComponentRegister`. Never unload the bundle.
   3. Call `AVAudioUnit.instantiate(with:options: [])`, which loads the plugin in-process.
   4. Restore the saved `fullState`, if there is one.
-  5. Call `bridge.setUnit(avUnit.audioUnit)`.
+  5. Call `setUnit(avUnit.audioUnit)`.
   6. Release the previous unit.
 
   `select(nil)` calls `setUnit(nil)` and then releases the unit.
 
-  Steps 5 and 6 do not run on the main actor. `rpbridge_set_unit` can block until an in-progress `run()` — possibly in the middle of a lazy `AudioUnitInitialize` of a third-party AU that takes an arbitrary amount of time, and could itself hop to the main queue and deadlock — finishes, so `select` hands the new and previous `AudioUnit` to a background serial queue (or a `detached` `Task`) for the `setUnit` call and the release/dispose of the old unit, then awaits that work before returning. `AudioUnit` is a non-`Sendable` `OpaquePointer`; carry it across the actor boundary in a small `@unchecked Sendable` box (or mark the crossing variable `nonisolated(unsafe)`), not by widening `PluginHost` itself off the main actor.
+  `select` is serialized inside the host as a task chain (each call awaits the previous one before running): an overlapping select sees the true previous unit rather than a torn handoff, and the last request wins. `saveCurrentState()` (below) is a no-op while a select is in flight — callers that need to save before switching (the editor, PR 50) must await the in-flight `select` first.
+
+  `setUnit` is an injected `@escaping @Sendable (AudioUnit?) -> Void` (the app passes `pluginBridge?.setUnit`), not a direct call to `bridge.setUnit`, so the host doesn't depend on `PluginBridge` at compile time. Steps 5 and 6 do not run on the main actor. `rpbridge_set_unit` can block until an in-progress `run()` — possibly in the middle of a lazy `AudioUnitInitialize` of a third-party AU that takes an arbitrary amount of time, and could itself hop to the main queue and deadlock — finishes, so `select` hands the `setUnit` call to a `detached` `Task` and awaits it before returning. Only after that does it release the previous unit, back on the main actor; releasing it doesn't touch the bridge mutex, so it can't block. `AudioUnit` is a non-`Sendable` `OpaquePointer`; carry it across the actor boundary in a small `@unchecked Sendable` box, not by widening `PluginHost` itself off the main actor.
 - Publishes `current: ImportedPlugin?` and `loadError: String?` for the UI.
 - Exposes the current `AUAudioUnit` for the editor.
 - On a load, instantiate or registration failure, the bridge stays at NULL and passes audio through, and `loadError` is set. When a failed load looks like a Gatekeeper or quarantine block, the error adds: "Open the plugin once in Finder, or check that it is signed." Quarantine is never stripped silently.
+- `saveCurrentState() async`, which the editor (PR 50) calls to persist the current unit's `fullState` (converted to `Data` via `PropertyListSerialization`) through `store.saveState`.
 
 ### 3.5 Config: `AudioProfile`
 
@@ -136,8 +140,9 @@ The first valid `AudioComponents` entry wins. A bundle that fails validation is 
 
 ### 3.6 Binder wiring
 
-- `applyAudioFilterState` appends `bridge.filterPart` after the EQ parts and before the crossfeed part when `profile.pluginEnabled && profile.pluginId != nil && bridge loaded && bridge.filterPart != nil`. The chain then goes EQ → plugin → crossfeed.
-- `runAudioFilterBinder` also calls `pluginHost.select(profile.pluginEnabled ? profile.pluginId : nil)`, but only when that value changes.
+- The binder builds the chain with `buildAudioFilterChain(store:profile:override:pluginPart:)`, which appends `pluginPart` after the EQ parts and before the crossfeed part when `profile.pluginEnabled && profile.pluginId != nil && pluginPart != nil`. The chain then goes EQ → plugin → crossfeed.
+- The binder takes `pluginPart: String?` and a `selectPlugin: (@Sendable (String?) async -> Void)?` closure rather than a `PluginBridge`/`PluginHost` directly, which keeps it testable without a host. `live()` passes `pluginBridge?.filterPart` and `{ id in await pluginHost.select(id) }`.
+- It writes `af` only when the built chain string differs from the last write, so a plugin swap only calls `selectPlugin` — mpv's graph is untouched. `selectPlugin` itself is only invoked when the effective plugin id (`profile.pluginEnabled ? profile.pluginId : nil`) changes.
 
 ### 3.7 Settings: "Audio Unit" section, per device
 
