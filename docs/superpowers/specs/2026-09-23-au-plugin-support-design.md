@@ -7,7 +7,7 @@
 
 ## 1. Goal
 
-Let a user insert one AUv2 effect plugin at the end of the playback chain, per output device. Users import `.component` bundles into the app's own folder, choose one from a dropdown, edit its parameters in the plugin's own window (or a generic one), and delete it. Settings and plugin state survive a relaunch.
+Let a user insert one AUv2 effect plugin into the playback chain (between EQ and crossfeed), per output device. Users import `.component` bundles into the app's own folder, choose one from a dropdown, edit its parameters in the plugin's own window (or a generic one), and delete it. Settings and plugin state survive a relaunch.
 
 **Success:** an imported Airwindows AU can be heard on the RP stream. Its parameters persist across relaunch. Switching plugins or editing parameters does not rebuild mpv's filter graph. With the plugin toggle off, the chain is exactly what it is today, so bit-perfect output is unaffected.
 
