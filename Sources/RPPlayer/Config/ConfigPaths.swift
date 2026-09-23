@@ -24,6 +24,10 @@ public enum ConfigPaths {
         applicationSupportRoot.appendingPathComponent("EqPresets", isDirectory: true)
     }
 
+    public static var pluginsDirectory: URL {
+        applicationSupportRoot.appendingPathComponent("Plugins", isDirectory: true)
+    }
+
     public static var logsDirectory: URL {
         applicationSupportRoot.appendingPathComponent("Logs", isDirectory: true)
     }
