@@ -8,8 +8,15 @@ final class PluginHostTests: XCTestCase {
     private final class UnitRecorder: @unchecked Sendable {
         private let lock = NSLock()
         private var units: [AudioUnit?] = []
-        func record(_ unit: AudioUnit?) { lock.withLock { units.append(unit) } }
+        private var onMainThread: [Bool] = []
+        func record(_ unit: AudioUnit?) {
+            lock.withLock {
+                units.append(unit)
+                onMainThread.append(pthread_main_np() != 0)
+            }
+        }
         var calls: [AudioUnit?] { lock.withLock { units } }
+        var mainThreadCalls: [Bool] { lock.withLock { onMainThread } }
     }
 
     private var root: URL!
@@ -55,6 +62,7 @@ final class PluginHostTests: XCTestCase {
         XCTAssertNil(host.loadError)
         let unit = try XCTUnwrap(host.audioUnit?.audioUnit)
         XCTAssertEqual(recorder.calls.last!, unit)
+        XCTAssertFalse(recorder.mainThreadCalls.contains(true))
 
         XCTAssertEqual(AudioUnitSetParameter(unit, kHipassParam_CutoffFrequency, kAudioUnitScope_Global, 0, 1234, 0), noErr)
         await host.saveCurrentState()
@@ -90,5 +98,19 @@ final class PluginHostTests: XCTestCase {
         XCTAssertTrue(host.loadError?.contains("Open the plugin once in Finder, or check that it is signed.") ?? false,
                       host.loadError ?? "no error")
         XCTAssertNil(recorder.calls.last!)
+    }
+
+    func testOverlappingSelectsKeepLastRequest() async throws {
+        let plugin = try await importAppleHipass()
+        let t1 = Task { await host.select(plugin.id) }
+        await Task.yield()
+        let t2 = Task { await host.select(nil) }
+        await t1.value
+        await t2.value
+        XCTAssertNil(host.current)
+        XCTAssertNil(host.audioUnit)
+        XCTAssertNil(recorder.calls.last!)
+        XCTAssertEqual(recorder.calls.count, 2)
+        XCTAssertNotNil(recorder.calls.first!)
     }
 }

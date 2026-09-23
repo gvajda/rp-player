@@ -11,6 +11,7 @@ public final class PluginHost: ObservableObject {
     private let store: PluginStore
     private let setUnit: @Sendable (AudioUnit?) -> Void
     private let logger: (any Logging)?
+    private var tail: Task<Void, Never>?
 
     public init(store: PluginStore, setUnit: @escaping @Sendable (AudioUnit?) -> Void, logger: (any Logging)? = nil) {
         self.store = store
@@ -18,7 +19,15 @@ public final class PluginHost: ObservableObject {
         self.logger = logger
     }
 
+    // Serialized so an overlapping select sees the true previous unit and the last request wins, never a torn handoff.
     public func select(_ id: String?) async {
+        let prior = tail
+        let task = Task { await prior?.value; await self.perform(id) }
+        tail = task
+        await task.value
+    }
+
+    private func perform(_ id: String?) async {
         let previous = audioUnit
         audioUnit = nil
         current = nil
@@ -57,27 +66,12 @@ public final class PluginHost: ObservableObject {
         if AudioComponentFindNext(nil, &desc) == nil {
             try register(plugin)
         }
-        let unit = try await Self.instantiate(with: desc)
+        let unit = try await AVAudioUnit.instantiate(with: desc, options: [])
         if let data = await store.loadState(id: id),
            let state = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] {
             unit.auAudioUnit.fullState = state
         }
         return (plugin, unit)
-    }
-
-    private static func instantiate(with description: AudioComponentDescription) async throws -> AVAudioUnit {
-        try await withCheckedThrowingContinuation { continuation in
-            AVAudioUnit.instantiate(with: description, options: []) { unit, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                } else if let unit {
-                    let box = UnitBox(unit: unit)
-                    continuation.resume(returning: box.unit)
-                } else {
-                    continuation.resume(throwing: PluginHostError.registrationFailed)
-                }
-            }
-        }
     }
 
     // Process-local registration: invisible to other apps, cannot be undone, and the bundle stays loaded.
@@ -95,9 +89,7 @@ public final class PluginHost: ObservableObject {
         let factory = unsafeBitCast(pointer, to: AudioComponentFactoryFunction.self)
         var desc = plugin.component.componentDescription
         let name = "\(plugin.component.manufacturerName): \(plugin.component.name)" as CFString
-        guard AudioComponentRegister(&desc, name, plugin.component.version, factory) != nil else {
-            throw PluginHostError.registrationFailed
-        }
+        AudioComponentRegister(&desc, name, plugin.component.version, factory)
     }
 
     static func message(for error: Error) -> String {
@@ -106,7 +98,7 @@ public final class PluginHost: ObservableObject {
             return "The selected plugin is no longer installed."
         case PluginHostError.bundleLoadFailed(let reason):
             return "The plugin could not be loaded (\(reason)). Open the plugin once in Finder, or check that it is signed."
-        case PluginHostError.factoryMissing, PluginHostError.registrationFailed:
+        case PluginHostError.factoryMissing:
             return "The plugin is not a usable Audio Unit."
         default:
             return "The plugin could not be started (\(error.localizedDescription))."
@@ -118,13 +110,8 @@ enum PluginHostError: Error {
     case notFound
     case bundleLoadFailed(String)
     case factoryMissing(String)
-    case registrationFailed
 }
 
 private struct UnitHandoff: @unchecked Sendable {
     let unit: AudioUnit?
-}
-
-private struct UnitBox: @unchecked Sendable {
-    let unit: AVAudioUnit
 }
