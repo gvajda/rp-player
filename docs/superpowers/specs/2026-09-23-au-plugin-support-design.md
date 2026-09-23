@@ -1,7 +1,7 @@
 # Audio Unit plugin support — design
 
 **Date:** 2026-09-23
-**Status:** approved in brainstorming, pending spec review
+**Status:** approved 2026-09-23
 **Research:** `docs/notes/au-plugin-research-2026-09-23.md` (background, rejected alternatives, sources)
 **PRs:** 47–50 (see §8)
 
@@ -14,7 +14,7 @@ Let a user insert one AUv2 effect plugin at the end of the playback chain, per o
 **Decided in brainstorming:**
 - Plugins come from **app-folder import only**. System-installed AUs are not listed.
 - Plugin settings are **per device**, like EQ and crossfeed. Parameter state belongs to the imported plugin and is shared across devices.
-- Chain order is **EQ (incl. preamp) → Crossfeed → Plugin**.
+- Chain order is **EQ (incl. preamp) → Plugin → Crossfeed**. Most imported plugins are tone or dynamics effects that belong on the plain stereo mix, and crossfeed stays the final headphone step. FFmpeg inserts a lossless float repack between the bridge (planar float) and bs2b (packed) automatically.
 - The Settings section is named **"Audio Unit"**.
 - The app `dlopen`s the bridge at runtime. It does not link it (§3.1).
 
@@ -23,7 +23,7 @@ Let a user insert one AUv2 effect plugin at the end of the playback chain, per o
 ## 2. Signal path
 
 ```
-libmpv decode → lavfi[ EQ… , bs2b… , ladspa=file='<bridge>':p=rpbridge ] → coreaudio AO (hog)
+libmpv decode → lavfi[ EQ… , ladspa=file='<bridge>':p=rpbridge , bs2b… ] → coreaudio AO (hog)
                                               │
                                    libRPBridge.dylib run()
                                               │ AudioUnitRender
@@ -126,7 +126,7 @@ The first valid `AudioComponents` entry wins. A bundle that fails validation is 
 
 ### 3.6 Binder wiring
 
-- `applyAudioFilterState` appends `PluginBridge.filterPart(path:)` as the last part when `profile.pluginEnabled && profile.pluginId != nil && bridge.isAvailable`. The chain then goes EQ → crossfeed → plugin.
+- `applyAudioFilterState` appends `PluginBridge.filterPart(path:)` after the EQ parts and before the crossfeed part when `profile.pluginEnabled && profile.pluginId != nil && bridge.isAvailable`. The chain then goes EQ → plugin → crossfeed.
 - `runAudioFilterBinder` also calls `pluginHost.select(profile.pluginEnabled ? profile.pluginId : nil)`, but only when that value changes.
 
 ### 3.7 Settings: "Audio Unit" section, per device
@@ -159,7 +159,7 @@ The first valid `AudioComponents` entry wins. A bundle that fails validation is 
 
 - **`AudioProfile` codec:** old JSON decodes with `pluginEnabled=false` and `pluginId=nil`. Round-trip. Add to the existing migration-test style.
 - **Write-back:** the volume/hog write-back preserves `plugin*` and `crossfeed*`.
-- **Chain builder** (`AppContainerAudioFilterBinderTests`): the plugin part comes last. It is omitted when the plugin is disabled, when there is no id, and when the bridge is unavailable. A path with a space and a `'` is escaped correctly.
+- **Chain builder** (`AppContainerAudioFilterBinderTests`): the plugin part sits after EQ and before crossfeed (with each of EQ and crossfeed on and off). It is omitted when the plugin is disabled, when there is no id, and when the bridge is unavailable. A path with a space and a `'` is escaped correctly.
 - **Validator:** pure-function cases for not a component, not an effect, wrong architecture, duplicate, and valid `aufx` and `aumf`.
 - **Store:** import, list, delete and state round-trip in a temp directory, with a fixture bundle that contains only a plist. The architecture check is injected.
 - **Bridge** (dlopen the built dylib and drive the LADSPA descriptor directly):
