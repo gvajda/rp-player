@@ -41,6 +41,7 @@ The `ladspa=` part is present **only** when `pluginEnabled && pluginId != nil &&
 **Exports:**
 - `ladspa_descriptor(index)` → one descriptor with label `rpbridge`, 2 audio input ports, 2 audio output ports, no control ports, and `Properties = LADSPA_PROPERTY_INPLACE_BROKEN`. Without it, FFmpeg 6.0's `af_ladspa` reuses the input frame as the output frame when it's writable and input/output port counts match (`out = in`), aliasing the bridge's input and output port buffers — that breaks the passthrough copy (self-memcpy) and the per-chunk render-error fallback (would output partially rendered audio). Setting it makes FFmpeg allocate a separate output frame, at negligible cost.
 - `void rpbridge_set_unit(AudioUnit _Nullable unit)`.
+- `uint64_t rpbridge_frames_processed(void)`: the total frames through `run()`, used by tests and diagnostics.
 
 **State:** file-scope globals guarded by one `pthread_mutex_t`:
 - the current `AudioUnit`
@@ -48,7 +49,7 @@ The `ladspa=` part is present **only** when `pluginEnabled && pluginId != nil &&
 - a monotonically increasing `Float64` sample-time counter
 - a "render error already logged" flag
 
-**Format ownership:** the bridge configures the AU, because only the bridge knows the rate FFmpeg negotiated. The rate is given to `instantiate`. Configuration runs on `set_unit(non-NULL)`, and on `activate` when the rate differs from the configured rate:
+**Format ownership:** the bridge configures the AU, because only the bridge knows the rate FFmpeg negotiated. The rate is given to `instantiate`. Configuration runs lazily at the start of `run()` whenever the current unit is not yet configured for the instance's rate. That covers a new unit from `set_unit`, and a rate change. A rate whose configuration failed is not retried until the unit or the rate changes. `activate` only marks the unit for `AudioUnitReset` at the next `run()`.
 1. `AudioUnitUninitialize`.
 2. Set the stream format to Float32, non-interleaved, 2 channels at that rate, on input scope and output scope.
 3. Set `kAudioUnitProperty_MaximumFramesPerSlice` to 4096.
@@ -81,7 +82,7 @@ Once `set_unit` returns, the caller can free the previous unit safely.
 - Finds the dylib path. In the app bundle it is `Bundle.main.privateFrameworksURL/libRPBridge.dylib`. In dev builds and tests it is next to the executable. Tests may inject the path.
 - Calls `dlopen` on that path, then `dlsym` for `rpbridge_set_unit`. If either fails, `isAvailable == false`, the failure is logged, and the plugin feature stays inert.
 - `setUnit(_ unit: AudioUnit?)`.
-- `static func filterPart(path:) -> String` builds `ladspa=file='<escaped>':p=rpbridge`. Escaping follows lavfi rules: the value goes in `'…'`, and an embedded `'` becomes `'\''`. The escaped part also has to survive being nested inside `lavfi=[…]` in mpv's `af`.
+- `static func filterPart(path:) -> String` builds `ladspa=file='<escaped>':p=rpbridge`. Escaping: lavfi unescapes the string twice, once while splitting the graph (where `[],;` are separators) and once while parsing filter options (where `:` is). So the path is backslash-escaped for `\':` and the result is escaped again for `\'[],;`. Paths containing `[` or `]` return `nil`, because mpv's `lavfi=[…]` bracket quoting has no escape.
 
 ### 3.3 `PluginStore` — actor, `Sources/RPPlayer/Config/`, shaped like `LiveEqPresetStore`
 
@@ -150,7 +151,8 @@ The first valid `AudioComponents` entry wins. A bundle that fails validation is 
 |---|---|
 | Bridge dylib missing or `dlsym` fails | Feature inert; `ladspa=` never added; logged |
 | Import validation fails | Alert; nothing copied |
-| Register, instantiate or format setup fails | Passthrough; `loadError` shown; logged |
+| Register or instantiate fails | Passthrough; `loadError` shown; logged |
+| Bridge cannot configure the unit (format/initialize rejected at the negotiated rate) | Passthrough; `os_log` (bridge); not retried until the unit or rate changes — no synchronous error channel, so no `loadError` |
 | `AudioUnitRender` error | Passthrough for that chunk; logged once per unit via `os_log` |
 | Plugin crashes | App crashes (accepted; no out-of-process loading for process-local registrations) |
 | Plugin id in config no longer exists | Treated as a load failure: passthrough plus `loadError` |
@@ -168,8 +170,8 @@ The first valid `AudioComponents` entry wins. A bundle that fails validation is 
   - A 10,000-frame `run` is chunked correctly.
   - Re-activating at a new rate reconfigures the unit.
   - The descriptor sets `LADSPA_PROPERTY_INPLACE_BROKEN`.
-- **Build risk to settle in the plan:** `swift test` has to build the dynamic product before the bridge tests run. Options: a test-target dependency that forces the build, or a pre-test `swift build --product RPBridge` in CI. Pick one in PR 48's plan.
-- **RPSmoke:** plays a stream with the bridge part in the chain and no unit set.
+- `swift test` builds every product, including `libRPBridge.dylib` next to the `.xctest` bundle (verified 2026-09-24), so tests `dlopen` the fresh dylib. The test target imports `RPBridge` for the C types only. It links a static copy, so every function has to come from `dlsym` on the dylib handle.
+- mpv end-to-end (`RPBridgeMpvIntegrationTests`): plays a generated WAV through `lavfi=[ladspa=…]`, with the bridge copied to a path containing spaces, `'`, `:`, `,` and `;`, and asserts that the bridge's frame counter moved. This replaces the planned RPSmoke check, because it runs in CI without the network.
 - **Manual:** import an Airwindows AU, hear it, edit it, relaunch, and confirm that the state and selection persist. Delete it and confirm that the profile is cleared.
 
 ## 6. Risks and limitations

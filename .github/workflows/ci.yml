@@ -139,6 +139,10 @@ jobs:
           BIN="$APP/Contents/MacOS/RP Player"
           lipo -create "$BIN" .build/x86_64-apple-macosx/release/RPPlayer -output "$BIN.universal"
           mv "$BIN.universal" "$BIN"
+          BRIDGE="$APP/Contents/Frameworks/libRPBridge.dylib"
+          lipo -create "$BRIDGE" .build/x86_64-apple-macosx/release/libRPBridge.dylib -output "$BRIDGE.universal"
+          mv "$BRIDGE.universal" "$BRIDGE"
+          codesign --force --sign "-" "$BRIDGE"
           codesign --force --options runtime \
             --entitlements scripts/entitlements.plist \
             --sign "-" "$BIN"
@@ -150,7 +154,9 @@ jobs:
         run: codesign --verify --deep --verbose "build/RP Player.app"
 
       - name: Verify universal binary
-        run: lipo -info "build/RP Player.app/Contents/MacOS/RP Player"
+        run: |
+          lipo -info "build/RP Player.app/Contents/MacOS/RP Player"
+          lipo -info "build/RP Player.app/Contents/Frameworks/libRPBridge.dylib"
 
       - name: Create DMG
         run: |
