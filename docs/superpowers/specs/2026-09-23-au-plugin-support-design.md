@@ -59,7 +59,7 @@ The `ladspa=` part is present **only** when `pluginEnabled && pluginId != nil &&
 
 If configuration fails, the bridge drops the unit (passthrough) and logs the failure via `os_log`, under the app's `com.gvajda.RPPlayer` subsystem (see `AppLogger.subsystem`), category `bridge`.
 
-**Lifecycle:** `instantiate`, `activate` and `cleanup` never create or destroy the AU. `activate` calls `AudioUnitReset`, and reconfigures the unit if the rate changed.
+**Lifecycle:** `instantiate`, `activate` and `cleanup` never create or destroy the AU. `activate` only marks the unit for reset; the next `run()` performs the `AudioUnitReset`, and any reconfiguration the rate needs.
 
 **`run(n)`:**
 1. Lock the mutex.
@@ -72,7 +72,7 @@ The filter runs on mpv's filter thread, not the CoreAudio real-time thread, so h
 
 **`set_unit`:**
 1. Lock the mutex. This waits for any render in progress.
-2. Swap the unit and configure the new one.
+2. Swap the unit. The new unit's configuration happens lazily at the next `run()`.
 3. Unlock.
 
 Once `set_unit` returns, the caller can free the previous unit safely.
