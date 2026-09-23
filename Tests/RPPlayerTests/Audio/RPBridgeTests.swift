@@ -60,4 +60,22 @@ final class RPBridgeTests: XCTestCase {
         XCTAssertEqual(format.mSampleRate, 48000)
         XCTAssertEqual(format.mChannelsPerFrame, 2)
     }
+
+    func testSwappingUnitAtSameRateConfiguresTheNewUnit() throws {
+        let unitA = try RPBridgeTestSupport.makeAppleEffect(subType: kAudioUnitSubType_HighPassFilter)
+        let unitB = try RPBridgeTestSupport.makeAppleEffect(subType: kAudioUnitSubType_HighPassFilter)
+        defer {
+            bridge.setUnit(nil)
+            AudioComponentInstanceDispose(unitA)
+            AudioComponentInstanceDispose(unitB)
+        }
+        bridge.setUnit(unitA)
+        let dc = [Float](repeating: 0.5, count: 10_000)
+        _ = RPBridgeTestSupport.run(bridge, rate: 44100, left: dc, right: dc)
+        bridge.setUnit(unitB)
+        let out = RPBridgeTestSupport.run(bridge, rate: 44100, left: dc, right: dc)
+        XCTAssertFalse(out.left.contains(where: \.isNaN) || out.right.contains(where: \.isNaN), "a chunk was never written")
+        XCTAssertLessThan(out.left.suffix(1000).map(abs).max()!, 1e-3, "new unit never configured — DC passed through")
+        XCTAssertLessThan(out.right.suffix(1000).map(abs).max()!, 1e-3, "new unit never configured — DC passed through")
+    }
 }

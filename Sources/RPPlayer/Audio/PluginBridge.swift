@@ -14,6 +14,7 @@ public final class PluginBridge: @unchecked Sendable {
 
     public static func load(path: String, logger: (any Logging)?) -> PluginBridge? {
         let resolved = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
+        // The handle is never dlclose'd: FFmpeg also dlopens this path, and closing our handle could let it dlclose and unload the bridge, losing the current AudioUnit.
         guard let handle = dlopen(resolved, RTLD_NOW | RTLD_LOCAL) else {
             logger?.error("plugin bridge: dlopen \(resolved) failed: \(dlerror().map { String(cString: $0) } ?? "unknown")")
             return nil

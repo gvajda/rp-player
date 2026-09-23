@@ -23,14 +23,14 @@ Let a user insert one AUv2 effect plugin into the playback chain (between EQ and
 ## 2. Signal path
 
 ```
-libmpv decode → lavfi[ EQ… , ladspa=file='<bridge>':p=rpbridge , bs2b… ] → coreaudio AO (hog)
+libmpv decode → lavfi[ EQ… , ladspa=file=<escaped path>:p=rpbridge , bs2b… ] → coreaudio AO (hog)
                                               │
                                    libRPBridge.dylib run()
                                               │ AudioUnitRender
                                           imported AU
 ```
 
-The `ladspa=` part is present **only** when `pluginEnabled && pluginId != nil && bridge loaded`. A permanently present bridge would force float conversion and lose bit-perfect output even with everything off. Turning the plugin on or off therefore rebuilds the graph, the same as toggling EQ. Switching plugins or editing parameters only changes what the bridge renders into, so the `af` string does not change.
+The `ladspa=` part is present **only** when `profile.pluginEnabled && profile.pluginId != nil && bridge loaded && bridge.filterPart != nil`. A permanently present bridge would force float conversion and lose bit-perfect output even with everything off. Turning the plugin on or off therefore rebuilds the graph, the same as toggling EQ. Switching plugins or editing parameters only changes what the bridge renders into, so the `af` string does not change.
 
 ## 3. Components
 
@@ -46,8 +46,11 @@ The `ladspa=` part is present **only** when `pluginEnabled && pluginId != nil &&
 **State:** file-scope globals guarded by one `pthread_mutex_t`:
 - the current `AudioUnit`
 - the rate the unit is configured for
+- the rate the unit last failed to configure at
 - a monotonically increasing `Float64` sample-time counter
+- a "needs `AudioUnitReset`" flag, set by `activate`
 - a "render error already logged" flag
+- a total-frames-processed counter, for tests and diagnostics
 
 **Format ownership:** the bridge configures the AU, because only the bridge knows the rate FFmpeg negotiated. The rate is given to `instantiate`. Configuration runs lazily at the start of `run()` whenever the current unit is not yet configured for the instance's rate. That covers a new unit from `set_unit`, and a rate change. A rate whose configuration failed is not retried until the unit or the rate changes. `activate` only marks the unit for `AudioUnitReset` at the next `run()`.
 1. `AudioUnitUninitialize`.
@@ -57,7 +60,7 @@ The `ladspa=` part is present **only** when `pluginEnabled && pluginId != nil &&
 5. `AudioUnitInitialize`.
 6. `AudioUnitReset`.
 
-If configuration fails, the bridge drops the unit (passthrough) and logs the failure via `os_log`, under the app's `com.gvajda.RPPlayer` subsystem (see `AppLogger.subsystem`), category `bridge`.
+If configuration fails, the bridge keeps the unit — it does not drop it — and records the failed rate, so `run()` passes audio through (no unit is configured for the instance's rate) without retrying configuration on every subsequent call. The failed rate is only cleared by a new `set_unit` or a further rate change; it logs the failure via `os_log`, under the app's `com.gvajda.RPPlayer` subsystem (see `AppLogger.subsystem`), category `bridge`.
 
 **Lifecycle:** `instantiate`, `activate` and `cleanup` never create or destroy the AU. `activate` only marks the unit for reset; the next `run()` performs the `AudioUnitReset`, and any reconfiguration the rate needs.
 
@@ -77,12 +80,16 @@ The filter runs on mpv's filter thread, not the CoreAudio real-time thread, so h
 
 Once `set_unit` returns, the caller can free the previous unit safely.
 
+Because configuration also happens lazily inside `run()` under the same mutex, `rpbridge_set_unit` may block until an in-progress `run()` — including one that is in the middle of a lazy configure (`AudioUnitInitialize` of a third-party AU, which can take an arbitrary amount of time) — finishes. Callers must not call it from the main thread.
+
 ### 3.2 `PluginBridge` — Swift, `Sources/RPPlayer/Audio/`
 
-- Finds the dylib path. In the app bundle it is `Bundle.main.privateFrameworksURL/libRPBridge.dylib`. In dev builds and tests it is next to the executable. Tests may inject the path.
-- Calls `dlopen` on that path, then `dlsym` for `rpbridge_set_unit`. If either fails, `isAvailable == false`, the failure is logged, and the plugin feature stays inert.
-- `setUnit(_ unit: AudioUnit?)`.
-- `static func filterPart(path:) -> String` builds `ladspa=file='<escaped>':p=rpbridge`. Escaping: lavfi unescapes the string twice, once while splitting the graph (where `[],;` are separators) and once while parsing filter options (where `:` is). So the path is backslash-escaped for `\':` and the result is escaped again for `\'[],;`. Paths containing `[` or `]` return `nil`, because mpv's `lavfi=[…]` bracket quoting has no escape.
+- `static let fileName = "libRPBridge.dylib"`.
+- `static func defaultPath(bundle: Bundle = .main) -> String?` finds the dylib path: `Contents/Frameworks/libRPBridge.dylib` in the app bundle, else next to the executable (dev builds, tests). Returns nil if neither exists.
+- `static func load(path: String, logger: (any Logging)?) -> PluginBridge?` resolves symlinks, `dlopen`s that path, then `dlsym`s `rpbridge_set_unit`. If either fails, it logs and returns nil — the caller holds no `PluginBridge` instance, and the plugin feature stays inert. There is no `isAvailable` flag; absence of an instance is the signal.
+- `let path: String` — the resolved path `load` opened, exposed so `filterPart` can use it.
+- `func setUnit(_ unit: AudioUnit?)`.
+- `var filterPart: String?` and the equivalent `static func filterPart(path:) -> String?` build `ladspa=file=<escaped>:p=rpbridge` (no surrounding quotes — mpv's `af` option value is not a quoted string). Escaping: lavfi unescapes the string twice, once while splitting the graph (where `[],;` are separators) and once while parsing filter options (where `:` is). So the path is backslash-escaped for `\':` and the result is escaped again for `\'[],;`. Paths containing `[` or `]` return `nil`, because mpv's `lavfi=[…]` bracket quoting has no escape.
 
 ### 3.3 `PluginStore` — actor, `Sources/RPPlayer/Config/`, shaped like `LiveEqPresetStore`
 
@@ -116,6 +123,8 @@ The first valid `AudioComponents` entry wins. A bundle that fails validation is 
   6. Release the previous unit.
 
   `select(nil)` calls `setUnit(nil)` and then releases the unit.
+
+  Steps 5 and 6 do not run on the main actor. `rpbridge_set_unit` can block until an in-progress `run()` — possibly in the middle of a lazy `AudioUnitInitialize` of a third-party AU that takes an arbitrary amount of time, and could itself hop to the main queue and deadlock — finishes, so `select` hands the new and previous `AudioUnit` to a background serial queue (or a `detached` `Task`) for the `setUnit` call and the release/dispose of the old unit, then awaits that work before returning. `AudioUnit` is a non-`Sendable` `OpaquePointer`; carry it across the actor boundary in a small `@unchecked Sendable` box (or mark the crossing variable `nonisolated(unsafe)`), not by widening `PluginHost` itself off the main actor.
 - Publishes `current: ImportedPlugin?` and `loadError: String?` for the UI.
 - Exposes the current `AUAudioUnit` for the editor.
 - On a load, instantiate or registration failure, the bridge stays at NULL and passes audio through, and `loadError` is set. When a failed load looks like a Gatekeeper or quarantine block, the error adds: "Open the plugin once in Finder, or check that it is signed." Quarantine is never stripped silently.
@@ -127,7 +136,7 @@ The first valid `AudioComponents` entry wins. A bundle that fails validation is 
 
 ### 3.6 Binder wiring
 
-- `applyAudioFilterState` appends `PluginBridge.filterPart(path:)` after the EQ parts and before the crossfeed part when `profile.pluginEnabled && profile.pluginId != nil && bridge.isAvailable`. The chain then goes EQ → plugin → crossfeed.
+- `applyAudioFilterState` appends `bridge.filterPart` after the EQ parts and before the crossfeed part when `profile.pluginEnabled && profile.pluginId != nil && bridge loaded && bridge.filterPart != nil`. The chain then goes EQ → plugin → crossfeed.
 - `runAudioFilterBinder` also calls `pluginHost.select(profile.pluginEnabled ? profile.pluginId : nil)`, but only when that value changes.
 
 ### 3.7 Settings: "Audio Unit" section, per device
@@ -150,6 +159,7 @@ The first valid `AudioComponents` entry wins. A bundle that fails validation is 
 | Failure | Result |
 |---|---|
 | Bridge dylib missing or `dlsym` fails | Feature inert; `ladspa=` never added; logged |
+| Bridge path contains `[` or `]` | Feature inert (`filterPart` nil); `ladspa=` never added; logged |
 | Import validation fails | Alert; nothing copied |
 | Register or instantiate fails | Passthrough; `loadError` shown; logged |
 | Bridge cannot configure the unit (format/initialize rejected at the negotiated rate) | Passthrough; `os_log` (bridge); not retried until the unit or rate changes — no synchronous error channel, so no `loadError` |
