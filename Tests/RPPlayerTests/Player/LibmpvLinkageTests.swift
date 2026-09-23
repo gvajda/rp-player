@@ -13,7 +13,7 @@ final class LibmpvLinkageTests: XCTestCase {
         XCTAssertEqual(minor, 1, "expected libmpv API minor version 1")
     }
 
-    // libmpv loads libavfilter from Vendor/libmpv/lib via @loader_path, so dlopen by that path returns the same image.
+    // Confirms the Vendor/libmpv/lib image is the one libmpv actually loaded, and that it carries bs2b + ladspa.
     func testVendoredAvfilterHasLadspaAndBs2b() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent()
@@ -27,5 +27,7 @@ final class LibmpvLinkageTests: XCTestCase {
         let getByName = unsafeBitCast(sym, to: GetByName.self)
         XCTAssertNotNil(getByName("bs2b"), "vendored libavfilter lost bs2b — wrong flavour or wrong image")
         XCTAssertNotNil(getByName("ladspa"), "vendored libavfilter lacks ladspa — rebuild with --enable-ladspa")
+        XCTAssertEqual(dlsym(UnsafeMutableRawPointer(bitPattern: -2), "avfilter_get_by_name"), sym,
+                        "libmpv loaded a libavfilter other than Vendor/libmpv/lib")
     }
 }

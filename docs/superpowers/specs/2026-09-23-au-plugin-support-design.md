@@ -39,7 +39,7 @@ The `ladspa=` part is present **only** when `pluginEnabled && pluginId != nil &&
 **Why the app does not link it:** in SwiftPM, a target that depends on another target in the same package links it statically. The executable would carry its own copy of the bridge's globals, and FFmpeg's `dlopen` would load a second image. The app instead `dlopen`s the bridge at the same absolute path that goes into the `file=` option. `dlopen` of an image that is already loaded returns that image, so the app and FFmpeg share one copy.
 
 **Exports:**
-- `ladspa_descriptor(index)` → one descriptor with label `rpbridge`, 2 audio input ports, 2 audio output ports and no control ports.
+- `ladspa_descriptor(index)` → one descriptor with label `rpbridge`, 2 audio input ports, 2 audio output ports, no control ports, and `Properties = LADSPA_PROPERTY_INPLACE_BROKEN`. Without it, FFmpeg 6.0's `af_ladspa` reuses the input frame as the output frame when it's writable and input/output port counts match (`out = in`), aliasing the bridge's input and output port buffers — that breaks the passthrough copy (self-memcpy) and the per-chunk render-error fallback (would output partially rendered audio). Setting it makes FFmpeg allocate a separate output frame, at negligible cost.
 - `void rpbridge_set_unit(AudioUnit _Nullable unit)`.
 
 **State:** file-scope globals guarded by one `pthread_mutex_t`:
@@ -56,7 +56,7 @@ The `ladspa=` part is present **only** when `pluginEnabled && pluginId != nil &&
 5. `AudioUnitInitialize`.
 6. `AudioUnitReset`.
 
-If configuration fails, the bridge drops the unit (passthrough) and logs the failure to stderr, which mpv's log captures.
+If configuration fails, the bridge drops the unit (passthrough) and logs the failure via `os_log`, under the app's `com.gvajda.RPPlayer` subsystem (see `AppLogger.subsystem`), category `bridge`.
 
 **Lifecycle:** `instantiate`, `activate` and `cleanup` never create or destroy the AU. `activate` calls `AudioUnitReset`, and reconfigures the unit if the rate changed.
 
@@ -64,7 +64,7 @@ If configuration fails, the bridge drops the unit (passthrough) and logs the fai
 1. Lock the mutex.
 2. If there is no unit, copy input to output.
 3. Otherwise, render in chunks of at most 4096 frames. For each chunk, point the render-callback context at the input slices, call `AudioUnitRender` into the output slices, and advance `mSampleTime`.
-4. If a chunk fails to render, copy that chunk's input to its output. Log the first failure per unit.
+4. If a chunk fails to render, copy that chunk's input to its output. Log the first failure per unit via `os_log`.
 5. Unlock.
 
 The filter runs on mpv's filter thread, not the CoreAudio real-time thread, so holding a mutex there is acceptable.
@@ -151,7 +151,7 @@ The first valid `AudioComponents` entry wins. A bundle that fails validation is 
 | Bridge dylib missing or `dlsym` fails | Feature inert; `ladspa=` never added; logged |
 | Import validation fails | Alert; nothing copied |
 | Register, instantiate or format setup fails | Passthrough; `loadError` shown; logged |
-| `AudioUnitRender` error | Passthrough for that chunk; logged once per unit |
+| `AudioUnitRender` error | Passthrough for that chunk; logged once per unit via `os_log` |
 | Plugin crashes | App crashes (accepted; no out-of-process loading for process-local registrations) |
 | Plugin id in config no longer exists | Treated as a load failure: passthrough plus `loadError` |
 
@@ -167,6 +167,7 @@ The first valid `AudioComponents` entry wins. A bundle that fails validation is 
   - With Apple's `AUHipass` (`kAudioUnitSubType_HighPassFilter`), a DC input decays to about 0.
   - A 10,000-frame `run` is chunked correctly.
   - Re-activating at a new rate reconfigures the unit.
+  - The descriptor sets `LADSPA_PROPERTY_INPLACE_BROKEN`.
 - **Build risk to settle in the plan:** `swift test` has to build the dynamic product before the bridge tests run. Options: a test-target dependency that forces the build, or a pre-test `swift build --product RPBridge` in CI. Pick one in PR 48's plan.
 - **RPSmoke:** plays a stream with the bridge part in the chain and no unit set.
 - **Manual:** import an Airwindows AU, hear it, edit it, relaunch, and confirm that the state and selection persist. Delete it and confirm that the profile is cleared.

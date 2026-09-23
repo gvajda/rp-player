@@ -4,7 +4,7 @@
 **Status:** research complete, AU-only scope accepted, ready for brainstorming → spec
 **Scope:** one AUv2 effect plugin inserted into the playback chain; users import plugins into the app folder, pick one from a dropdown, edit its parameters, delete it.
 
-> Superseded in places by the design spec `docs/superpowers/specs/2026-09-23-au-plugin-support-design.md` (bridge wiring, format ownership, generic editor, PR split). This note is kept as the research record.
+> Superseded in places by the design spec `docs/superpowers/specs/2026-09-23-au-plugin-support-design.md` (bridge wiring, format ownership, generic editor, chain position (EQ → Plugin → Crossfeed), PR split). This note is kept as the research record.
 
 ---
 
