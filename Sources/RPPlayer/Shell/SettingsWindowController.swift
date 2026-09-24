@@ -7,8 +7,9 @@ final class SettingsWindowController: NSWindowController {
     static let contentMinSize = NSSize(width: 480, height: 400)
     static let contentMaxSize = NSSize(width: 480, height: 2000)
 
-    init(viewModel: SettingsViewModel) {
-        let hosting = NSHostingController(rootView: SettingsView(viewModel: viewModel))
+    init(viewModel: SettingsViewModel, audioUnits: AudioUnitSettingsModel, pluginEditor: PluginEditorController) {
+        let hosting = NSHostingController(
+            rootView: SettingsView(viewModel: viewModel, audioUnits: audioUnits, pluginEditor: pluginEditor))
         let window = NSWindow(
             contentRect: NSRect(origin: .zero, size: Self.contentSize),
             styleMask: [.titled, .closable, .resizable],

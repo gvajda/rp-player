@@ -44,7 +44,14 @@ final class AppDelegateTests: XCTestCase {
                 openLoginWindow: { },
                 openApplicationData: { }
             )
-            let settingsWindowController = SettingsWindowController(viewModel: settingsViewModel)
+            let pluginStore = PluginStore(directory: FileManager.default.temporaryDirectory
+                .appendingPathComponent("app-delegate-tests-plugins-\(UUID().uuidString)"))
+            let pluginHost = PluginHost(store: pluginStore, setUnit: { _ in })
+            let audioUnits = AudioUnitSettingsModel(
+                configStore: configStore, store: pluginStore, host: pluginHost, isBridgeAvailable: false)
+            let pluginEditor = PluginEditorController(host: pluginHost)
+            let settingsWindowController = SettingsWindowController(
+                viewModel: settingsViewModel, audioUnits: audioUnits, pluginEditor: pluginEditor)
             let loginWindowController = LoginWindowController(keychainAuth: auth)
             return AppContainer(
                 viewModel: viewModel,
@@ -128,7 +135,14 @@ final class AppDelegateTests: XCTestCase {
                 configStore: configStore, deviceCatalog: deviceCatalog, auth: auth,
                 openLoginWindow: { }, openApplicationData: { }
             )
-            let settingsWindowController = SettingsWindowController(viewModel: settingsViewModel)
+            let pluginStore = PluginStore(directory: FileManager.default.temporaryDirectory
+                .appendingPathComponent("app-delegate-tests-plugins-\(UUID().uuidString)"))
+            let pluginHost = PluginHost(store: pluginStore, setUnit: { _ in })
+            let audioUnits = AudioUnitSettingsModel(
+                configStore: configStore, store: pluginStore, host: pluginHost, isBridgeAvailable: false)
+            let pluginEditor = PluginEditorController(host: pluginHost)
+            let settingsWindowController = SettingsWindowController(
+                viewModel: settingsViewModel, audioUnits: audioUnits, pluginEditor: pluginEditor)
             let loginWindowController = LoginWindowController(keychainAuth: auth)
             return AppContainer(
                 viewModel: viewModel,
@@ -160,9 +174,11 @@ final class AppDelegateTests: XCTestCase {
             )
         })
         delegate.applicationDidFinishLaunching(Notification(name: NSApplication.didFinishLaunchingNotification))
+        let start = Date()
         delegate.applicationWillTerminate(Notification(name: NSApplication.willTerminateNotification))
-        let signaled = await didShutDown.wait(timeout: .seconds(2))
-        XCTAssertTrue(signaled)
+        let elapsed = Date().timeIntervalSince(start)
+        XCTAssertTrue(didShutDown.isFired, "coordinatorShutdown must run before applicationWillTerminate returns")
+        XCTAssertLessThan(elapsed, 1.0, "quit should not block on the 2s dispatch-group timeout")
     }
 }
 
@@ -170,6 +186,12 @@ final class AsyncSignal: @unchecked Sendable {
     private let lock = NSLock()
     private var continuations: [CheckedContinuation<Void, Never>] = []
     private var fired = false
+
+    var isFired: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return fired
+    }
 
     func signal() {
         lock.lock()

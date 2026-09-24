@@ -24,6 +24,7 @@ final class AppContainer {
     let initialMenuBarIconStyle: MenuBarIconStyle
 
     let quietNow: @Sendable () -> Void
+    let preparePluginQuitSave: @MainActor () -> (@Sendable () async -> Void)
 
     private let coordinatorShutdown: @Sendable () async -> Void
     private let onLaunchTasksClosures: [@Sendable () async -> Void]
@@ -47,6 +48,7 @@ final class AppContainer {
         initialMenuBarIconStyle: MenuBarIconStyle = .template,
         coordinatorShutdown: @escaping @Sendable () async -> Void,
         quietNow: @escaping @Sendable () -> Void = {},
+        preparePluginQuitSave: @escaping @MainActor () -> (@Sendable () async -> Void) = { {} },
         onLaunchTasks: [@Sendable () async -> Void] = []
     ) {
         self.viewModel = viewModel
@@ -67,10 +69,12 @@ final class AppContainer {
         self.initialMenuBarIconStyle = initialMenuBarIconStyle
         self.coordinatorShutdown = coordinatorShutdown
         self.quietNow = quietNow
+        self.preparePluginQuitSave = preparePluginQuitSave
         self.onLaunchTasksClosures = onLaunchTasks
     }
 
-    func shutdown() async {
+    // nonisolated: runs from a detached task while the main thread is blocked in applicationWillTerminate.
+    nonisolated func shutdown() async {
         await coordinatorShutdown()
     }
 
@@ -161,6 +165,21 @@ extension AppContainer {
 
         let eqPresetStore: any EqPresetStore = LiveEqPresetStore(directory: ConfigPaths.eqPresetsDirectory, logger: eqLogger)
         let eqEditingOverride = EqEditingOverride()
+
+        let pluginLogger = AppLogger.fileBacked(category: "plugins", directory: ConfigPaths.logsDirectory)
+        pluginLogger.setVerbose(loaded.verboseLoggingEnabled)
+        let pluginStore = PluginStore(directory: ConfigPaths.pluginsDirectory, logger: pluginLogger)
+        let pluginBridge = PluginBridge.defaultPath().flatMap { PluginBridge.load(path: $0, logger: pluginLogger) }
+        if pluginBridge == nil {
+            pluginLogger.error("plugin bridge unavailable; Audio Unit plugins disabled")
+        } else if pluginBridge?.filterPart == nil {
+            pluginLogger.error("plugin bridge path contains [ or ]; Audio Unit plugins disabled")
+        }
+        let pluginHost = PluginHost(store: pluginStore, setUnit: { pluginBridge?.setUnit($0) }, logger: pluginLogger)
+        let audioUnitSettings = AudioUnitSettingsModel(
+            configStore: store ?? NoopConfigStore(), store: pluginStore, host: pluginHost,
+            isBridgeAvailable: pluginBridge?.filterPart != nil, logger: pluginLogger)
+        let pluginEditor = PluginEditorController(host: pluginHost)
 
         let imageBaseURL = URL(string: "https://img.radioparadise.com/")!
         let cache: any AlbumArtCache
@@ -333,11 +352,12 @@ extension AppContainer {
                     }
                 }
             }
-            Task { [logger, eqLogger] in
+            Task { [logger, eqLogger, pluginLogger] in
                 let stream = await store.changes
                 for await settings in stream {
                     logger.setVerbose(settings.verboseLoggingEnabled)
                     eqLogger.setVerbose(settings.verboseLoggingEnabled)
+                    pluginLogger.setVerbose(settings.verboseLoggingEnabled)
                 }
             }
             Task { @MainActor in
@@ -350,13 +370,15 @@ extension AppContainer {
                     }
                 }
             }
-            Task { [engine, eqPresetStore, eqEditingOverride, store] in
+            Task { [engine, eqPresetStore, eqEditingOverride, store, pluginBridge, pluginHost] in
                 await AppContainer.runAudioFilterBinder(
                     store: store,
                     engine: engine,
                     eqPresetStore: eqPresetStore,
                     override: eqEditingOverride,
-                    initialProfile: startupProfile
+                    initialProfile: startupProfile,
+                    pluginPart: pluginBridge?.filterPart,
+                    selectPlugin: { id in await pluginHost.select(id) }
                 )
             }
         }
@@ -485,7 +507,8 @@ extension AppContainer {
             logger: eqLogger
         )
 
-        let settingsWindowController = SettingsWindowController(viewModel: settingsViewModel)
+        let settingsWindowController = SettingsWindowController(
+            viewModel: settingsViewModel, audioUnits: audioUnitSettings, pluginEditor: pluginEditor)
 
         let viewModel = MiniPlayerViewModel(
             coordinator: coordinator,
@@ -626,19 +649,7 @@ extension AppContainer {
                     }
                     if let uid = settings.outputDeviceUID {
                         try? await store.update { s in
-                            let existing = s.audioProfiles[uid] ?? AudioProfile.safeDefault
-                            s.audioProfiles[uid] = AudioProfile(
-                                hogModeEnabled: s.hogModeEnabled,
-                                releaseHogOnPauseEnabled: s.releaseHogOnPauseEnabled,
-                                volumeMode: s.volumeMode,
-                                bitrate: s.bitrate,
-                                eqEnabled: existing.eqEnabled,
-                                eqPresetName: existing.eqPresetName,
-                                crossfeedEnabled: existing.crossfeedEnabled,
-                                crossfeedProfile: existing.crossfeedProfile,
-                                crossfeedFcut: existing.crossfeedFcut,
-                                crossfeedFeedDb: existing.crossfeedFeedDb
-                            )
+                            s.audioProfiles[uid] = AppContainer.profileWritingDeviceSettings(s, onto: s.audioProfiles[uid])
                         }
                     }
                 }
@@ -703,8 +714,22 @@ extension AppContainer {
             initialMenuBarIconStyle: initial.menuBarIconStyle,
             coordinatorShutdown: { await coordinator.shutdown(); await hogController.release() },
             quietNow: { engine.muteImmediately() },
+            preparePluginQuitSave: { [pluginHost, pluginStore] in
+                let snap = pluginHost.stateSnapshot()
+                return { if let snap { try? await pluginStore.saveState(id: snap.id, snap.data) } }
+            },
             onLaunchTasks: onLaunchTasks
         )
+    }
+
+    // Copies the profile so fields owned by other binders (EQ, crossfeed, plugin) survive a device-settings write.
+    internal nonisolated static func profileWritingDeviceSettings(_ settings: AppSettings, onto existing: AudioProfile?) -> AudioProfile {
+        var profile = existing ?? .safeDefault
+        profile.hogModeEnabled = settings.hogModeEnabled
+        profile.releaseHogOnPauseEnabled = settings.releaseHogOnPauseEnabled
+        profile.volumeMode = settings.volumeMode
+        profile.bitrate = settings.bitrate
+        return profile
     }
 
     internal static func runAudioFilterBinder(
@@ -712,45 +737,67 @@ extension AppContainer {
         engine: any PlayerEngine,
         eqPresetStore: any EqPresetStore,
         override: EqEditingOverride,
-        initialProfile: AudioProfile
+        initialProfile: AudioProfile,
+        pluginPart: String? = nil,
+        selectPlugin: (@Sendable (String?) async -> Void)? = nil
     ) async {
         let state = _BinderState(profile: initialProfile, override: await override.snapshot())
+
+        @Sendable func apply(_ p: AudioProfile, _ o: EqPreset?) async {
+            let chain = await buildAudioFilterChain(store: eqPresetStore, profile: p, override: o, pluginPart: pluginPart)
+            if await state.chainDiffers(chain) {
+                do {
+                    try await engine.setAudioFilterChain(chain)
+                    await state.markChainWritten(chain)
+                } catch {}
+            }
+            let effectiveId = pluginPart != nil && p.pluginEnabled ? p.pluginId : nil
+            if let selectPlugin, await state.recordPlugin(effectiveId) {
+                await selectPlugin(effectiveId)
+            }
+        }
+
         let (p0, o0) = await state.snapshot()
-        await applyAudioFilterState(engine: engine, store: eqPresetStore, profile: p0, override: o0)
+        await apply(p0, o0)
 
         let configStream = await store.changes
         let overrideStream = await override.changes
+
+        // Two producers (config, override) can race apply's record-then-write; funnel through one consumer loop.
+        let (signals, continuation) = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
 
         await withTaskGroup(of: Void.self) { group in
             group.addTask {
                 for await snapshot in configStream {
                     let uid = snapshot.outputDeviceUID
                     let next = uid.flatMap { snapshot.audioProfiles[$0] } ?? AudioProfile.safeDefault
-                    let changed = await state.updateProfile(next)
-                    if changed {
-                        let (p, o) = await state.snapshot()
-                        await applyAudioFilterState(engine: engine, store: eqPresetStore, profile: p, override: o)
+                    if await state.updateProfile(next) {
+                        continuation.yield()
                     }
                 }
             }
             group.addTask {
                 for await preset in overrideStream {
-                    let changed = await state.updateOverride(preset)
-                    if changed {
-                        let (p, o) = await state.snapshot()
-                        await applyAudioFilterState(engine: engine, store: eqPresetStore, profile: p, override: o)
+                    if await state.updateOverride(preset) {
+                        continuation.yield()
                     }
+                }
+            }
+            group.addTask {
+                for await _ in signals {
+                    let (p, o) = await state.snapshot()
+                    await apply(p, o)
                 }
             }
         }
     }
 
-    internal static func applyAudioFilterState(
-        engine: any PlayerEngine,
+    internal static func buildAudioFilterChain(
         store: any EqPresetStore,
         profile: AudioProfile,
-        override: EqPreset?
-    ) async {
+        override: EqPreset?,
+        pluginPart: String?
+    ) async -> String? {
         var parts: [String] = []
         if profile.eqEnabled {
             if let override {
@@ -766,6 +813,9 @@ extension AppContainer {
                 }
             }
         }
+        if profile.pluginEnabled, profile.pluginId != nil, let pluginPart {
+            parts.append(pluginPart)
+        }
         if profile.crossfeedEnabled {
             parts.append(CrossfeedFilterBuilder.buildPart(
                 profile: profile.crossfeedProfile,
@@ -773,11 +823,7 @@ extension AppContainer {
                 feedDb: profile.crossfeedFeedDb
             ))
         }
-        if parts.isEmpty {
-            try? await engine.setAudioFilterChain(nil)
-        } else {
-            try? await engine.setAudioFilterChain("lavfi=[" + parts.joined(separator: ",") + "]")
-        }
+        return parts.isEmpty ? nil : "lavfi=[" + parts.joined(separator: ",") + "]"
     }
 
     @discardableResult
@@ -871,6 +917,8 @@ extension AppContainer {
 private actor _BinderState {
     var profile: AudioProfile
     var override: EqPreset?
+    private var lastChain: String??
+    private var lastPlugin: String??
     init(profile: AudioProfile, override: EqPreset?) {
         self.profile = profile
         self.override = override
@@ -886,6 +934,19 @@ private actor _BinderState {
         return changed
     }
     func snapshot() -> (AudioProfile, EqPreset?) { (profile, override) }
+    // Same af string twice would make mpv rebuild the graph; a plugin swap must only change the bridge's unit.
+    func chainDiffers(_ chain: String?) -> Bool {
+        lastChain != .some(chain)
+    }
+    // Marked only after a successful engine write, so a throw leaves the record unchanged and the next apply retries.
+    func markChainWritten(_ chain: String?) {
+        lastChain = .some(chain)
+    }
+    func recordPlugin(_ id: String?) -> Bool {
+        if lastPlugin == .some(id) { return false }
+        lastPlugin = .some(id)
+        return true
+    }
 }
 
 // Fallback when JSONConfigStore fails to open so SettingsViewModel still constructs.

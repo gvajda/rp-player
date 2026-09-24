@@ -24,7 +24,18 @@ let mpvLinker: [LinkerSetting] = [
 let package = Package(
     name: "RPPlayer",
     platforms: [.macOS(.v14)],
+    products: [
+        .executable(name: "RPPlayer", targets: ["RPPlayer"]),
+        .executable(name: "RPSmoke", targets: ["RPSmoke"]),
+        // Dynamic so FFmpeg's af_ladspa and the app dlopen one shared image; never a target dependency of RPPlayer.
+        .library(name: "RPBridge", type: .dynamic, targets: ["RPBridge"]),
+    ],
     targets: [
+        .target(
+            name: "RPBridge",
+            path: "Sources/RPBridge",
+            linkerSettings: [.linkedFramework("AudioToolbox")]
+        ),
         .systemLibrary(
             name: "CMpv",
             path: "Sources/CMpv"
@@ -44,7 +55,7 @@ let package = Package(
         ),
         .testTarget(
             name: "RPPlayerTests",
-            dependencies: ["RPPlayer", "CMpv"],
+            dependencies: ["RPPlayer", "CMpv", "RPBridge"],
             path: "Tests/RPPlayerTests",
             resources: [.copy("Fixtures")],
             linkerSettings: mpvLinker
