@@ -65,7 +65,7 @@ final class AudioUnitSettingsModel: ObservableObject {
         }
     }
 
-    // Config first: the binder deselects before the folder disappears, so nothing points at a deleted bundle.
+    // Config first: no profile ever references a deleted folder.
     func deletePlugin(id: String) async throws {
         try await configStore.update { settings in
             for (uid, var profile) in settings.audioProfiles where profile.pluginId == id {

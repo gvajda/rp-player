@@ -112,7 +112,7 @@ struct AudioUnitSection: View {
             if url.pathExtension == "component" { return true }
             var isDirectory: ObjCBool = false
             FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
-            return isDirectory.boolValue
+            return isDirectory.boolValue && !NSWorkspace.shared.isFilePackage(atPath: url.path)
         }
     }
 
@@ -125,8 +125,15 @@ struct AudioUnitSection: View {
         panel.allowedContentTypes = [.bundle]
         let filterDelegate = ComponentPanelDelegate()
         panel.delegate = filterDelegate
-        panel.directoryURL = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first?
+        let userComponents = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first?
             .appendingPathComponent("Audio/Plug-Ins/Components")
+        let systemComponents = FileManager.default.urls(for: .libraryDirectory, in: .localDomainMask).first?
+            .appendingPathComponent("Audio/Plug-Ins/Components")
+        if let userComponents, FileManager.default.fileExists(atPath: userComponents.path) {
+            panel.directoryURL = userComponents
+        } else {
+            panel.directoryURL = systemComponents
+        }
         // panel.delegate is weak; keep filterDelegate alive across the modal explicitly.
         let response = withExtendedLifetime(filterDelegate) { panel.runModal() }
         guard response == .OK, let url = panel.url else { return }
