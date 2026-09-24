@@ -106,8 +106,7 @@ struct AudioUnitSection: View {
         """
     }
 
-    // .component reports UTI com.apple.generic-bundle, which allowedContentTypes can't distinguish from any
-    // other bundle; a delegate filter is the only way to grey out non-.component entries without hiding folders.
+    // allowedContentTypes can't isolate .component (it reports the generic-bundle UTI); a delegate filter can.
     private final class ComponentPanelDelegate: NSObject, NSOpenSavePanelDelegate {
         func panel(_ sender: Any, shouldEnable url: URL) -> Bool {
             if url.pathExtension == "component" { return true }
@@ -128,7 +127,9 @@ struct AudioUnitSection: View {
         panel.delegate = filterDelegate
         panel.directoryURL = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first?
             .appendingPathComponent("Audio/Plug-Ins/Components")
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        // panel.delegate is weak; keep filterDelegate alive across the modal explicitly.
+        let response = withExtendedLifetime(filterDelegate) { panel.runModal() }
+        guard response == .OK, let url = panel.url else { return }
         Task {
             do { try await model.importComponent(from: url) }
             catch { importError = AudioUnitSettingsModel.message(for: error) }

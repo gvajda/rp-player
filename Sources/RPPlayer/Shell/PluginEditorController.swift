@@ -34,8 +34,7 @@ final class PluginEditorController: NSObject, NSWindowDelegate {
         self.panel = panel
         // The host publishes current = nil before releasing the old unit; closing here keeps the view off a freed unit.
         currentSink = host.$current.dropFirst().sink { [weak self] _ in self?.close() }
-        // requestViewController's completion can land after a close/reopen swapped self.unit; the captured
-        // identifier keeps install() from attaching a view built for a unit that's no longer current.
+        // Captured so install() can reject a stale completion after a close/reopen swapped self.unit.
         let requestedUnit = ObjectIdentifier(unit)
         unit.auAudioUnit.requestViewController { [weak self] controller in
             DispatchQueue.main.async { self?.install(controller, for: requestedUnit) }

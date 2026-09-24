@@ -148,8 +148,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { await container.notificationCoordinator.stop() }
         container.nowPlayingCenterController.stop()
 
-        // Snapshot the plugin's state on main NOW, before the main thread blocks below —
-        // PluginHost is @MainActor, so awaiting it from inside the blocked detached task would deadlock.
+        // Snapshot plugin state on main now — PluginHost is @MainActor and the thread blocks below.
         let savePluginState = container.preparePluginQuitSave()
 
         // Block the terminate path on a clean shutdown of the coordinator —

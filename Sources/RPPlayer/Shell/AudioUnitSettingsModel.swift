@@ -28,8 +28,7 @@ final class AudioUnitSettingsModel: ObservableObject {
         stop()
         apply(await configStore.settings)
         let stream = await configStore.changes
-        // The await above is a suspension point; an overlapping start() could have raced in and
-        // assigned its own configTask by now. Cancel again immediately before taking over.
+        // Re-cancel: an overlapping start() could have raced in during the await above.
         configTask?.cancel()
         configTask = Task { [weak self] in
             for await settings in stream {
