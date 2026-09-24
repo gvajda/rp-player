@@ -172,6 +172,10 @@ extension AppContainer {
             pluginLogger.error("plugin bridge path contains [ or ]; Audio Unit plugins disabled")
         }
         let pluginHost = PluginHost(store: pluginStore, setUnit: { pluginBridge?.setUnit($0) }, logger: pluginLogger)
+        let audioUnitSettings = AudioUnitSettingsModel(
+            configStore: store ?? NoopConfigStore(), store: pluginStore, host: pluginHost,
+            isBridgeAvailable: pluginBridge?.filterPart != nil, logger: pluginLogger)
+        let pluginEditor = PluginEditorController(host: pluginHost)
 
         let imageBaseURL = URL(string: "https://img.radioparadise.com/")!
         let cache: any AlbumArtCache
@@ -499,7 +503,8 @@ extension AppContainer {
             logger: eqLogger
         )
 
-        let settingsWindowController = SettingsWindowController(viewModel: settingsViewModel)
+        let settingsWindowController = SettingsWindowController(
+            viewModel: settingsViewModel, audioUnits: audioUnitSettings, pluginEditor: pluginEditor)
 
         let viewModel = MiniPlayerViewModel(
             coordinator: coordinator,
@@ -703,7 +708,7 @@ extension AppContainer {
             nowPlayingCenterController: nowPlayingCenterController,
             updateChecker: updateChecker,
             initialMenuBarIconStyle: initial.menuBarIconStyle,
-            coordinatorShutdown: { await coordinator.shutdown(); await hogController.release() },
+            coordinatorShutdown: { await pluginHost.saveCurrentState(); await coordinator.shutdown(); await hogController.release() },
             quietNow: { engine.muteImmediately() },
             onLaunchTasks: onLaunchTasks
         )

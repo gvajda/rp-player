@@ -44,7 +44,14 @@ final class AppDelegateTests: XCTestCase {
                 openLoginWindow: { },
                 openApplicationData: { }
             )
-            let settingsWindowController = SettingsWindowController(viewModel: settingsViewModel)
+            let pluginStore = PluginStore(directory: FileManager.default.temporaryDirectory
+                .appendingPathComponent("app-delegate-tests-plugins-\(UUID().uuidString)"))
+            let pluginHost = PluginHost(store: pluginStore, setUnit: { _ in })
+            let audioUnits = AudioUnitSettingsModel(
+                configStore: configStore, store: pluginStore, host: pluginHost, isBridgeAvailable: false)
+            let pluginEditor = PluginEditorController(host: pluginHost)
+            let settingsWindowController = SettingsWindowController(
+                viewModel: settingsViewModel, audioUnits: audioUnits, pluginEditor: pluginEditor)
             let loginWindowController = LoginWindowController(keychainAuth: auth)
             return AppContainer(
                 viewModel: viewModel,
@@ -128,7 +135,14 @@ final class AppDelegateTests: XCTestCase {
                 configStore: configStore, deviceCatalog: deviceCatalog, auth: auth,
                 openLoginWindow: { }, openApplicationData: { }
             )
-            let settingsWindowController = SettingsWindowController(viewModel: settingsViewModel)
+            let pluginStore = PluginStore(directory: FileManager.default.temporaryDirectory
+                .appendingPathComponent("app-delegate-tests-plugins-\(UUID().uuidString)"))
+            let pluginHost = PluginHost(store: pluginStore, setUnit: { _ in })
+            let audioUnits = AudioUnitSettingsModel(
+                configStore: configStore, store: pluginStore, host: pluginHost, isBridgeAvailable: false)
+            let pluginEditor = PluginEditorController(host: pluginHost)
+            let settingsWindowController = SettingsWindowController(
+                viewModel: settingsViewModel, audioUnits: audioUnits, pluginEditor: pluginEditor)
             let loginWindowController = LoginWindowController(keychainAuth: auth)
             return AppContainer(
                 viewModel: viewModel,

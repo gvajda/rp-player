@@ -4,6 +4,8 @@ import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @ObservedObject var viewModel: SettingsViewModel
+    @ObservedObject var audioUnits: AudioUnitSettingsModel
+    let pluginEditor: PluginEditorController
     @State private var showForceMaxConfirm = false
     @State private var eqImportAlert: EqImportAlert?
     @State private var eqDeleteAlert: EqDeleteAlert?
@@ -222,6 +224,7 @@ struct SettingsView: View {
                 .disabled(!viewModel.hogModeEnabled)
             volumeRow
             eqSection
+            AudioUnitSection(model: audioUnits, editor: pluginEditor)
             crossfeedSection
         }
     }
