@@ -174,9 +174,11 @@ final class AppDelegateTests: XCTestCase {
             )
         })
         delegate.applicationDidFinishLaunching(Notification(name: NSApplication.didFinishLaunchingNotification))
+        let start = Date()
         delegate.applicationWillTerminate(Notification(name: NSApplication.willTerminateNotification))
-        let signaled = await didShutDown.wait(timeout: .seconds(2))
-        XCTAssertTrue(signaled)
+        let elapsed = Date().timeIntervalSince(start)
+        XCTAssertTrue(didShutDown.isFired, "coordinatorShutdown must run before applicationWillTerminate returns")
+        XCTAssertLessThan(elapsed, 1.0, "quit should not block on the 2s dispatch-group timeout")
     }
 }
 
@@ -184,6 +186,12 @@ final class AsyncSignal: @unchecked Sendable {
     private let lock = NSLock()
     private var continuations: [CheckedContinuation<Void, Never>] = []
     private var fired = false
+
+    var isFired: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return fired
+    }
 
     func signal() {
         lock.lock()

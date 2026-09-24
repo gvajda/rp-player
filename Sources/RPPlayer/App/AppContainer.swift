@@ -73,7 +73,8 @@ final class AppContainer {
         self.onLaunchTasksClosures = onLaunchTasks
     }
 
-    func shutdown() async {
+    // nonisolated: runs from a detached task while the main thread is blocked in applicationWillTerminate.
+    nonisolated func shutdown() async {
         await coordinatorShutdown()
     }
 

@@ -12,6 +12,10 @@ Section labels: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`
 
 - **Audio Unit plugins.** Run an Audio Unit effect on the stream, per output device: Settings → Audio Unit → import a `.component` file (for example an Airwindows plugin), pick it and turn it on. The sliders button opens the plugin's own controls (or a generic list of its parameters), and your settings are remembered. Plugins are copied into RP Player's own folder, so installing one here doesn't affect other apps. It sits between the equalizer and crossfeed, and bit-perfect playback is off while a plugin is active. Self-contained plugins work best — ones that need iLok or a vendor installer may not load.
 
+### Fixed
+
+- Quitting RP Player no longer takes about two seconds, and the audio device is now released cleanly on quit.
+
 ## [v1.1.0] - 2026-09-06
 
 ### Added
