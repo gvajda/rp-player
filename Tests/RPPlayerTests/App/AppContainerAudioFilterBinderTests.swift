@@ -551,11 +551,12 @@ final class AppContainerAudioFilterBinderTests: XCTestCase {
         var noBridge = AudioProfile.safeDefault
         noBridge.pluginEnabled = true
         noBridge.pluginId = Self.idA
-        let (_, engine2, _, task2) = startBinder(profile: noBridge, pluginPart: nil)
+        let (_, engine2, recorder2, task2) = startBinder(profile: noBridge, pluginPart: nil)
         defer { task2.cancel() }
         try await waitUntil({ await !Self.chains(engine2).isEmpty }, timeout: 1.0)
         let chains2 = await Self.chains(engine2)
         XCTAssertEqual(chains2, [nil])
+        try await waitUntil({ recorder2.calls == [nil] }, timeout: 1.0)
     }
 
     func testSwappingPluginSelectsWithoutRewritingChain() async throws {
@@ -570,6 +571,22 @@ final class AppContainerAudioFilterBinderTests: XCTestCase {
         try await waitUntil({ recorder.calls == [Self.idA, Self.idB] }, timeout: 1.0)
         let finalChains = await Self.chains(engine)
         XCTAssertEqual(finalChains, ["lavfi=[\(Self.part)]"], "a plugin swap must not rewrite af")
+    }
+
+    func testUnrelatedProfileChangeDoesNotReselectPlugin() async throws {
+        var profile = AudioProfile.safeDefault
+        profile.pluginEnabled = true
+        profile.pluginId = Self.idA
+        let (configStore, engine, recorder, task) = startBinder(profile: profile, pluginPart: Self.part)
+        defer { task.cancel() }
+        try await waitUntil({ recorder.calls == [Self.idA] }, timeout: 1.0)
+
+        try await configStore.update { $0.audioProfiles["dev-A"]?.crossfeedEnabled = true }
+        try await waitUntil({
+            await Self.chains(engine).last.flatMap { $0 }?.contains("bs2b") ?? false
+        }, timeout: 1.0)
+
+        XCTAssertEqual(recorder.calls, [Self.idA])
     }
 
     func testDisablingPluginDeselectsAndDropsPart() async throws {

@@ -28,6 +28,9 @@ public final class PluginHost: ObservableObject {
     }
 
     private func perform(_ id: String?) async {
+        if let current, let audioUnit {
+            await save(id: current.id, unit: audioUnit)
+        }
         let previous = audioUnit
         audioUnit = nil
         current = nil
@@ -51,12 +54,17 @@ public final class PluginHost: ObservableObject {
     }
 
     public func saveCurrentState() async {
-        guard let current, let state = audioUnit?.auAudioUnit.fullState else { return }
+        guard let current, let audioUnit else { return }
+        await save(id: current.id, unit: audioUnit)
+    }
+
+    private func save(id: String, unit: AVAudioUnit) async {
+        guard let state = unit.auAudioUnit.fullState else { return }
         do {
             let data = try PropertyListSerialization.data(fromPropertyList: state, format: .binary, options: 0)
-            try await store.saveState(id: current.id, data)
+            try await store.saveState(id: id, data)
         } catch {
-            logger?.error("plugin host: saving state for \(current.id) failed: \(error)")
+            logger?.error("plugin host: saving state for \(id) failed: \(error)")
         }
     }
 

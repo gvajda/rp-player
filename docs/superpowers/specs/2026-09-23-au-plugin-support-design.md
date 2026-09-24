@@ -96,7 +96,7 @@ Because configuration also happens lazily inside `run()` under the same mutex, `
 **Layout:** `~/Library/Application Support/RP Player/Plugins/<uuid>/<Name>.component` and `…/<uuid>/state.plist`.
 
 **API:**
-- `list() -> [ImportedPlugin]`, where `ImportedPlugin` has `id` (the folder uuid), `name`, `manufacturer`, `version`, `componentDescription` and `bundleURL`.
+- `list() -> [ImportedPlugin]`, where `ImportedPlugin` has `id` (the folder uuid), `bundleURL`, and `component: PluginComponent`. `PluginComponent` carries `type`, `subtype`, `manufacturer` (the raw `OSType` four-char codes), `name`, `manufacturerName`, `version` (packed `UInt32`), `factoryFunction`, plus the derived `componentDescription: AudioComponentDescription` and `versionString: String` (`X.Y.Z`, unpacked from `version`).
 - `plugin(id:) -> ImportedPlugin?`.
 - `importComponent(from: URL) throws -> ImportedPlugin` (renamed from `import(from:)`, since `import` is a keyword).
 - `delete(id:)`.
@@ -125,7 +125,7 @@ The first valid `AudioComponents` entry wins. A bundle that fails validation is 
 
   `select(nil)` calls `setUnit(nil)` and then releases the unit.
 
-  `select` is serialized inside the host as a task chain (each call awaits the previous one before running): an overlapping select sees the true previous unit rather than a torn handoff, and the last request wins. `saveCurrentState()` (below) is a no-op while a select is in flight — callers that need to save before switching (the editor, PR 50) must await the in-flight `select` first.
+  `select` is serialized inside the host as a task chain (each call awaits the previous one before running): an overlapping select sees the true previous unit rather than a torn handoff, and the last request wins. `select` saves the outgoing plugin's `fullState` before releasing it, so config-driven switches (dropdown, device change, DAC unplug) never lose edits; the editor only needs `saveCurrentState()` on panel close and at app quit.
 
   `setUnit` is an injected `@escaping @Sendable (AudioUnit?) -> Void` (the app passes `pluginBridge?.setUnit`), not a direct call to `bridge.setUnit`, so the host doesn't depend on `PluginBridge` at compile time. Steps 5 and 6 do not run on the main actor. `rpbridge_set_unit` can block until an in-progress `run()` — possibly in the middle of a lazy `AudioUnitInitialize` of a third-party AU that takes an arbitrary amount of time, and could itself hop to the main queue and deadlock — finishes, so `select` hands the `setUnit` call to a `detached` `Task` and awaits it before returning. Only after that does it release the previous unit, back on the main actor; releasing it doesn't touch the bridge mutex, so it can't block. `AudioUnit` is a non-`Sendable` `OpaquePointer`; carry it across the actor boundary in a small `@unchecked Sendable` box, not by widening `PluginHost` itself off the main actor.
 - Publishes `current: ImportedPlugin?` and `loadError: String?` for the UI.
@@ -146,18 +146,23 @@ The first valid `AudioComponents` entry wins. A bundle that fails validation is 
 
 ### 3.7 Settings: "Audio Unit" section, per device
 
+The UI never calls `host.select` directly — only the binder (§3.6) does, driven by config. Every action below only ever writes config; the binder's existing subscription picks the change up and selects or deselects through the host.
+
 - Toggle "Audio Unit plugin", with the tooltip "Bit-perfect is off while a plugin is active."
-- Dropdown entries read `Name — Manufacturer vX.Y`. With nothing imported, it shows "No plugins imported".
-- **Import…** opens an `NSOpenPanel` limited to `.component`. The store validates and copies. On success the new plugin is selected for the current device. On failure an alert shows the typed error in plain language.
+- Dropdown entries read `Name — Manufacturer vX.Y.Z`, using `ImportedPlugin.component.versionString`. With nothing imported, it shows "No plugins imported".
+- **Import…** opens an `NSOpenPanel` limited to `.component`. The store validates and copies. On success, the view model writes `pluginId = <new id>` and `pluginEnabled = true` to the current device's profile — the binder picks up the change and selects it. On failure an alert shows the typed error in plain language; nothing is written to config.
 - **Edit…** is enabled when a plugin is loaded, and opens the editor.
-- **Delete** asks for confirmation. If the plugin is the current one, the host selects nil. The store deletes the folder, and the config clears `pluginId` on every profile that references that id.
+- **Delete** asks for confirmation, then: clear `pluginId` on every profile that references the id (the binder deselects on every device that had it active), then `store.delete(id:)`. If the delete call fails, show the error — config is already cleared at that point, so nothing points at the id any more regardless.
 - The host's `loadError` appears as a secondary-colour line under the dropdown.
+- With no output device selected (`outputDeviceUID == nil`), the whole section is disabled with a short note, the same way the per-device EQ/crossfeed setters no-op without a device (`guard let uid = s.outputDeviceUID else { return }` in `SettingsViewModel`).
+- The section is also disabled with a note when the Audio Unit bridge is unavailable, via an `isPluginBridgeAvailable: Bool` flag `live()` passes into the view model (true only when `PluginBridge.load` succeeded).
 
 ### 3.8 Editor: `PluginEditorPanel`, an `NSPanel` following the `EqEditPanel` pattern
 
 - The view comes from `auAudioUnit.requestViewController`. If that returns nil, the panel uses CoreAudioKit's **`AUGenericView(audioUnit:)`**, the built-in generic parameter UI for AUv2. No custom slider list is written.
-- State is saved from `fullState` with a 1 s debounce while the panel is open, and immediately when it closes.
-- If the user switches plugin or device while the panel is open, the panel closes and saves first.
+- State is saved from `fullState` with a 1 s debounce while the panel is open, saved again on close, and saved at app quit. Config-driven switches (dropdown, device change, DAC unplug) are handled by the host itself (§3.4) — the panel does not need to save before them.
+- The panel holds its own `AVAudioUnit` reference (`AUGenericView` doesn't retain the raw unit) and closes synchronously when `host.current` changes: `PluginHost`'s `$current` publish happens at the start of `perform`, before the previous unit is released, so the panel is guaranteed to close before its unit goes away.
+- Re-importing an updated version of a plugin whose old registration is still process-local (its old id was deleted earlier in the session) keeps running the stale registered code until relaunch, because `AudioComponentRegister` can't be undone — documented as a README limitation rather than surfaced as an in-app note after import.
 
 ## 4. Error handling summary
 

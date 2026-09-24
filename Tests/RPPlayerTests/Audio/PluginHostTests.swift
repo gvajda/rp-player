@@ -71,6 +71,17 @@ final class PluginHostTests: XCTestCase {
         XCTAssertEqual(cutoff(), 1234, accuracy: 0.5)
     }
 
+    func testSwitchingAwaySavesOutgoingState() async throws {
+        let plugin = try await importAppleHipass()
+        await host.select(plugin.id)
+        let unit = try XCTUnwrap(host.audioUnit?.audioUnit)
+        XCTAssertEqual(AudioUnitSetParameter(unit, kHipassParam_CutoffFrequency, kAudioUnitScope_Global, 0, 1234, 0), noErr)
+
+        await host.select(nil)
+        await host.select(plugin.id)
+        XCTAssertEqual(cutoff(), 1234, accuracy: 0.5)
+    }
+
     func testSelectNilClearsBridgeAndCurrent() async throws {
         let plugin = try await importAppleHipass()
         await host.select(plugin.id)

@@ -42,15 +42,17 @@ public actor PluginStore {
     }
 
     public func importComponent(from source: URL) throws -> ImportedPlugin {
+        let resolved = source.resolvingSymlinksInPath()
         let component = try PluginValidator.validate(
-            infoPlist: Self.infoPlist(of: source), architectures: architectures(source),
+            infoPlist: Self.infoPlist(of: resolved), architectures: architectures(resolved),
             existing: list().map(\.component)).get()
         let id = UUID().uuidString
+        let name = source.lastPathComponent
         // Staging names are not UUIDs, so list() never shows a half-copied import.
         let staging = directory.appendingPathComponent(".staging-\(id)")
         do {
             try fm.createDirectory(at: staging, withIntermediateDirectories: true)
-            try fm.copyItem(at: source, to: staging.appendingPathComponent(source.lastPathComponent))
+            try fm.copyItem(at: resolved, to: staging.appendingPathComponent(name))
             try fm.moveItem(at: staging, to: directory.appendingPathComponent(id))
         } catch {
             try? fm.removeItem(at: staging)
@@ -58,7 +60,7 @@ public actor PluginStore {
             throw PluginStoreError.ioFailure("\(error)")
         }
         logger?.info("PluginStore: imported \(component.manufacturerName): \(component.name) as \(id)")
-        return ImportedPlugin(id: id, bundleURL: directory.appendingPathComponent(id).appendingPathComponent(source.lastPathComponent),
+        return ImportedPlugin(id: id, bundleURL: directory.appendingPathComponent(id).appendingPathComponent(name),
                               component: component)
     }
 

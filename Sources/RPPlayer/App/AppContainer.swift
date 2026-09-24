@@ -732,11 +732,15 @@ extension AppContainer {
 
         @Sendable func apply(_ p: AudioProfile, _ o: EqPreset?) async {
             let chain = await buildAudioFilterChain(store: eqPresetStore, profile: p, override: o, pluginPart: pluginPart)
-            if await state.recordChain(chain) {
-                try? await engine.setAudioFilterChain(chain)
+            if await state.chainDiffers(chain) {
+                do {
+                    try await engine.setAudioFilterChain(chain)
+                    await state.markChainWritten(chain)
+                } catch {}
             }
-            if let selectPlugin, await state.recordPlugin(p.pluginEnabled ? p.pluginId : nil) {
-                await selectPlugin(p.pluginEnabled ? p.pluginId : nil)
+            let effectiveId = pluginPart != nil && p.pluginEnabled ? p.pluginId : nil
+            if let selectPlugin, await state.recordPlugin(effectiveId) {
+                await selectPlugin(effectiveId)
             }
         }
 
@@ -746,8 +750,7 @@ extension AppContainer {
         let configStream = await store.changes
         let overrideStream = await override.changes
 
-        // Two producers (config, override) can race apply's record-then-write; funnel every
-        // change through one consumer loop so applies never interleave and go stale.
+        // Two producers (config, override) can race apply's record-then-write; funnel through one consumer loop.
         let (signals, continuation) = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
 
         await withTaskGroup(of: Void.self) { group in
@@ -919,10 +922,12 @@ private actor _BinderState {
     }
     func snapshot() -> (AudioProfile, EqPreset?) { (profile, override) }
     // Same af string twice would make mpv rebuild the graph; a plugin swap must only change the bridge's unit.
-    func recordChain(_ chain: String?) -> Bool {
-        if lastChain == .some(chain) { return false }
+    func chainDiffers(_ chain: String?) -> Bool {
+        lastChain != .some(chain)
+    }
+    // Marked only after a successful engine write, so a throw leaves the record unchanged and the next apply retries.
+    func markChainWritten(_ chain: String?) {
         lastChain = .some(chain)
-        return true
     }
     func recordPlugin(_ id: String?) -> Bool {
         if lastPlugin == .some(id) { return false }
