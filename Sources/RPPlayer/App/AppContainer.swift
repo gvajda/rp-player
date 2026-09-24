@@ -24,6 +24,7 @@ final class AppContainer {
     let initialMenuBarIconStyle: MenuBarIconStyle
 
     let quietNow: @Sendable () -> Void
+    let preparePluginQuitSave: @MainActor () -> (@Sendable () async -> Void)
 
     private let coordinatorShutdown: @Sendable () async -> Void
     private let onLaunchTasksClosures: [@Sendable () async -> Void]
@@ -47,6 +48,7 @@ final class AppContainer {
         initialMenuBarIconStyle: MenuBarIconStyle = .template,
         coordinatorShutdown: @escaping @Sendable () async -> Void,
         quietNow: @escaping @Sendable () -> Void = {},
+        preparePluginQuitSave: @escaping @MainActor () -> (@Sendable () async -> Void) = { {} },
         onLaunchTasks: [@Sendable () async -> Void] = []
     ) {
         self.viewModel = viewModel
@@ -67,6 +69,7 @@ final class AppContainer {
         self.initialMenuBarIconStyle = initialMenuBarIconStyle
         self.coordinatorShutdown = coordinatorShutdown
         self.quietNow = quietNow
+        self.preparePluginQuitSave = preparePluginQuitSave
         self.onLaunchTasksClosures = onLaunchTasks
     }
 
@@ -708,8 +711,12 @@ extension AppContainer {
             nowPlayingCenterController: nowPlayingCenterController,
             updateChecker: updateChecker,
             initialMenuBarIconStyle: initial.menuBarIconStyle,
-            coordinatorShutdown: { await pluginHost.saveCurrentState(); await coordinator.shutdown(); await hogController.release() },
+            coordinatorShutdown: { await coordinator.shutdown(); await hogController.release() },
             quietNow: { engine.muteImmediately() },
+            preparePluginQuitSave: { [pluginHost, pluginStore] in
+                let snap = pluginHost.stateSnapshot()
+                return { if let snap { try? await pluginStore.saveState(id: snap.id, snap.data) } }
+            },
             onLaunchTasks: onLaunchTasks
         )
     }

@@ -7,6 +7,7 @@ struct AudioUnitSection: View {
     @ObservedObject var host: PluginHost
     let editor: PluginEditorController
     @State private var importError: String?
+    @State private var deleteError: String?
     @State private var deleteTarget: ImportedPlugin?
 
     init(model: AudioUnitSettingsModel, editor: PluginEditorController) {
@@ -54,13 +55,18 @@ struct AudioUnitSection: View {
         } message: {
             Text(importError ?? "")
         }
+        .alert("Couldn't delete plugin", isPresented: Binding(get: { deleteError != nil }, set: { if !$0 { deleteError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(deleteError ?? "")
+        }
         .alert(item: $deleteTarget) { plugin in
             Alert(title: Text("Delete \u{201C}\(plugin.component.name)\u{201D}?"),
                   message: Text("Every output device using it will play without a plugin."),
                   primaryButton: .destructive(Text("Delete")) {
                       Task {
                           do { try await model.deletePlugin(id: plugin.id) }
-                          catch { importError = AudioUnitSettingsModel.message(for: error) }
+                          catch { deleteError = AudioUnitSettingsModel.message(for: error) }
                       }
                   },
                   secondaryButton: .cancel())
@@ -100,13 +106,26 @@ struct AudioUnitSection: View {
         """
     }
 
+    // .component reports UTI com.apple.generic-bundle, which allowedContentTypes can't distinguish from any
+    // other bundle; a delegate filter is the only way to grey out non-.component entries without hiding folders.
+    private final class ComponentPanelDelegate: NSObject, NSOpenSavePanelDelegate {
+        func panel(_ sender: Any, shouldEnable url: URL) -> Bool {
+            if url.pathExtension == "component" { return true }
+            var isDirectory: ObjCBool = false
+            FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
+            return isDirectory.boolValue
+        }
+    }
+
     private func showImportPanel() {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         panel.canChooseFiles = true
         panel.treatsFilePackagesAsDirectories = false
-        panel.allowedContentTypes = [UTType(filenameExtension: "component") ?? .bundle]
+        panel.allowedContentTypes = [.bundle]
+        let filterDelegate = ComponentPanelDelegate()
+        panel.delegate = filterDelegate
         panel.directoryURL = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first?
             .appendingPathComponent("Audio/Plug-Ins/Components")
         guard panel.runModal() == .OK, let url = panel.url else { return }

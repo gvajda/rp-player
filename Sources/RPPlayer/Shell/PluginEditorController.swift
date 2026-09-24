@@ -29,12 +29,16 @@ final class PluginEditorController: NSObject, NSWindowDelegate {
                             backing: .buffered, defer: false)
         panel.title = "\(plugin.component.manufacturerName) \(plugin.component.name)"
         panel.isReleasedWhenClosed = false
+        panel.hidesOnDeactivate = false
         panel.delegate = self
         self.panel = panel
         // The host publishes current = nil before releasing the old unit; closing here keeps the view off a freed unit.
         currentSink = host.$current.dropFirst().sink { [weak self] _ in self?.close() }
+        // requestViewController's completion can land after a close/reopen swapped self.unit; the captured
+        // identifier keeps install() from attaching a view built for a unit that's no longer current.
+        let requestedUnit = ObjectIdentifier(unit)
         unit.auAudioUnit.requestViewController { [weak self] controller in
-            DispatchQueue.main.async { self?.install(controller) }
+            DispatchQueue.main.async { self?.install(controller, for: requestedUnit) }
         }
         lastSavedState = stateData()
         autosaveTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
@@ -53,8 +57,8 @@ final class PluginEditorController: NSObject, NSWindowDelegate {
         teardown(save: true)
     }
 
-    private func install(_ controller: NSViewController?) {
-        guard let panel, let unit else { return }
+    private func install(_ controller: NSViewController?, for expected: ObjectIdentifier) {
+        guard let panel, let unit, ObjectIdentifier(unit) == expected else { return }
         if let controller {
             panel.contentViewController = controller
             if controller.preferredContentSize != .zero { panel.setContentSize(controller.preferredContentSize) }
@@ -84,7 +88,11 @@ final class PluginEditorController: NSObject, NSWindowDelegate {
         autosaveTimer?.invalidate()
         autosaveTimer = nil
         currentSink = nil
+        let closingPanel = panel
         panel = nil
+        // Detach the content before dropping our unit reference, so nothing on screen outlives it.
+        closingPanel?.contentViewController = nil
+        closingPanel?.contentView = nil
         unit = nil
         if save { Task { await host.saveCurrentState() } }
     }

@@ -111,6 +111,22 @@ final class PluginHostTests: XCTestCase {
         XCTAssertNil(recorder.calls.last!)
     }
 
+    func testStateSnapshotReturnsCurrentPluginState() async throws {
+        let plugin = try await importAppleHipass()
+        await host.select(plugin.id)
+        let unit = try XCTUnwrap(host.audioUnit?.audioUnit)
+        XCTAssertEqual(AudioUnitSetParameter(unit, kHipassParam_CutoffFrequency, kAudioUnitScope_Global, 0, 1234, 0), noErr)
+
+        let snapshot = try XCTUnwrap(host.stateSnapshot())
+        XCTAssertEqual(snapshot.id, plugin.id)
+        let decoded = try XCTUnwrap(
+            try PropertyListSerialization.propertyList(from: snapshot.data, format: nil) as? [String: Any])
+        XCTAssertFalse(decoded.isEmpty)
+
+        await host.select(nil)
+        XCTAssertNil(host.stateSnapshot())
+    }
+
     func testOverlappingSelectsKeepLastRequest() async throws {
         let plugin = try await importAppleHipass()
         let t1 = Task { await host.select(plugin.id) }

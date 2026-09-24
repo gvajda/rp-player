@@ -58,14 +58,24 @@ public final class PluginHost: ObservableObject {
         await save(id: current.id, unit: audioUnit)
     }
 
+    // Synchronous so it can be called from applicationWillTerminate before the main thread blocks on shutdown.
+    public func stateSnapshot() -> (id: String, data: Data)? {
+        guard let current, let audioUnit, let data = Self.serializedState(audioUnit) else { return nil }
+        return (current.id, data)
+    }
+
     private func save(id: String, unit: AVAudioUnit) async {
-        guard let state = unit.auAudioUnit.fullState else { return }
+        guard let data = Self.serializedState(unit) else { return }
         do {
-            let data = try PropertyListSerialization.data(fromPropertyList: state, format: .binary, options: 0)
             try await store.saveState(id: id, data)
         } catch {
             logger?.error("plugin host: saving state for \(id) failed: \(error)")
         }
+    }
+
+    private static func serializedState(_ unit: AVAudioUnit) -> Data? {
+        guard let state = unit.auAudioUnit.fullState else { return nil }
+        return try? PropertyListSerialization.data(fromPropertyList: state, format: .binary, options: 0)
     }
 
     private func load(id: String) async throws -> (ImportedPlugin, AVAudioUnit) {

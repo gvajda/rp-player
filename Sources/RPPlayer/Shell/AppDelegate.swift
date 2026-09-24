@@ -148,11 +148,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { await container.notificationCoordinator.stop() }
         container.nowPlayingCenterController.stop()
 
+        // Snapshot the plugin's state on main NOW, before the main thread blocks below —
+        // PluginHost is @MainActor, so awaiting it from inside the blocked detached task would deadlock.
+        let savePluginState = container.preparePluginQuitSave()
+
         // Block the terminate path on a clean shutdown of the coordinator —
         // libmpv must release the audio device before we exit.
         let group = DispatchGroup()
         group.enter()
         Task.detached {
+            await savePluginState()
             await container.shutdown()
             group.leave()
         }
