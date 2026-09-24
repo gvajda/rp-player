@@ -584,4 +584,44 @@ final class AppContainerAudioFilterBinderTests: XCTestCase {
         try await waitUntil({ recorder.calls == [Self.idA, nil] }, timeout: 1.0)
         try await waitUntil({ await Self.chains(engine) == ["lavfi=[\(Self.part)]", nil] }, timeout: 1.0)
     }
+
+    func testRapidMixedUpdatesEndOnLatestChain() async throws {
+        let eqStore = LiveEqPresetStore(directory: tmpDir)
+        try await eqStore.save(name: "p", text: "Filter 1: ON PK Fc 1000 Hz Gain 2 dB Q 1.0\n", overwrite: false)
+        var initialProfile = AudioProfile.safeDefault
+        initialProfile.eqEnabled = true
+        initialProfile.eqPresetName = "p"
+        var settings = AppSettings.default
+        settings.outputDeviceUID = "dev-A"
+        settings.audioProfiles["dev-A"] = initialProfile
+        let configStore = StubConfigStore(initial: settings)
+        let engine = MockPlayerEngine()
+        let override = EqEditingOverride()
+
+        let task = Task {
+            await AppContainer.runAudioFilterBinder(
+                store: configStore, engine: engine, eqPresetStore: eqStore, override: override,
+                initialProfile: initialProfile)
+        }
+        defer { task.cancel() }
+
+        try await waitUntil({ await !Self.chains(engine).isEmpty }, timeout: 1.0)
+
+        let overridePreset = EqPreset(
+            name: nil, preampDb: 0,
+            bands: [EqBand(enabled: true, type: .peak, fcHz: 1000, gainDb: -9, q: 1)]
+        )
+        async let setOverride: Void = override.set(overridePreset)
+        async let toggleCrossfeed: Void = configStore.update { $0.audioProfiles["dev-A"]?.crossfeedEnabled = true }
+        _ = try await (setOverride, toggleCrossfeed)
+
+        var expectedProfile = initialProfile
+        expectedProfile.crossfeedEnabled = true
+        let expectedChain = await AppContainer.buildAudioFilterChain(
+            store: eqStore, profile: expectedProfile, override: overridePreset, pluginPart: nil)
+
+        try await waitUntil({ await Self.chains(engine).last ?? nil == expectedChain }, timeout: 1.0)
+        let finalChain = await Self.chains(engine).last ?? nil
+        XCTAssertEqual(finalChain, expectedChain)
+    }
 }

@@ -746,25 +746,31 @@ extension AppContainer {
         let configStream = await store.changes
         let overrideStream = await override.changes
 
+        // Two producers (config, override) can race apply's record-then-write; funnel every
+        // change through one consumer loop so applies never interleave and go stale.
+        let (signals, continuation) = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+
         await withTaskGroup(of: Void.self) { group in
             group.addTask {
                 for await snapshot in configStream {
                     let uid = snapshot.outputDeviceUID
                     let next = uid.flatMap { snapshot.audioProfiles[$0] } ?? AudioProfile.safeDefault
-                    let changed = await state.updateProfile(next)
-                    if changed {
-                        let (p, o) = await state.snapshot()
-                        await apply(p, o)
+                    if await state.updateProfile(next) {
+                        continuation.yield()
                     }
                 }
             }
             group.addTask {
                 for await preset in overrideStream {
-                    let changed = await state.updateOverride(preset)
-                    if changed {
-                        let (p, o) = await state.snapshot()
-                        await apply(p, o)
+                    if await state.updateOverride(preset) {
+                        continuation.yield()
                     }
+                }
+            }
+            group.addTask {
+                for await _ in signals {
+                    let (p, o) = await state.snapshot()
+                    await apply(p, o)
                 }
             }
         }
