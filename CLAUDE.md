@@ -18,7 +18,7 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 - **Released:** **v1.1.0** (2026-09-06, published automatically when PR 45+46 merged to `main`) — headline: PR 44 skip-low-rated songs; plus PR 45 diagnostics and the PR 46 DAC-reattach fix. Previous: v1.0.0 (2026-06-09).
 - **CHANGELOG audience is end users.** Plain-language entries, no CI/internal-symbol bullets; technical detail belongs in `docs/pr-history.md` / `docs/architecture.md`.
 - **Release mechanics:** CI's `plan-release` job derives the tag from the top `## [vX.Y.Z]` CHANGELOG heading on every push to `main` and publishes if that release doesn't exist yet. To ship: rename `## [Unreleased]` → `## [vX.Y.Z] - YYYY-MM-DD`, re-add an empty `## [Unreleased]` above it, merge. No manual tagging needed.
-- **In progress:** Audio Unit plugin support, PRs 47–50 on one branch `claude/pr47-au-plugins` (spec `docs/superpowers/specs/2026-09-23-au-plugin-support-design.md`); opened as a single GitHub PR when all four are done. Done: PR 47 (libmpv `ladspa`), PR 48 (`RPBridge` dylib + `PluginBridge`), PR 49 (store + host + binder). Next: PR 50 = Settings "Audio Unit" section + editor panel + README/CHANGELOG, cut v1.2.0.
+- **Ready for PR:** Audio Unit plugin support, PRs 47–50 on branch `claude/pr47-au-plugins` (spec `docs/superpowers/specs/2026-09-23-au-plugin-support-design.md`); CHANGELOG cut as **v1.2.0**, which CI publishes when the branch merges to `main`. Open one GitHub PR for the branch.
 
 ---
 

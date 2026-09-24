@@ -104,7 +104,7 @@ The app installs a status item in the menu bar (no Dock icon, no main window). C
   - Previous-track and seek are intentionally disabled — Radio Paradise is forward-only.
 
 - **Per-device audio settings**:
-  - Each output device stores its own profile (hog mode, release-on-pause, volume mode, bitrate).
+  - Each output device stores its own profile (hog mode, release-on-pause, volume mode, bitrate, EQ, Audio Unit, crossfeed).
   - Switching devices instantly restores that device's saved profile. Devices seen for the first time start from safe defaults — hog off, volume mode None, 320k AAC — so a DAC profile can never bleed over to built-in speakers.
 
 - **Bit-perfect output via CoreAudio hog mode**
@@ -125,9 +125,15 @@ The app installs a status item in the menu bar (no Dock icon, no main window). C
 
 <!-- screenshot: eq editor TBD -->
 
+- **Audio Unit plugins** (per device):
+  - Run one Audio Unit effect (AUv2 `.component`) on playback — for example an Airwindows console or tape plugin. Settings → Audio Unit → import the `.component`, pick it, and open its controls with the sliders button.
+  - Imported plugins are copied into RP Player's own folder and stay invisible to other apps. Settings are remembered per plugin.
+  - Self-contained plugins work best. Plugins that depend on iLok or a vendor installer may fail to load, and a plugin that crashes takes RP Player down with it. Re-importing an updated version of a plugin takes effect after relaunching RP Player.
+  - Signal order is **EQ → Audio Unit → Crossfeed**. Bit-perfect output is off while a plugin is active.
+
 - **Crossfeed** for headphones (per device):
   - True BS2B (Bauer stereo-to-binaural) — proper ITD/group-delay modeling. Choose from named profiles (**Chu Moy** 700 Hz / 6.0 dB, **Jan Meier** 650 Hz / 9.5 dB) or **Custom** (set your own fcut 300–2000 Hz and feed 1.0–15.0 dB; Custom seeds at 700 Hz / 4.5 dB).
-  - Filter chain order is locked at **Preamp → EQ → Crossfeed** so EQ acts on the source signal and crossfeed operates on the equalized result.
+  - Filter chain order is locked at **Preamp → EQ → Audio Unit → Crossfeed** so EQ acts on the source signal and crossfeed operates on the equalized result.
 
 <p align="center"><img src=".screenshots/settings.png" alt="Settings window: bitrate, output device, hog mode toggle."/></p>
 
@@ -215,6 +221,7 @@ If you sign in, the app stores the same session cookies your browser stores afte
 - `Logs/RPPlayer.log` — rotating log file (info-level by default; flip "Verbose logging" in Settings for full coordinator/engine traces).
 - `AlbumArtCache/` — covers indexed by SHA-256 of the cover path. Capped at 100 files / 10 MB; oldest evicted on every write.
 - `SongFileCache/` — pre-downloaded gapless song files (FLAC/MP3/AAC) indexed by SHA-256 of the gapless URL. Required for true gapless playback (see *Per-song self-contained URLs* under [Under the hood](#under-the-hood)). Capped at 10 files (LRU, oldest evicted on every successful write); files persist across channel changes so revisiting a channel reuses the cache.
+- `Plugins/` — imported Audio Unit plugins, one folder per plugin holding the copied `.component` and its saved settings (`state.plist`). Deleting a plugin in Settings removes its folder.
 
 The Keychain account/service used for cookies is `com.gvajda.rpplayer`. Removing the app does not delete the keychain entry — use Settings → Sign out to clear it.
 
