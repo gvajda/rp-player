@@ -6,7 +6,7 @@ Section labels: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`
 
 ## [Unreleased]
 
-## [v1.2.0] - 2026-09-24
+## [v1.2.1] - 2026-10-04
 
 ### Added
 
@@ -14,6 +14,8 @@ Section labels: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`
 
 ### Fixed
 
+- After a long pause, the Upcoming window now shows the songs that will actually play next on the current channel, instead of a different list.
+- Resuming after a pause of an hour or more now catches up with the station even if macOS sent an extra pause in the meantime (for example from headphones or another app).
 - Quitting RP Player no longer takes about two seconds, and the audio device is now released cleanly on quit.
 
 ## [v1.1.0] - 2026-09-06

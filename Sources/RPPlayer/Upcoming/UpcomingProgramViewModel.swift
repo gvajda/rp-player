@@ -136,13 +136,19 @@ final class UpcomingProgramViewModel: ObservableObject {
         // Single api/gapless call per channel. Filter promos inline.
         let api = self.api
         let fetchCount = max(rowCount * 2, rowCount + 5)  // overshoot to absorb promo filtering
+        let program = await coordinator?.upcomingProgram
         var rowResults: [(Int, Channel, [GaplessSong])] = []
         await withTaskGroup(of: (Int, Channel, [GaplessSong]).self) { group in
             for (i, channel) in enabledChannels.enumerated() {
                 guard let chanId = Int(channel.chan) else { continue }
                 group.addTask {
                     let response = try? await api.gapless(channel: chanId, bitrate: bitrate, numSongs: fetchCount)
-                    let visible = (response?.songs ?? []).filter { $0.type != "P" && $0.songId != "0" }
+                    var songs = response?.songs ?? []
+                    // The server's cursor can drift from the local queue (e.g. after a long pause); show what will play, topped up past its tail.
+                    if let program, program.channelId == chanId, let tail = program.songs.last?.eventId {
+                        songs = program.songs + songs.filter { $0.eventId > tail }
+                    }
+                    let visible = songs.filter { $0.type != "P" && $0.songId != "0" }
                     return (i, channel, Array(visible.prefix(rowCount)))
                 }
             }

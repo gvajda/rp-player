@@ -16,6 +16,8 @@ public protocol PlaybackCoordinator: Sendable {
     var nextReady: Bool { get async }
     var nextReadyUpdates: AsyncStream<Bool> { get async }
     var errors: AsyncStream<String> { get async }
+    // What will actually play on the current channel: the local queue plus skip-filtered songs, in event order.
+    var upcomingProgram: (channelId: Int, songs: [GaplessSong])? { get async }
 
     func play(channelId: Int) async throws
     func pause() async throws
@@ -42,6 +44,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     private var currentChannelId: Int?
     private var skipPolicy: SkipPolicy = SkipPolicy(enabled: false, threshold: 5)
     private var queue: [GaplessSong] = []
+    private var skippedSongs: [GaplessSong] = []
     private var currentResponse: GaplessResponse?
     // mpv may fire MPV_EVENT_START_FILE multiple times around state transitions (initial load + auto-advance + replace).
     // We trust mpv's `path` property as ground truth and dedupe START_FILE events by the song's eventId.
@@ -105,6 +108,13 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     public var currentPlaybackState: PlaybackState { currentState }
 
     func snapshotQueueIds() -> [Int] { queue.map { $0.eventId } }
+
+    public var upcomingProgram: (channelId: Int, songs: [GaplessSong])? {
+        guard let channelId = currentChannelId, let head = queue.first else { return nil }
+        var seen = Set(queue.map(\.eventId))
+        let skipped = skippedSongs.filter { $0.eventId > head.eventId && seen.insert($0.eventId).inserted }
+        return (channelId, (queue + skipped).sorted { $0.eventId < $1.eventId })
+    }
 
     public var nowPlayingUpdates: AsyncStream<NowPlaying> {
         let id = UUID()
@@ -191,6 +201,7 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
         let response = try await api.gapless(channel: channelId, bitrate: bitrate, numSongs: 20)
         guard !response.songs.isEmpty else { throw PlaybackCoordinatorError.blockHasNoSongs }
 
+        skippedSongs = []
         let filtered = applySkipFilter(response.songs)
         guard !filtered.isEmpty else {
             await stopWithNoMatchesMessage()
@@ -249,6 +260,8 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
     public func pause() async throws {
         logger.debug("pause()")
         guard !queue.isEmpty else { throw PlaybackCoordinatorError.notPlaying }
+        // System pause commands can arrive while already paused; keep the first pausedAt so long-idle resume still triggers.
+        guard currentState != .paused else { return }
         do { try await engine.pause() } catch { throw PlaybackCoordinatorError.engineError(message: String(describing: error)) }
         emitState(.paused)
         pausedAt = clock()
@@ -595,6 +608,9 @@ public actor LivePlaybackCoordinator: PlaybackCoordinator {
 
     private func applySkipFilter(_ songs: [GaplessSong]) -> [GaplessSong] {
         guard skipPolicy.enabled else { return songs }
+        let headEvent = queue.first?.eventId ?? .min
+        skippedSongs.removeAll { $0.eventId <= headEvent }
+        skippedSongs += songs.filter { shouldSkip($0.userRating) }
         return songs.filter { !shouldSkip($0.userRating) }
     }
 
