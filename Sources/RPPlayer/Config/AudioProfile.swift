@@ -11,6 +11,8 @@ public struct AudioProfile: Equatable, Sendable {
     public var crossfeedProfile: CrossfeedProfile
     public var crossfeedFcut: Int
     public var crossfeedFeedDb: Double
+    public var pluginEnabled: Bool
+    public var pluginId: String?
 
     public init(
         hogModeEnabled: Bool,
@@ -22,7 +24,9 @@ public struct AudioProfile: Equatable, Sendable {
         crossfeedEnabled: Bool = false,
         crossfeedProfile: CrossfeedProfile = .cmoy,
         crossfeedFcut: Int = 700,
-        crossfeedFeedDb: Double = 6.0
+        crossfeedFeedDb: Double = 6.0,
+        pluginEnabled: Bool = false,
+        pluginId: String? = nil
     ) {
         self.hogModeEnabled = hogModeEnabled
         self.releaseHogOnPauseEnabled = releaseHogOnPauseEnabled
@@ -34,6 +38,8 @@ public struct AudioProfile: Equatable, Sendable {
         self.crossfeedProfile = crossfeedProfile
         self.crossfeedFcut = crossfeedFcut
         self.crossfeedFeedDb = crossfeedFeedDb
+        self.pluginEnabled = pluginEnabled
+        self.pluginId = pluginId
     }
 
     public static let safeDefault = AudioProfile(
@@ -56,6 +62,8 @@ extension AudioProfile: Codable {
         case crossfeedProfile
         case crossfeedFcut
         case crossfeedFeedDb
+        case pluginEnabled
+        case pluginId
         // Legacy keys for migration only — never encoded.
         case forceMaxVolumeEnabled
         case applyReplayGainEnabled
@@ -100,6 +108,8 @@ extension AudioProfile: Codable {
             self.crossfeedFcut = storedFcut ?? 700
             self.crossfeedFeedDb = storedFeedDb ?? 6.0
         }
+        self.pluginEnabled = try c.decodeIfPresent(Bool.self, forKey: .pluginEnabled) ?? false
+        self.pluginId = try c.decodeIfPresent(String.self, forKey: .pluginId)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -114,5 +124,7 @@ extension AudioProfile: Codable {
         try c.encode(crossfeedProfile, forKey: .crossfeedProfile)
         try c.encode(crossfeedFcut, forKey: .crossfeedFcut)
         try c.encode(crossfeedFeedDb, forKey: .crossfeedFeedDb)
+        try c.encode(pluginEnabled, forKey: .pluginEnabled)
+        try c.encodeIfPresent(pluginId, forKey: .pluginId)
     }
 }

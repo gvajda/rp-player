@@ -5,6 +5,16 @@ import XCTest
 
 @MainActor
 final class SettingsWindowControllerTests: XCTestCase {
+    private func makeAudioUnits() -> (AudioUnitSettingsModel, PluginEditorController) {
+        let pluginStore = PluginStore(directory: FileManager.default.temporaryDirectory
+            .appendingPathComponent("settings-window-tests-plugins-\(UUID().uuidString)"))
+        let pluginHost = PluginHost(store: pluginStore, setUnit: { _ in })
+        let audioUnits = AudioUnitSettingsModel(
+            configStore: StubConfigStore(initial: .default), store: pluginStore, host: pluginHost,
+            isBridgeAvailable: false)
+        return (audioUnits, PluginEditorController(host: pluginHost))
+    }
+
     func testInitConfiguresWindowFrameAndStyle() {
         let viewModel = SettingsViewModel(
             configStore: StubConfigStore(initial: AppSettings.default),
@@ -12,7 +22,8 @@ final class SettingsWindowControllerTests: XCTestCase {
             auth: StubKeychainAuth(),
             openLoginWindow: { }, openApplicationData: { }
         )
-        let sut = SettingsWindowController(viewModel: viewModel)
+        let (audioUnits, pluginEditor) = makeAudioUnits()
+        let sut = SettingsWindowController(viewModel: viewModel, audioUnits: audioUnits, pluginEditor: pluginEditor)
         let window = sut.window!
         XCTAssertTrue(window.styleMask.contains(.titled))
         XCTAssertTrue(window.styleMask.contains(.closable))
@@ -30,7 +41,8 @@ final class SettingsWindowControllerTests: XCTestCase {
             auth: StubKeychainAuth(),
             openLoginWindow: { }, openApplicationData: { }
         )
-        let sut = SettingsWindowController(viewModel: viewModel)
+        let (audioUnits, pluginEditor) = makeAudioUnits()
+        let sut = SettingsWindowController(viewModel: viewModel, audioUnits: audioUnits, pluginEditor: pluginEditor)
         XCTAssertFalse(sut.isVisible)
     }
 
@@ -43,7 +55,8 @@ final class SettingsWindowControllerTests: XCTestCase {
             openLoginWindow: { },
             openApplicationData: { }
         )
-        let controller = SettingsWindowController(viewModel: viewModel)
+        let (audioUnits, pluginEditor) = makeAudioUnits()
+        let controller = SettingsWindowController(viewModel: viewModel, audioUnits: audioUnits, pluginEditor: pluginEditor)
         XCTAssertEqual(controller.window?.title, "RP Player Settings")
     }
 }

@@ -69,7 +69,14 @@ final class AppContainerTests: XCTestCase {
             configStore: configStore, deviceCatalog: deviceCatalog, auth: auth,
             openLoginWindow: { }, openApplicationData: { }
         )
-        let settingsWindowController = SettingsWindowController(viewModel: settingsViewModel)
+        let pluginStore = PluginStore(directory: FileManager.default.temporaryDirectory
+            .appendingPathComponent("app-container-tests-plugins-\(UUID().uuidString)"))
+        let pluginHost = PluginHost(store: pluginStore, setUnit: { _ in })
+        let audioUnits = AudioUnitSettingsModel(
+            configStore: configStore, store: pluginStore, host: pluginHost, isBridgeAvailable: false)
+        let pluginEditor = PluginEditorController(host: pluginHost)
+        let settingsWindowController = SettingsWindowController(
+            viewModel: settingsViewModel, audioUnits: audioUnits, pluginEditor: pluginEditor)
         let loginWindowController = LoginWindowController(keychainAuth: auth)
         let container = AppContainer(
             viewModel: viewModel,

@@ -45,6 +45,9 @@ fi
 echo "==> copying vendored libmpv dylibs"
 cp "$ROOT"/Vendor/libmpv/lib/*.dylib "$APP_DIR/Contents/Frameworks/"
 
+echo "==> copying RPBridge dylib"
+cp "$BIN_DIR/libRPBridge.dylib" "$APP_DIR/Contents/Frameworks/"
+
 echo "==> adding @loader_path/../Frameworks rpath to binary"
 install_name_tool -add_rpath "@loader_path/../Frameworks" "$APP_DIR/Contents/MacOS/$APP_NAME" 2>/dev/null || true
 

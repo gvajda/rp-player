@@ -7,9 +7,10 @@ Self-contained libmpv runtime for RP Player. macOS universal binary
 
 - Tarball: `libmpv-libs_develop_macos-universal-audio-encodersgpl.tar.gz`
 - Origin: forked from <https://github.com/media-kit/libmpv-darwin-build>
-  (built from `develop` branch with `--enable-libbs2b` added to the
-  `audio-encodersgpl` FFmpeg variant — see the fork at
-  <https://github.com/gvajda/libmpv-darwin-build>).
+  (built from `develop` branch with `--enable-libbs2b` and `--enable-ladspa`
+  added to the `audio-encodersgpl` FFmpeg variant — see the fork at
+  <https://github.com/gvajda/libmpv-darwin-build>). Build target:
+  `make TARGET=mk-out-archive-libs-macos-universal-audio-encodersgpl`.
 - License: **GPL-2.0-or-later** — built with FFmpeg `--enable-gpl`. The MIT
   source license of RP Player is unchanged, but distributing the bundled
   `.app` triggers GPL terms (provide source on request, no proprietary
@@ -26,6 +27,15 @@ presets with shelves or preamp failed at filter init.
 `bs2b` is the Bauer stereo-to-binaural filter linked via `libbs2b.dylib`
 (also shipped in `lib/`, loaded indirectly via `libavfilter.dylib`'s
 `@loader_path/libbs2b.dylib` dependency).
+
+`ladspa` is FFmpeg's LADSPA host filter (PR 47). It needs only the
+`ladspa.h` header at build time (LADSPA SDK 1.1, LGPL-2.1, vendored in the
+fork at `nix/packages/mk-pkg-ffmpeg/ladspa/`) and `dlopen`s plugins at
+runtime, so it adds no dylib here. RP Player uses it to host its own
+bridge library, which forwards audio to an Audio Unit (see
+`docs/superpowers/specs/2026-09-23-au-plugin-support-design.md`).
+`LibmpvLinkageTests.testVendoredAvfilterHasLadspaAndBs2b` fails if a
+re-vendor drops either filter.
 
 ## Install-name rewrite (REQUIRED on every re-vendor)
 
@@ -69,6 +79,10 @@ for f in *.dylib; do codesign --force --sign - "$f"; done
 Verify: `otool -L Vendor/libmpv/lib/libavfilter.dylib | grep @rpath` should
 only show the dylib's own self-install_name (e.g.
 `@rpath/libavfilter.dylib`), nothing else.
+
+The dylibs are universal, so `otool -L` prints one section per
+architecture — expect exactly one self-`@rpath` line in each section, and
+`@loader_path/…` for every sibling.
 
 The poisoned nix-store `LC_RPATH` entries are left in place — once all
 sibling references are `@loader_path/…`, dyld never consults the rpath
