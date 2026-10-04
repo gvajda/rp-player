@@ -90,6 +90,8 @@ actor MockPlaybackCoordinator: PlaybackCoordinator {
     var currentPlaybackState: PlaybackState { lastState }
 
     var nextReady: Bool { nextReadyValue }
+    var upcomingProgram: (channelId: Int, songs: [GaplessSong])?
+    func setUpcomingProgram(_ value: (channelId: Int, songs: [GaplessSong])?) { upcomingProgram = value }
 
     var nextReadyUpdates: AsyncStream<Bool> {
         let id = UUID()

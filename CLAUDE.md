@@ -14,11 +14,11 @@ macOS menu-bar app (Swift 6.2, macOS 14, SwiftUI + AppKit) that plays Radio Para
 
 ## Current state
 
-- Last merged: **PR 45 + 46** (one PR, GitHub #3) — DAC reattach diagnostics + Play guard, then the fix: DAC reattach settle + stuck-AO recovery. Root cause of silent-play-after-replug: reattach watcher wrote hog/rate/volume during the USB driver's bring-up config change → in-process HAL IO pause counter drifted → IO disabled for the process; mpv 0.36 only warns. Watcher now defers device writes (skip when release-on-pause, else 2 s settle); `PlayerEvent.audioOutputStartFailed` stops playback with a relaunch message. 6 new tests. 606 tests.
-- **Released:** **v1.1.0** (2026-09-06, published automatically when PR 45+46 merged to `main`) — headline: PR 44 skip-low-rated songs; plus PR 45 diagnostics and the PR 46 DAC-reattach fix. Previous: v1.0.0 (2026-06-09).
+- Last merged: **PRs 47–50** (GitHub #4) — Audio Unit plugin support. Its v1.2.0 release run was cancelled (never published); the v1.2.0 CHANGELOG section is folded into v1.2.1.
+- **In flight:** **PR 51** on `claude/pr51-upcoming-follows-queue` — Upcoming window's playing-channel column follows the coordinator's queue (`PlaybackCoordinator.upcomingProgram`), and `pause()` is a no-op while paused (a duplicate system pause had reset `pausedAt`, skipping long-idle catch-up). CHANGELOG cut as **v1.2.1**; CI publishes it when the branch merges to `main`. 653 tests.
+- **Released:** **v1.1.0** (2026-09-06). Previous: v1.0.0 (2026-06-09).
 - **CHANGELOG audience is end users.** Plain-language entries, no CI/internal-symbol bullets; technical detail belongs in `docs/pr-history.md` / `docs/architecture.md`.
 - **Release mechanics:** CI's `plan-release` job derives the tag from the top `## [vX.Y.Z]` CHANGELOG heading on every push to `main` and publishes if that release doesn't exist yet. To ship: rename `## [Unreleased]` → `## [vX.Y.Z] - YYYY-MM-DD`, re-add an empty `## [Unreleased]` above it, merge. No manual tagging needed.
-- **Ready for PR:** Audio Unit plugin support, PRs 47–50 on branch `claude/pr47-au-plugins` (spec `docs/superpowers/specs/2026-09-23-au-plugin-support-design.md`); CHANGELOG cut as **v1.2.0**, which CI publishes when the branch merges to `main`. Open one GitHub PR for the branch.
 
 ---
 

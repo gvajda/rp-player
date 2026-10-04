@@ -226,6 +226,36 @@ final class UpcomingProgramViewModelTests: XCTestCase {
         XCTAssertEqual(vm.currentSongId, "xyz-9")
     }
 
+    // After a long pause the server's list can move on while the local queue keeps playing; show what will play.
+    func testPlayingChannelColumnFollowsCoordinatorQueue() async throws {
+        let api = MockRpApiClient()
+        await api.setListChannelsResponse([makeChannel(id: 0), makeChannel(id: 1)])
+        let serverSongs = (5001...5005).map { makeGaplessSong(songId: "live\($0)", eventId: $0) }
+        await api.setGaplessByChannel([
+            0: makeGaplessResponse(songs: serverSongs, chan: "0"),
+            1: makeGaplessResponse(songs: makeMusicSongs(count: 5, startId: 10), chan: "1"),
+        ])
+        let coord = MockPlaybackCoordinator()
+        await coord.setUpcomingProgram((channelId: 0, songs: [
+            makeGaplessSong(songId: "q1", eventId: 1001),
+            makeGaplessSong(songId: "promo", eventId: 1002, type: "P"),
+            makeGaplessSong(songId: "q2", eventId: 1003),
+        ]))
+        var settings = AppSettings.default
+        settings.upcomingRowCount = 4
+        let vm = UpcomingProgramViewModel(
+            api: api,
+            albumArtCache: StubAlbumArtCache(),
+            configStore: StubConfigStore(initial: settings),
+            paletteExtractor: StubAmbientPaletteExtractor(),
+            coordinator: coord
+        )
+        await vm.load()
+
+        XCTAssertEqual(vm.columns[0].songs.map(\.song.songId), ["q1", "q2", "live5001", "live5002"])
+        XCTAssertEqual(vm.columns[1].songs.map(\.song.songId), ["song10", "song11", "song12", "song13"])
+    }
+
     func testSelectChannelInvokesHandler() async throws {
         let api = MockRpApiClient()
         await api.setListChannelsResponse([makeChannel(id: 0)])
